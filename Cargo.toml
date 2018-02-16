@@ -4,4 +4,5 @@ version = "0.1.0"
 authors = ["Lucas Morales <lucas@lucasem.com>"]
 
 [dependencies]
+maplit = "1.0"
 polytype = "1.2"
