@@ -4,12 +4,19 @@ use std::collections::HashMap;
 
 use expression::{Expression, DSL};
 
-pub struct Task<'a, T> {
-    pub oracle: Box<'a + Fn(Expression) -> f64>,
-    pub observation: T,
+/// The representation of a task which is solved by an [`Expression`] under some [`DSL`].
+///
+/// [`DSL`]: struct.DSL.html
+/// [`Expression`]: enum.Expression.html
+pub struct Task<'a, O> {
+    /// evaluate an expression by getting its log-likelihood.
+    pub oracle: Box<'a + Fn(&Expression, &DSL) -> f64>,
+    pub observation: O,
     pub tp: Type,
 }
 
+/// The entry point for one iteration of the EC algorithm.
+///
 /// Lots of type variables here.
 ///
 /// - `S` is some "state" initially passed in as a prior, probably taking the form of production
@@ -21,7 +28,7 @@ pub struct Task<'a, T> {
 /// - `RS` is something the recognizer returns that the enumerator can use. This could be, for
 ///   example, a map from task number to a set of production probabilities.
 /// - `R`, `E`, and `C` are the types, described in the `where` clause of the function signature
-///   here, for a recognizer, an enumerator, and a compressor.
+///   here, for a recognizer, an enumerator, and a compressor respectively.
 pub fn ec<S, O, RS, R, E, C>(
     prior: &DSL,
     mut state: &mut S,

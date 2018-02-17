@@ -3,7 +3,8 @@ use polytype::{self, Context, Type};
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 
-/// A DSL is effectively a registry for primitive and invented expressions.
+/// A DSL is a registry for primitive and invented expressions in a polymorphically-typed lambda
+/// calculus.
 ///
 /// # Examples
 ///
@@ -92,7 +93,11 @@ impl DSL {
     }
     /// The inverse of [`stringify`].
     ///
+    /// Lambda expressions take the form `(lambda BODY)` or `(λ BODY)`, where BODY is an expression
+    /// that may use a corresponding De Bruijn [`Index`].
+    ///
     /// [`stringify`]: #method.stringify
+    /// [`Index`]: enum.Expression.html#variant.Index
     pub fn parse(&self, inp: &str) -> Result<Expression, ParseError> {
         let s = inp.trim_left();
         let offset = inp.len() - s.len();
@@ -115,12 +120,15 @@ impl DSL {
     }
 }
 
+/// Expressions of lambda calculus, which only make sense with an accompanying DSL.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     /// The number associated with a primitive is used by the DSL to identify the primitive.
     Primitive(usize),
     Application(Box<Expression>, Box<Expression>),
     Abstraction(Box<Expression>),
+    /// De Bruijn index referring to the nth-nearest abstraction (0-indexed).
+    /// For example, the identify function is `(λ $0)` or `Abstraction(Index(0))`.
     Index(u64),
     /// The number associated with an invented expression is used by the DSL to identify the
     /// invention.
