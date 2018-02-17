@@ -3,53 +3,6 @@ use polytype::{self, Context, Type};
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 
-/*
- * ERRORS
- */
-
-#[derive(Debug, Clone)]
-pub enum InferenceError {
-    BadPrimitive(usize),
-    BadInvented(usize),
-    Unify(polytype::UnificationError),
-}
-impl From<polytype::UnificationError> for InferenceError {
-    fn from(err: polytype::UnificationError) -> Self {
-        InferenceError::Unify(err)
-    }
-}
-impl fmt::Display for InferenceError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            &InferenceError::BadPrimitive(i) => write!(f, "invalid primitive: '{}'", i),
-            &InferenceError::BadInvented(i) => write!(f, "invalid invented: '{}'", i),
-            &InferenceError::Unify(ref err) => write!(f, "could not unify to infer type: {}", err),
-        }
-    }
-}
-impl ::std::error::Error for InferenceError {
-    fn description(&self) -> &str {
-        "could not infer type"
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ParseError(usize, &'static str);
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{} at index {}", self.1, self.0)
-    }
-}
-impl ::std::error::Error for ParseError {
-    fn description(&self) -> &str {
-        "could not parse expression"
-    }
-}
-
-/*
- * /ERRORS
- */
-
 /// A DSL is effectively a registry for primitive and invented expressions.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DSL {
@@ -295,6 +248,45 @@ impl Expression {
                 offset,
                 "could not parse any expression variant",
             )))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum InferenceError {
+    BadPrimitive(usize),
+    BadInvented(usize),
+    Unify(polytype::UnificationError),
+}
+impl From<polytype::UnificationError> for InferenceError {
+    fn from(err: polytype::UnificationError) -> Self {
+        InferenceError::Unify(err)
+    }
+}
+impl fmt::Display for InferenceError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            &InferenceError::BadPrimitive(i) => write!(f, "invalid primitive: '{}'", i),
+            &InferenceError::BadInvented(i) => write!(f, "invalid invented: '{}'", i),
+            &InferenceError::Unify(ref err) => write!(f, "could not unify to infer type: {}", err),
+        }
+    }
+}
+impl ::std::error::Error for InferenceError {
+    fn description(&self) -> &str {
+        "could not infer type"
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ParseError(usize, &'static str);
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{} at index {}", self.1, self.0)
+    }
+}
+impl ::std::error::Error for ParseError {
+    fn description(&self) -> &str {
+        "could not parse expression"
     }
 }
 
