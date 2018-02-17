@@ -28,7 +28,8 @@ pub struct Task<'a, O> {
 /// - `RS` is something the recognizer returns that the enumerator can use. This could be, for
 ///   example, a map from task number to a set of production probabilities.
 /// - `R`, `E`, and `C` are the types, described in the `where` clause of the function signature
-///   here, for a recognizer, an enumerator, and a compressor respectively.
+///   here, for a recognizer, an enumerator, and a compressor respectively. Note that the
+///   compressor returns a DSL as well as the best solution for each task.
 pub fn ec<S, O, RS, R, E, C>(
     prior: &DSL,
     mut state: &mut S,
@@ -36,11 +37,12 @@ pub fn ec<S, O, RS, R, E, C>(
     recognizer: Option<R>,
     explore: E,
     compress: C,
-) -> DSL
+) -> (DSL, Vec<Option<Expression>>)
 where
     R: FnOnce(&DSL, &mut S, &Vec<Task<O>>) -> RS,
     E: FnOnce(&DSL, &mut S, &Vec<Task<O>>, Option<RS>) -> HashMap<usize, Vec<Expression>>,
-    C: FnOnce(&DSL, &mut S, &Vec<Task<O>>, HashMap<usize, Vec<Expression>>) -> DSL,
+    C: FnOnce(&DSL, &mut S, &Vec<Task<O>>, HashMap<usize, Vec<Expression>>)
+        -> (DSL, Vec<Option<Expression>>),
 {
     let recognized = recognizer.map(|r| r(prior, &mut state, tasks));
     let frontiers = explore(prior, &mut state, tasks, recognized);
