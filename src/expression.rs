@@ -12,9 +12,9 @@ use std::fmt;
 ///
 /// ```
 /// # #[macro_use] extern crate polytype;
-/// # extern crate eg;
+/// # extern crate programinduction;
 /// # fn main() {
-/// # use eg::{Expression, DSL};
+/// # use programinduction::{Expression, DSL};
 /// let dsl = DSL{
 ///     primitives: vec![(String::from("+"), arrow![tp!(int), tp!(int), tp!(int)])],
 ///     invented: vec![],
@@ -35,9 +35,9 @@ use std::fmt;
 ///
 /// ```
 /// # #[macro_use] extern crate polytype;
-/// # extern crate eg;
+/// # extern crate programinduction;
 /// # fn main() {
-/// # use eg::{DSL, Expression};
+/// # use programinduction::{DSL, Expression};
 /// let dsl = DSL{
 ///     primitives: vec![
 ///         (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),

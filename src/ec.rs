@@ -1,19 +1,6 @@
-use polytype::Type;
-
 use std::collections::HashMap;
 
-use expression::{Expression, DSL};
-
-/// The representation of a task which is solved by an [`Expression`] under some [`DSL`].
-///
-/// [`DSL`]: struct.DSL.html
-/// [`Expression`]: enum.Expression.html
-pub struct Task<'a, O> {
-    /// evaluate an expression by getting its log-likelihood.
-    pub oracle: Box<'a + Fn(&Expression, &DSL) -> f64>,
-    pub observation: O,
-    pub tp: Type,
-}
+use super::{Expression, Task, DSL};
 
 /// The entry point for one iteration of the EC algorithm.
 ///

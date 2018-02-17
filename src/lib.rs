@@ -9,7 +9,8 @@
 extern crate polytype;
 
 mod expression;
-mod ec;
+mod task;
+pub mod ec;
 
 pub use expression::*;
-pub use ec::*;
+pub use task::*;
