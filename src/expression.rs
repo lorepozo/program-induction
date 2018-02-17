@@ -4,6 +4,61 @@ use std::collections::{HashMap, VecDeque};
 use std::fmt;
 
 /// A DSL is effectively a registry for primitive and invented expressions.
+///
+/// # Examples
+///
+/// Stringify and parse expressions in the DSL:
+///
+/// ```
+/// # #[macro_use] extern crate polytype;
+/// # extern crate eg;
+/// # fn main() {
+/// # use eg::{Expression, DSL};
+/// let dsl = DSL::new(
+///     vec![(String::from("+"), arrow![tp!(int), tp!(int), tp!(int)])],
+///     vec![],
+/// );
+/// let expr = Expression::Abstraction(
+///     Box::new(Expression::Application(
+///         Box::new(Expression::Primitive(0)),
+///         Box::new(Expression::Index(0)),
+///     ))
+/// );
+/// assert_eq!(dsl.stringify(&expr), "(λ (+ $0))");
+/// // stringify round-trips with dsl.parse
+/// assert_eq!(expr, dsl.parse(&dsl.stringify(&expr)).unwrap());
+/// # }
+/// ```
+///
+/// Infer types of expressions in the DSL:
+///
+/// ```
+/// # #[macro_use] extern crate polytype;
+/// # extern crate eg;
+/// # fn main() {
+/// # use eg::{DSL, Expression};
+/// let dsl = DSL::new(
+///     vec![ // primitives
+///         (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
+///         (String::from(">="), arrow![tp!(int), tp!(int), tp!(bool)]),
+///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+///         (String::from("0"), tp!(int)),
+///         (String::from("1"), tp!(int)),
+///     ],
+///     vec![ // invented
+///         (
+///             Expression::Application(
+///                 Box::new(Expression::Primitive(2)),
+///                 Box::new(Expression::Primitive(4)),
+///             ),
+///             arrow![tp!(int), tp!(int)],
+///         ),
+///     ],
+/// );
+/// let expr = dsl.parse("(singleton ((λ (>= $0 1)) (#(+ 1) 0)))").unwrap();
+/// assert_eq!(dsl.infer(&expr).unwrap(), tp!(list(tp!(bool))));
+/// # }
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct DSL {
     primitives: Vec<(String, Type)>,
@@ -16,6 +71,17 @@ impl DSL {
             invented,
         }
     }
+    pub fn primitive(&self, num: usize) -> Option<(&str, &Type)> {
+        self.primitives
+            .get(num)
+            .map(|&(ref name, ref tp)| (name.as_str(), tp))
+    }
+    pub fn invented(&self, num: usize) -> Option<(&Expression, &Type)> {
+        self.invented
+            .get(num)
+            .map(|&(ref fragment, ref tp)| (fragment, tp))
+    }
+    /// Register a new invented expression. If it has a valid type, this will be `Ok(num)`.
     pub fn invent(&mut self, expr: Expression) -> Result<usize, InferenceError> {
         let mut ctx = Context::default();
         let env = VecDeque::new();
@@ -24,6 +90,15 @@ impl DSL {
         self.invented.push((expr, tp));
         Ok(self.invented.len() - 1)
     }
+    pub fn infer(&self, expr: &Expression) -> Result<Type, InferenceError> {
+        let mut ctx = Context::default();
+        let env = VecDeque::new();
+        let mut indices = HashMap::new();
+        expr.infer_internal(self, &mut ctx, &env, &mut indices)
+    }
+    /// The inverse of [`stringify`].
+    ///
+    /// [`stringify`]: #method.stringify
     pub fn parse(&self, inp: &str) -> Result<Expression, ParseError> {
         let s = inp.trim_left();
         let offset = inp.len() - s.len();
@@ -38,24 +113,26 @@ impl DSL {
             }
         })
     }
+    /// The inverse of [`parse`].
+    ///
+    /// [`parse`]: #method.parse
+    pub fn stringify(&self, expr: &Expression) -> String {
+        expr.show(self, false)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
+    /// The number associated with a primitive is used by the DSL to identify the primitive.
     Primitive(usize),
     Application(Box<Expression>, Box<Expression>),
     Abstraction(Box<Expression>),
     Index(u64),
-
+    /// The number associated with an invented expression is used by the DSL to identify the
+    /// invention.
     Invented(usize),
 }
 impl Expression {
-    pub fn infer(&self, dsl: &DSL) -> Result<Type, InferenceError> {
-        let mut ctx = Context::default();
-        let env = VecDeque::new();
-        let mut indices = HashMap::new();
-        self.infer_internal(dsl, &mut ctx, &env, &mut indices)
-    }
     fn infer_internal(
         &self,
         dsl: &DSL,
@@ -99,9 +176,6 @@ impl Expression {
                 Err(InferenceError::BadInvented(num))
             },
         }
-    }
-    pub fn to_string(&self, dsl: &DSL) -> String {
-        self.show(dsl, false)
     }
     fn show(&self, dsl: &DSL, is_function: bool) -> String {
         match self {
@@ -430,7 +504,7 @@ mod tests {
                 Box::new(Expression::Index(0)),
             )))
         );
-        assert_eq!(expr.to_string(&dsl), "(λ (+ $0))");
+        assert_eq!(dsl.stringify(&expr), "(λ (+ $0))");
         let expr = dsl.parse("(#(lambda (+ (+ 1 1) $0)) ((lambda (+ $0 1)) 1))")
             .unwrap();
         assert_eq!(
@@ -450,7 +524,7 @@ mod tests {
             ),
         );
         assert_eq!(
-            expr.to_string(&dsl),
+            dsl.stringify(&expr),
             "(#(λ (+ (+ 1 1) $0)) ((λ (+ $0 1)) 1))"
         );
         let expr = dsl.parse("(lambda $0)").unwrap();
@@ -458,7 +532,7 @@ mod tests {
             expr,
             Expression::Abstraction(Box::new(Expression::Index(0)))
         );
-        assert_eq!(expr.to_string(&dsl), "(λ $0)");
+        assert_eq!(dsl.stringify(&expr), "(λ $0)");
     }
 
     #[test]
@@ -497,9 +571,9 @@ mod tests {
                 )),
             )),
         );
-        assert_eq!(expr.infer(&dsl).unwrap(), tp!(list(tp!(bool))));
+        assert_eq!(dsl.infer(&expr).unwrap(), tp!(list(tp!(bool))));
         assert_eq!(
-            expr.to_string(&dsl),
+            dsl.stringify(&expr),
             "(singleton ((λ (>= $0 1)) (#(+ 1) 0)))"
         );
     }
