@@ -1,5 +1,8 @@
 #[macro_use]
 extern crate polytype;
 
-pub mod expression;
-pub use expression::{Expression, DSL};
+mod expression;
+mod ec;
+
+pub use expression::*;
+pub use ec::*;
