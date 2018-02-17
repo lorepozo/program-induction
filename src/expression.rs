@@ -63,14 +63,13 @@ impl DSL {
             invented,
         }
     }
-    pub fn invent(&mut self, expr: Expression) -> usize {
+    pub fn invent(&mut self, expr: Expression) -> Result<usize, InferenceError> {
         let mut ctx = Context::default();
         let env = VecDeque::new();
         let mut indices = HashMap::new();
-        let tp = expr.infer_internal(&self, &mut ctx, &env, &mut indices)
-            .expect("invalid invention");
+        let tp = expr.infer_internal(&self, &mut ctx, &env, &mut indices)?;
         self.invented.push((expr, tp));
-        self.invented.len() - 1
+        Ok(self.invented.len() - 1)
     }
     pub fn parse(&self, inp: &str) -> Result<Expression, ParseError> {
         let s = inp.trim_left();
