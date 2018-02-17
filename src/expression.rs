@@ -161,7 +161,7 @@ impl Expression {
                         // skip spaces
                         di += inp[di..].chars().take_while(|c| c.is_whitespace()).count();
                         // check if complete
-                        match inp.chars().nth(di) {
+                        match inp[di..].chars().nth(0) {
                             None => break Err(ParseError(offset + di, "incomplete application")),
                             Some(')') => {
                                 di += 1;
@@ -201,8 +201,9 @@ impl Expression {
                     let (ndi, body) = Expression::parse(dsl, &inp[di..], offset + di)?;
                     di += ndi;
                     // check if complete
-                    inp.chars()
-                        .nth(di)
+                    inp[di..]
+                        .chars()
+                        .nth(0)
                         .and_then(|c| if c == ')' { Some(di + 1) } else { None })
                         .ok_or(ParseError(offset + di, "incomplete application"))
                         .map(|di| (di, Expression::Abstraction(Box::new(body))))
@@ -421,16 +422,19 @@ mod tests {
                 ),
             ],
         );
+        let expr = dsl.parse("(λ (+ $0))").unwrap();
         assert_eq!(
-            dsl.parse("(lambda (+ $0))").unwrap(),
+            expr,
             Expression::Abstraction(Box::new(Expression::Application(
                 Box::new(Expression::Primitive(0)),
                 Box::new(Expression::Index(0)),
             )))
         );
+        assert_eq!(expr.to_string(&dsl), "(λ (+ $0))");
+        let expr = dsl.parse("(#(lambda (+ (+ 1 1) $0)) ((lambda (+ $0 1)) 1))")
+            .unwrap();
         assert_eq!(
-            dsl.parse("(#(lambda (+ (+ 1 1) $0)) ((lambda (+ $0 1)) 1))")
-                .unwrap(),
+            expr,
             Expression::Application(
                 Box::new(Expression::Invented(0)),
                 Box::new(Expression::Application(
@@ -446,9 +450,15 @@ mod tests {
             ),
         );
         assert_eq!(
-            dsl.parse("(lambda $0)").unwrap(),
+            expr.to_string(&dsl),
+            "(#(λ (+ (+ 1 1) $0)) ((λ (+ $0 1)) 1))"
+        );
+        let expr = dsl.parse("(lambda $0)").unwrap();
+        assert_eq!(
+            expr,
             Expression::Abstraction(Box::new(Expression::Index(0)))
         );
+        assert_eq!(expr.to_string(&dsl), "(λ $0)");
     }
 
     #[test]
