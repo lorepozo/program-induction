@@ -1,4 +1,4 @@
-use polytype::{self, Type};
+use polytype::{self, Context, Type};
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
@@ -50,27 +50,24 @@ impl ::std::error::Error for ParseError {
  * /ERRORS
  */
 
-/// An expression context is effectively a registry for primitive and invented expressions.
-///
-/// Most expressions don't make sense without a context, hence the requirement of one for any
-/// expression.
+/// A DSL is effectively a registry for primitive and invented expressions.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Context {
+pub struct DSL {
     primitives: Vec<(String, Type)>,
     invented: Vec<(Variant, Type)>,
 }
-impl Context {
+impl DSL {
     pub fn new(primitives: Vec<(String, Type)>, invented: Vec<(Variant, Type)>) -> Self {
-        Context {
+        DSL {
             primitives,
             invented,
         }
     }
     pub fn invent(&mut self, expr: Variant) -> usize {
-        let mut tctx = polytype::Context::default();
+        let mut ctx = Context::default();
         let env = VecDeque::new();
         let mut indices = HashMap::new();
-        let tp = expr.infer_internal(&self, &mut tctx, &env, &mut indices)
+        let tp = expr.infer_internal(&self, &mut ctx, &env, &mut indices)
             .expect("invalid invention");
         self.invented.push((expr, tp));
         self.invented.len() - 1
@@ -81,7 +78,7 @@ impl Context {
         Variant::parse(self, s, offset).and_then(move |(di, variant)| {
             if s[di..].chars().all(char::is_whitespace) {
                 Ok(Expression {
-                    ctx: &self,
+                    dsl: &self,
                     variant,
                 })
             } else {
@@ -106,66 +103,66 @@ pub enum Variant {
 impl Variant {
     fn infer_internal(
         &self,
-        ctx: &Context,
-        mut tctx: &mut polytype::Context,
+        dsl: &DSL,
+        mut ctx: &mut Context,
         env: &VecDeque<Type>,
         indices: &mut HashMap<u64, Type>,
     ) -> Result<Type, InferenceError> {
         match self {
-            &Variant::Primitive(num) => if let Some(prim) = ctx.primitives.get(num as usize) {
-                Ok(prim.1.instantiate_indep(tctx))
+            &Variant::Primitive(num) => if let Some(prim) = dsl.primitives.get(num as usize) {
+                Ok(prim.1.instantiate_indep(ctx))
             } else {
                 Err(InferenceError::BadPrimitive(num))
             },
             &Variant::Application(ref f, ref x) => {
-                let f_tp = f.infer_internal(ctx, &mut tctx, env, indices)?;
-                let x_tp = x.infer_internal(ctx, &mut tctx, env, indices)?;
-                let ret_tp = tctx.new_variable();
-                tctx.unify(&f_tp, &arrow![x_tp, ret_tp.clone()])?;
-                Ok(ret_tp.apply(tctx))
+                let f_tp = f.infer_internal(dsl, &mut ctx, env, indices)?;
+                let x_tp = x.infer_internal(dsl, &mut ctx, env, indices)?;
+                let ret_tp = ctx.new_variable();
+                ctx.unify(&f_tp, &arrow![x_tp, ret_tp.clone()])?;
+                Ok(ret_tp.apply(ctx))
             }
             &Variant::Abstraction(ref body) => {
-                let arg_tp = tctx.new_variable();
+                let arg_tp = ctx.new_variable();
                 let mut env = env.clone();
                 env.push_front(arg_tp.clone());
-                let ret_tp = body.infer_internal(ctx, &mut tctx, &env, indices)?;
-                Ok(arrow![arg_tp, ret_tp].apply(tctx))
+                let ret_tp = body.infer_internal(dsl, &mut ctx, &env, indices)?;
+                Ok(arrow![arg_tp, ret_tp].apply(ctx))
             }
             &Variant::Index(i) => {
                 if (i as usize) < env.len() {
-                    Ok(env[i as usize].apply(tctx))
+                    Ok(env[i as usize].apply(ctx))
                 } else {
                     Ok(indices
                         .entry(i - (env.len() as u64))
-                        .or_insert_with(|| tctx.new_variable())
-                        .apply(tctx))
+                        .or_insert_with(|| ctx.new_variable())
+                        .apply(ctx))
                 }
             }
-            &Variant::Invented(num) => if let Some(inv) = ctx.invented.get(num as usize) {
-                Ok(inv.1.instantiate_indep(tctx))
+            &Variant::Invented(num) => if let Some(inv) = dsl.invented.get(num as usize) {
+                Ok(inv.1.instantiate_indep(ctx))
             } else {
                 Err(InferenceError::BadInvented(num))
             },
         }
     }
-    fn show(&self, ctx: &Context, is_function: bool) -> String {
+    fn show(&self, dsl: &DSL, is_function: bool) -> String {
         match self {
-            &Variant::Primitive(num) => ctx.primitives[num as usize].0.clone(),
+            &Variant::Primitive(num) => dsl.primitives[num as usize].0.clone(),
             &Variant::Application(ref f, ref x) => if is_function {
-                format!("{} {}", f.show(ctx, true), x.show(ctx, false))
+                format!("{} {}", f.show(dsl, true), x.show(dsl, false))
             } else {
-                format!("({} {})", f.show(ctx, true), x.show(ctx, false))
+                format!("({} {})", f.show(dsl, true), x.show(dsl, false))
             },
-            &Variant::Abstraction(ref body) => format!("(λ {})", body.show(ctx, false)),
+            &Variant::Abstraction(ref body) => format!("(λ {})", body.show(dsl, false)),
             &Variant::Index(i) => format!("${}", i),
             &Variant::Invented(num) => {
-                format!("#{}", ctx.invented[num as usize].0.show(ctx, false))
+                format!("#{}", dsl.invented[num as usize].0.show(dsl, false))
             }
         }
     }
     /// inp must not have leading whitespace. Does not invent.
     fn parse(
-        ctx: &Context,
+        dsl: &DSL,
         inp: &str,
         offset: usize, // for good error messages
     ) -> Result<(usize, Variant), ParseError> {
@@ -177,7 +174,7 @@ impl Variant {
                 Some(next) if next > 0 => Some(next),
                 _ => None,
             }.map(|di| {
-                if let Some(num) = ctx.primitives
+                if let Some(num) = dsl.primitives
                     .iter()
                     .position(|&(ref name, _)| name == &inp[..di])
                 {
@@ -200,7 +197,7 @@ impl Variant {
                     let mut items = VecDeque::new();
                     loop {
                         // parse expr
-                        let (ndi, variant) = Variant::parse(ctx, &inp[di..], offset + di)?;
+                        let (ndi, variant) = Variant::parse(dsl, &inp[di..], offset + di)?;
                         items.push_back(variant);
                         di += ndi;
                         // skip spaces
@@ -243,7 +240,7 @@ impl Variant {
                     // skip spaces
                     di += inp[di..].chars().take_while(|c| c.is_whitespace()).count();
                     // parse body
-                    let (ndi, body) = Variant::parse(ctx, &inp[di..], offset + di)?;
+                    let (ndi, body) = Variant::parse(dsl, &inp[di..], offset + di)?;
                     di += ndi;
                     // check if complete
                     inp.chars()
@@ -269,9 +266,9 @@ impl Variant {
             } else {
                 None
             }.map(|mut di| {
-                let (ndi, variant) = Variant::parse(ctx, &inp[di..], offset + di)?;
+                let (ndi, variant) = Variant::parse(dsl, &inp[di..], offset + di)?;
                 di += ndi;
-                if let Some(num) = ctx.invented
+                if let Some(num) = dsl.invented
                     .iter()
                     .position(|&(ref var, _)| var == &variant)
                 {
@@ -301,19 +298,19 @@ impl Variant {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expression<'a> {
-    ctx: &'a Context,
+    dsl: &'a DSL,
     variant: Variant,
 }
 impl<'a> Expression<'a> {
     pub fn infer(&self) -> Result<Type, InferenceError> {
-        let mut tctx = polytype::Context::default();
+        let mut ctx = Context::default();
         let env = VecDeque::new();
         let mut indices = HashMap::new();
         self.variant
-            .infer_internal(self.ctx, &mut tctx, &env, &mut indices)
+            .infer_internal(self.dsl, &mut ctx, &env, &mut indices)
     }
     fn show(&self, is_function: bool) -> String {
-        self.variant.show(self.ctx, is_function)
+        self.variant.show(self.dsl, is_function)
     }
 }
 impl<'a> fmt::Display for Expression<'a> {
@@ -328,29 +325,29 @@ mod tests {
 
     #[test]
     fn test_parse_primitive() {
-        let ctx = Context::new(
+        let dsl = DSL::new(
             vec![
                 (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
             ],
             vec![],
         );
-        let expr = ctx.parse("singleton").unwrap();
+        let expr = dsl.parse("singleton").unwrap();
         assert_eq!(expr.variant, Variant::Primitive(0));
 
-        assert!(ctx.parse("something_else").is_err());
-        assert!(ctx.parse("singleton singleton").is_err());
+        assert!(dsl.parse("something_else").is_err());
+        assert!(dsl.parse("singleton singleton").is_err());
     }
 
     #[test]
     fn test_parse_application() {
-        let ctx = Context::new(
+        let dsl = DSL::new(
             vec![
                 (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
                 (String::from("thing"), arrow![tp!(int), tp!(int)]),
             ],
             vec![],
         );
-        let expr = ctx.parse("(singleton singleton)").unwrap();
+        let expr = dsl.parse("(singleton singleton)").unwrap();
         assert_eq!(
             expr.variant,
             Variant::Application(
@@ -360,7 +357,7 @@ mod tests {
         );
 
         // not a valid type, but that's not a guarantee the parser makes.
-        let expr = ctx.parse("(singleton thing singleton (singleton thing))")
+        let expr = dsl.parse("(singleton thing singleton (singleton thing))")
             .unwrap();
         assert_eq!(
             expr.variant,
@@ -379,30 +376,30 @@ mod tests {
             )
         );
 
-        assert!(ctx.parse("()").is_err());
+        assert!(dsl.parse("()").is_err());
     }
 
     #[test]
     fn test_parse_index() {
-        let ctx = Context::new(
+        let dsl = DSL::new(
             vec![
                 (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
             ],
             vec![],
         );
-        let expr = ctx.parse("(singleton $0)").unwrap();
+        let expr = dsl.parse("(singleton $0)").unwrap();
         assert_eq!(
             expr.variant,
             Variant::Application(Box::new(Variant::Primitive(0)), Box::new(Variant::Index(0)))
         );
 
         /// an index never makes sense outside of an application or lambda body.
-        assert!(ctx.parse("$0").is_err());
+        assert!(dsl.parse("$0").is_err());
     }
 
     #[test]
     fn test_parse_invented() {
-        let ctx = Context::new(
+        let dsl = DSL::new(
             vec![
                 (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
                 (String::from("1"), tp!(int)),
@@ -417,7 +414,7 @@ mod tests {
                 ),
             ],
         );
-        let expr = ctx.parse("(#(+ 1) 1)").unwrap();
+        let expr = dsl.parse("(#(+ 1) 1)").unwrap();
         assert_eq!(
             expr.variant,
             Variant::Application(
@@ -425,12 +422,12 @@ mod tests {
                 Box::new(Variant::Primitive(1)),
             )
         );
-        assert!(ctx.parse("(#(+ 1 1) 1)").is_err());
+        assert!(dsl.parse("(#(+ 1 1) 1)").is_err());
     }
 
     #[test]
     fn test_parse_abstraction() {
-        let ctx = Context::new(
+        let dsl = DSL::new(
             vec![
                 (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
                 (String::from("1"), tp!(int)),
@@ -454,7 +451,7 @@ mod tests {
                 ),
             ],
         );
-        let expr = ctx.parse("(lambda (+ $0))").unwrap();
+        let expr = dsl.parse("(lambda (+ $0))").unwrap();
         assert_eq!(
             expr.variant,
             Variant::Abstraction(Box::new(Variant::Application(
@@ -462,7 +459,7 @@ mod tests {
                 Box::new(Variant::Index(0)),
             )))
         );
-        let expr = ctx.parse("(#(lambda (+ (+ 1 1) $0)) ((lambda (+ $0 1)) 1))")
+        let expr = dsl.parse("(#(lambda (+ (+ 1 1) $0)) ((lambda (+ $0 1)) 1))")
             .unwrap();
         assert_eq!(
             expr.variant,
@@ -480,7 +477,7 @@ mod tests {
                 )),
             ),
         );
-        let expr = ctx.parse("(lambda $0)").unwrap();
+        let expr = dsl.parse("(lambda $0)").unwrap();
         assert_eq!(
             expr.variant,
             Variant::Abstraction(Box::new(Variant::Index(0)))
@@ -489,7 +486,7 @@ mod tests {
 
     #[test]
     fn test_infer() {
-        let ctx = Context::new(
+        let dsl = DSL::new(
             vec![
                 (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
                 (String::from(">="), arrow![tp!(int), tp!(int), tp!(bool)]),
@@ -524,7 +521,7 @@ mod tests {
             )),
         );
         let expr = Expression {
-            ctx: &ctx,
+            dsl: &dsl,
             variant: v,
         };
         assert_eq!(expr.infer().unwrap(), tp!(list(tp!(bool))));
