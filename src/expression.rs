@@ -239,7 +239,7 @@ impl Expression {
         };
         // These parsers return None if the expr isn't applicable
         // or Some(Err(..)) if the expr applied but was invalid.
-        // It is imperative that primitive comes last.
+        // Ordering is intentional.
         init.or_else(abstraction)
             .or_else(application)
             .or_else(index)
