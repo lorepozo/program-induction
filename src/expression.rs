@@ -54,16 +54,16 @@ impl ::std::error::Error for ParseError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DSL {
     primitives: Vec<(String, Type)>,
-    invented: Vec<(Variant, Type)>,
+    invented: Vec<(Expression, Type)>,
 }
 impl DSL {
-    pub fn new(primitives: Vec<(String, Type)>, invented: Vec<(Variant, Type)>) -> Self {
+    pub fn new(primitives: Vec<(String, Type)>, invented: Vec<(Expression, Type)>) -> Self {
         DSL {
             primitives,
             invented,
         }
     }
-    pub fn invent(&mut self, expr: Variant) -> usize {
+    pub fn invent(&mut self, expr: Expression) -> usize {
         let mut ctx = Context::default();
         let env = VecDeque::new();
         let mut indices = HashMap::new();
@@ -75,12 +75,9 @@ impl DSL {
     pub fn parse(&self, inp: &str) -> Result<Expression, ParseError> {
         let s = inp.trim_left();
         let offset = inp.len() - s.len();
-        Variant::parse(self, s, offset).and_then(move |(di, variant)| {
+        Expression::parse(self, s, offset).and_then(move |(di, expr)| {
             if s[di..].chars().all(char::is_whitespace) {
-                Ok(Expression {
-                    dsl: &self,
-                    variant,
-                })
+                Ok(expr)
             } else {
                 Err(ParseError(
                     offset + di,
@@ -92,15 +89,21 @@ impl DSL {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Variant {
+pub enum Expression {
     Primitive(usize),
-    Application(Box<Variant>, Box<Variant>),
-    Abstraction(Box<Variant>),
+    Application(Box<Expression>, Box<Expression>),
+    Abstraction(Box<Expression>),
     Index(u64),
 
     Invented(usize),
 }
-impl Variant {
+impl Expression {
+    pub fn infer(&self, dsl: &DSL) -> Result<Type, InferenceError> {
+        let mut ctx = Context::default();
+        let env = VecDeque::new();
+        let mut indices = HashMap::new();
+        self.infer_internal(dsl, &mut ctx, &env, &mut indices)
+    }
     fn infer_internal(
         &self,
         dsl: &DSL,
@@ -109,26 +112,26 @@ impl Variant {
         indices: &mut HashMap<u64, Type>,
     ) -> Result<Type, InferenceError> {
         match self {
-            &Variant::Primitive(num) => if let Some(prim) = dsl.primitives.get(num as usize) {
+            &Expression::Primitive(num) => if let Some(prim) = dsl.primitives.get(num as usize) {
                 Ok(prim.1.instantiate_indep(ctx))
             } else {
                 Err(InferenceError::BadPrimitive(num))
             },
-            &Variant::Application(ref f, ref x) => {
+            &Expression::Application(ref f, ref x) => {
                 let f_tp = f.infer_internal(dsl, &mut ctx, env, indices)?;
                 let x_tp = x.infer_internal(dsl, &mut ctx, env, indices)?;
                 let ret_tp = ctx.new_variable();
                 ctx.unify(&f_tp, &arrow![x_tp, ret_tp.clone()])?;
                 Ok(ret_tp.apply(ctx))
             }
-            &Variant::Abstraction(ref body) => {
+            &Expression::Abstraction(ref body) => {
                 let arg_tp = ctx.new_variable();
                 let mut env = env.clone();
                 env.push_front(arg_tp.clone());
                 let ret_tp = body.infer_internal(dsl, &mut ctx, &env, indices)?;
                 Ok(arrow![arg_tp, ret_tp].apply(ctx))
             }
-            &Variant::Index(i) => {
+            &Expression::Index(i) => {
                 if (i as usize) < env.len() {
                     Ok(env[i as usize].apply(ctx))
                 } else {
@@ -138,24 +141,27 @@ impl Variant {
                         .apply(ctx))
                 }
             }
-            &Variant::Invented(num) => if let Some(inv) = dsl.invented.get(num as usize) {
+            &Expression::Invented(num) => if let Some(inv) = dsl.invented.get(num as usize) {
                 Ok(inv.1.instantiate_indep(ctx))
             } else {
                 Err(InferenceError::BadInvented(num))
             },
         }
     }
+    pub fn to_string(&self, dsl: &DSL) -> String {
+        self.show(dsl, false)
+    }
     fn show(&self, dsl: &DSL, is_function: bool) -> String {
         match self {
-            &Variant::Primitive(num) => dsl.primitives[num as usize].0.clone(),
-            &Variant::Application(ref f, ref x) => if is_function {
+            &Expression::Primitive(num) => dsl.primitives[num as usize].0.clone(),
+            &Expression::Application(ref f, ref x) => if is_function {
                 format!("{} {}", f.show(dsl, true), x.show(dsl, false))
             } else {
                 format!("({} {})", f.show(dsl, true), x.show(dsl, false))
             },
-            &Variant::Abstraction(ref body) => format!("(λ {})", body.show(dsl, false)),
-            &Variant::Index(i) => format!("${}", i),
-            &Variant::Invented(num) => {
+            &Expression::Abstraction(ref body) => format!("(λ {})", body.show(dsl, false)),
+            &Expression::Index(i) => format!("${}", i),
+            &Expression::Invented(num) => {
                 format!("#{}", dsl.invented[num as usize].0.show(dsl, false))
             }
         }
@@ -165,8 +171,8 @@ impl Variant {
         dsl: &DSL,
         inp: &str,
         offset: usize, // for good error messages
-    ) -> Result<(usize, Variant), ParseError> {
-        let init: Option<Result<(usize, Variant), ParseError>> = None;
+    ) -> Result<(usize, Expression), ParseError> {
+        let init: Option<Result<(usize, Expression), ParseError>> = None;
 
         let primitive = || {
             match inp.find(|c: char| c.is_whitespace() || c == ')') {
@@ -178,7 +184,7 @@ impl Variant {
                     .iter()
                     .position(|&(ref name, _)| name == &inp[..di])
                 {
-                    Ok((di, Variant::Primitive(num)))
+                    Ok((di, Expression::Primitive(num)))
                 } else {
                     Err(ParseError(offset + di, "unexpected end of expression"))
                 }
@@ -197,8 +203,8 @@ impl Variant {
                     let mut items = VecDeque::new();
                     loop {
                         // parse expr
-                        let (ndi, variant) = Variant::parse(dsl, &inp[di..], offset + di)?;
-                        items.push_back(variant);
+                        let (ndi, expr) = Expression::parse(dsl, &inp[di..], offset + di)?;
+                        items.push_back(expr);
                         di += ndi;
                         // skip spaces
                         di += inp[di..].chars().take_while(|c| c.is_whitespace()).count();
@@ -209,7 +215,7 @@ impl Variant {
                                 di += 1;
                                 break if let Some(init) = items.pop_front() {
                                     let app = items.into_iter().fold(init, |a, v| {
-                                        Variant::Application(Box::new(a), Box::new(v))
+                                        Expression::Application(Box::new(a), Box::new(v))
                                     });
                                     Ok((di, app))
                                 } else {
@@ -240,14 +246,14 @@ impl Variant {
                     // skip spaces
                     di += inp[di..].chars().take_while(|c| c.is_whitespace()).count();
                     // parse body
-                    let (ndi, body) = Variant::parse(dsl, &inp[di..], offset + di)?;
+                    let (ndi, body) = Expression::parse(dsl, &inp[di..], offset + di)?;
                     di += ndi;
                     // check if complete
                     inp.chars()
                         .nth(di)
                         .and_then(|c| if c == ')' { Some(di + 1) } else { None })
                         .ok_or(ParseError(offset + di, "incomplete application"))
-                        .map(|di| (di, Variant::Abstraction(Box::new(body))))
+                        .map(|di| (di, Expression::Abstraction(Box::new(body))))
                 })
         };
         let index = || {
@@ -255,7 +261,7 @@ impl Variant {
                 inp[1..]
                     .find(|c: char| c.is_whitespace() || c == ')')
                     .and_then(|i| inp[1..1 + i].parse::<u64>().ok().map(|num| (1 + i, num)))
-                    .map(|(di, num)| Ok((di, Variant::Index(num))))
+                    .map(|(di, num)| Ok((di, Expression::Index(num))))
             } else {
                 None
             }
@@ -266,13 +272,10 @@ impl Variant {
             } else {
                 None
             }.map(|mut di| {
-                let (ndi, variant) = Variant::parse(dsl, &inp[di..], offset + di)?;
+                let (ndi, expr) = Expression::parse(dsl, &inp[di..], offset + di)?;
                 di += ndi;
-                if let Some(num) = dsl.invented
-                    .iter()
-                    .position(|&(ref var, _)| var == &variant)
-                {
-                    Ok((di, Variant::Invented(num)))
+                if let Some(num) = dsl.invented.iter().position(|&(ref x, _)| x == &expr) {
+                    Ok((di, Expression::Invented(num)))
                 } else {
                     Err(ParseError(
                         offset + di,
@@ -281,8 +284,8 @@ impl Variant {
                 }
             })
         };
-        // These parsers return None if the variant isn't applicable
-        // or Some(Err(..)) if the variant applied but was invalid.
+        // These parsers return None if the expr isn't applicable
+        // or Some(Err(..)) if the expr applied but was invalid.
         // It is imperative that primitive comes last.
         init.or_else(abstraction)
             .or_else(application)
@@ -293,29 +296,6 @@ impl Variant {
                 offset,
                 "could not parse any expression variant",
             )))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Expression<'a> {
-    dsl: &'a DSL,
-    variant: Variant,
-}
-impl<'a> Expression<'a> {
-    pub fn infer(&self) -> Result<Type, InferenceError> {
-        let mut ctx = Context::default();
-        let env = VecDeque::new();
-        let mut indices = HashMap::new();
-        self.variant
-            .infer_internal(self.dsl, &mut ctx, &env, &mut indices)
-    }
-    fn show(&self, is_function: bool) -> String {
-        self.variant.show(self.dsl, is_function)
-    }
-}
-impl<'a> fmt::Display for Expression<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{}", self.show(false))
     }
 }
 
@@ -332,7 +312,7 @@ mod tests {
             vec![],
         );
         let expr = dsl.parse("singleton").unwrap();
-        assert_eq!(expr.variant, Variant::Primitive(0));
+        assert_eq!(expr, Expression::Primitive(0));
 
         assert!(dsl.parse("something_else").is_err());
         assert!(dsl.parse("singleton singleton").is_err());
@@ -347,31 +327,29 @@ mod tests {
             ],
             vec![],
         );
-        let expr = dsl.parse("(singleton singleton)").unwrap();
         assert_eq!(
-            expr.variant,
-            Variant::Application(
-                Box::new(Variant::Primitive(0)),
-                Box::new(Variant::Primitive(0)),
+            dsl.parse("(singleton singleton)").unwrap(),
+            Expression::Application(
+                Box::new(Expression::Primitive(0)),
+                Box::new(Expression::Primitive(0)),
             )
         );
 
         // not a valid type, but that's not a guarantee the parser makes.
-        let expr = dsl.parse("(singleton thing singleton (singleton thing))")
-            .unwrap();
         assert_eq!(
-            expr.variant,
-            Variant::Application(
-                Box::new(Variant::Application(
-                    Box::new(Variant::Application(
-                        Box::new(Variant::Primitive(0)),
-                        Box::new(Variant::Primitive(1)),
+            dsl.parse("(singleton thing singleton (singleton thing))")
+                .unwrap(),
+            Expression::Application(
+                Box::new(Expression::Application(
+                    Box::new(Expression::Application(
+                        Box::new(Expression::Primitive(0)),
+                        Box::new(Expression::Primitive(1)),
                     )),
-                    Box::new(Variant::Primitive(0)),
+                    Box::new(Expression::Primitive(0)),
                 )),
-                Box::new(Variant::Application(
-                    Box::new(Variant::Primitive(0)),
-                    Box::new(Variant::Primitive(1)),
+                Box::new(Expression::Application(
+                    Box::new(Expression::Primitive(0)),
+                    Box::new(Expression::Primitive(1)),
                 )),
             )
         );
@@ -387,10 +365,12 @@ mod tests {
             ],
             vec![],
         );
-        let expr = dsl.parse("(singleton $0)").unwrap();
         assert_eq!(
-            expr.variant,
-            Variant::Application(Box::new(Variant::Primitive(0)), Box::new(Variant::Index(0)))
+            dsl.parse("(singleton $0)").unwrap(),
+            Expression::Application(
+                Box::new(Expression::Primitive(0)),
+                Box::new(Expression::Index(0))
+            )
         );
 
         /// an index never makes sense outside of an application or lambda body.
@@ -406,20 +386,19 @@ mod tests {
             ],
             vec![
                 (
-                    Variant::Application(
-                        Box::new(Variant::Primitive(0)),
-                        Box::new(Variant::Primitive(1)),
+                    Expression::Application(
+                        Box::new(Expression::Primitive(0)),
+                        Box::new(Expression::Primitive(1)),
                     ),
                     arrow![tp!(int), tp!(int)],
                 ),
             ],
         );
-        let expr = dsl.parse("(#(+ 1) 1)").unwrap();
         assert_eq!(
-            expr.variant,
-            Variant::Application(
-                Box::new(Variant::Invented(0)),
-                Box::new(Variant::Primitive(1)),
+            dsl.parse("(#(+ 1) 1)").unwrap(),
+            Expression::Application(
+                Box::new(Expression::Invented(0)),
+                Box::new(Expression::Primitive(1)),
             )
         );
         assert!(dsl.parse("(#(+ 1 1) 1)").is_err());
@@ -434,53 +413,50 @@ mod tests {
             ],
             vec![
                 (
-                    Variant::Abstraction(Box::new(Variant::Application(
-                        Box::new(Variant::Application(
-                            Box::new(Variant::Primitive(0)),
-                            Box::new(Variant::Application(
-                                Box::new(Variant::Application(
-                                    Box::new(Variant::Primitive(0)),
-                                    Box::new(Variant::Primitive(1)),
+                    Expression::Abstraction(Box::new(Expression::Application(
+                        Box::new(Expression::Application(
+                            Box::new(Expression::Primitive(0)),
+                            Box::new(Expression::Application(
+                                Box::new(Expression::Application(
+                                    Box::new(Expression::Primitive(0)),
+                                    Box::new(Expression::Primitive(1)),
                                 )),
-                                Box::new(Variant::Primitive(1)),
+                                Box::new(Expression::Primitive(1)),
                             )),
                         )),
-                        Box::new(Variant::Index(0)),
+                        Box::new(Expression::Index(0)),
                     ))),
                     arrow![tp!(int), tp!(int)],
                 ),
             ],
         );
-        let expr = dsl.parse("(lambda (+ $0))").unwrap();
         assert_eq!(
-            expr.variant,
-            Variant::Abstraction(Box::new(Variant::Application(
-                Box::new(Variant::Primitive(0)),
-                Box::new(Variant::Index(0)),
+            dsl.parse("(lambda (+ $0))").unwrap(),
+            Expression::Abstraction(Box::new(Expression::Application(
+                Box::new(Expression::Primitive(0)),
+                Box::new(Expression::Index(0)),
             )))
         );
-        let expr = dsl.parse("(#(lambda (+ (+ 1 1) $0)) ((lambda (+ $0 1)) 1))")
-            .unwrap();
         assert_eq!(
-            expr.variant,
-            Variant::Application(
-                Box::new(Variant::Invented(0)),
-                Box::new(Variant::Application(
-                    Box::new(Variant::Abstraction(Box::new(Variant::Application(
-                        Box::new(Variant::Application(
-                            Box::new(Variant::Primitive(0)),
-                            Box::new(Variant::Index(0)),
+            dsl.parse("(#(lambda (+ (+ 1 1) $0)) ((lambda (+ $0 1)) 1))")
+                .unwrap(),
+            Expression::Application(
+                Box::new(Expression::Invented(0)),
+                Box::new(Expression::Application(
+                    Box::new(Expression::Abstraction(Box::new(Expression::Application(
+                        Box::new(Expression::Application(
+                            Box::new(Expression::Primitive(0)),
+                            Box::new(Expression::Index(0)),
                         )),
-                        Box::new(Variant::Primitive(1)),
+                        Box::new(Expression::Primitive(1)),
                     )))),
-                    Box::new(Variant::Primitive(1)),
+                    Box::new(Expression::Primitive(1)),
                 )),
             ),
         );
-        let expr = dsl.parse("(lambda $0)").unwrap();
         assert_eq!(
-            expr.variant,
-            Variant::Abstraction(Box::new(Variant::Index(0)))
+            dsl.parse("(lambda $0)").unwrap(),
+            Expression::Abstraction(Box::new(Expression::Index(0)))
         );
     }
 
@@ -496,37 +472,33 @@ mod tests {
             ],
             vec![
                 (
-                    Variant::Application(
-                        Box::new(Variant::Primitive(2)),
-                        Box::new(Variant::Primitive(4)),
+                    Expression::Application(
+                        Box::new(Expression::Primitive(2)),
+                        Box::new(Expression::Primitive(4)),
                     ),
                     arrow![tp!(int), tp!(int)],
                 ),
             ],
         );
-        let v = Variant::Application(
-            Box::new(Variant::Primitive(0)),
-            Box::new(Variant::Application(
-                Box::new(Variant::Abstraction(Box::new(Variant::Application(
-                    Box::new(Variant::Application(
-                        Box::new(Variant::Primitive(1)),
-                        Box::new(Variant::Index(0)),
+        let expr = Expression::Application(
+            Box::new(Expression::Primitive(0)),
+            Box::new(Expression::Application(
+                Box::new(Expression::Abstraction(Box::new(Expression::Application(
+                    Box::new(Expression::Application(
+                        Box::new(Expression::Primitive(1)),
+                        Box::new(Expression::Index(0)),
                     )),
-                    Box::new(Variant::Primitive(4)),
+                    Box::new(Expression::Primitive(4)),
                 )))),
-                Box::new(Variant::Application(
-                    Box::new(Variant::Invented(0)),
-                    Box::new(Variant::Primitive(3)),
+                Box::new(Expression::Application(
+                    Box::new(Expression::Invented(0)),
+                    Box::new(Expression::Primitive(3)),
                 )),
             )),
         );
-        let expr = Expression {
-            dsl: &dsl,
-            variant: v,
-        };
-        assert_eq!(expr.infer().unwrap(), tp!(list(tp!(bool))));
+        assert_eq!(expr.infer(&dsl).unwrap(), tp!(list(tp!(bool))));
         assert_eq!(
-            format!("{}", expr),
+            expr.to_string(&dsl),
             "(singleton ((λ (>= $0 1)) (#(+ 1) 0)))"
         );
     }
