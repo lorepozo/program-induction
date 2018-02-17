@@ -14,10 +14,10 @@ use std::fmt;
 /// # extern crate eg;
 /// # fn main() {
 /// # use eg::{Expression, DSL};
-/// let dsl = DSL::new(
-///     vec![(String::from("+"), arrow![tp!(int), tp!(int), tp!(int)])],
-///     vec![],
-/// );
+/// let dsl = DSL{
+///     primitives: vec![(String::from("+"), arrow![tp!(int), tp!(int), tp!(int)])],
+///     invented: vec![],
+/// };
 /// let expr = Expression::Abstraction(
 ///     Box::new(Expression::Application(
 ///         Box::new(Expression::Primitive(0)),
@@ -37,15 +37,15 @@ use std::fmt;
 /// # extern crate eg;
 /// # fn main() {
 /// # use eg::{DSL, Expression};
-/// let dsl = DSL::new(
-///     vec![ // primitives
+/// let dsl = DSL{
+///     primitives: vec![
 ///         (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
 ///         (String::from(">="), arrow![tp!(int), tp!(int), tp!(bool)]),
 ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
 ///         (String::from("0"), tp!(int)),
 ///         (String::from("1"), tp!(int)),
 ///     ],
-///     vec![ // invented
+///     invented: vec![
 ///         (
 ///             Expression::Application(
 ///                 Box::new(Expression::Primitive(2)),
@@ -54,23 +54,17 @@ use std::fmt;
 ///             arrow![tp!(int), tp!(int)],
 ///         ),
 ///     ],
-/// );
+/// };
 /// let expr = dsl.parse("(singleton ((λ (>= $0 1)) (#(+ 1) 0)))").unwrap();
 /// assert_eq!(dsl.infer(&expr).unwrap(), tp!(list(tp!(bool))));
 /// # }
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct DSL {
-    primitives: Vec<(String, Type)>,
-    invented: Vec<(Expression, Type)>,
+    pub primitives: Vec<(String, Type)>,
+    pub invented: Vec<(Expression, Type)>,
 }
 impl DSL {
-    pub fn new(primitives: Vec<(String, Type)>, invented: Vec<(Expression, Type)>) -> Self {
-        DSL {
-            primitives,
-            invented,
-        }
-    }
     pub fn primitive(&self, num: usize) -> Option<(&str, &Type)> {
         self.primitives
             .get(num)
@@ -371,12 +365,12 @@ mod tests {
 
     #[test]
     fn test_parse_primitive() {
-        let dsl = DSL::new(
-            vec![
+        let dsl = DSL {
+            primitives: vec![
                 (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
             ],
-            vec![],
-        );
+            invented: vec![],
+        };
         let expr = dsl.parse("singleton").unwrap();
         assert_eq!(expr, Expression::Primitive(0));
 
@@ -386,13 +380,13 @@ mod tests {
 
     #[test]
     fn test_parse_application() {
-        let dsl = DSL::new(
-            vec![
+        let dsl = DSL {
+            primitives: vec![
                 (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
                 (String::from("thing"), arrow![tp!(int), tp!(int)]),
             ],
-            vec![],
-        );
+            invented: vec![],
+        };
         assert_eq!(
             dsl.parse("(singleton singleton)").unwrap(),
             Expression::Application(
@@ -425,12 +419,12 @@ mod tests {
 
     #[test]
     fn test_parse_index() {
-        let dsl = DSL::new(
-            vec![
+        let dsl = DSL {
+            primitives: vec![
                 (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
             ],
-            vec![],
-        );
+            invented: vec![],
+        };
         assert_eq!(
             dsl.parse("(singleton $0)").unwrap(),
             Expression::Application(
@@ -445,12 +439,12 @@ mod tests {
 
     #[test]
     fn test_parse_invented() {
-        let dsl = DSL::new(
-            vec![
+        let dsl = DSL {
+            primitives: vec![
                 (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
                 (String::from("1"), tp!(int)),
             ],
-            vec![
+            invented: vec![
                 (
                     Expression::Application(
                         Box::new(Expression::Primitive(0)),
@@ -459,7 +453,7 @@ mod tests {
                     arrow![tp!(int), tp!(int)],
                 ),
             ],
-        );
+        };
         assert_eq!(
             dsl.parse("(#(+ 1) 1)").unwrap(),
             Expression::Application(
@@ -472,12 +466,12 @@ mod tests {
 
     #[test]
     fn test_parse_abstraction() {
-        let dsl = DSL::new(
-            vec![
+        let dsl = DSL {
+            primitives: vec![
                 (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
                 (String::from("1"), tp!(int)),
             ],
-            vec![
+            invented: vec![
                 (
                     Expression::Abstraction(Box::new(Expression::Application(
                         Box::new(Expression::Application(
@@ -495,7 +489,7 @@ mod tests {
                     arrow![tp!(int), tp!(int)],
                 ),
             ],
-        );
+        };
         let expr = dsl.parse("(λ (+ $0))").unwrap();
         assert_eq!(
             expr,
@@ -537,15 +531,15 @@ mod tests {
 
     #[test]
     fn test_infer() {
-        let dsl = DSL::new(
-            vec![
+        let dsl = DSL {
+            primitives: vec![
                 (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
                 (String::from(">="), arrow![tp!(int), tp!(int), tp!(bool)]),
                 (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
                 (String::from("0"), tp!(int)),
                 (String::from("1"), tp!(int)),
             ],
-            vec![
+            invented: vec![
                 (
                     Expression::Application(
                         Box::new(Expression::Primitive(2)),
@@ -554,7 +548,7 @@ mod tests {
                     arrow![tp!(int), tp!(int)],
                 ),
             ],
-        );
+        };
         let expr = Expression::Application(
             Box::new(Expression::Primitive(0)),
             Box::new(Expression::Application(

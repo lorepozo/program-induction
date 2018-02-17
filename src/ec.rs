@@ -5,18 +5,9 @@ use std::collections::HashMap;
 use expression::{Expression, DSL};
 
 pub struct Task<'a, T> {
-    oracle: Box<'a + Fn(Expression) -> f64>,
-    observation: T,
-    tp: Type,
-}
-impl<'a, T> Task<'a, T> {
-    pub fn new<F: 'a + Fn(Expression) -> f64>(oracle: F, observation: T, tp: Type) -> Self {
-        Self {
-            oracle: Box::new(oracle),
-            observation,
-            tp,
-        }
-    }
+    pub oracle: Box<'a + Fn(Expression) -> f64>,
+    pub observation: T,
+    pub tp: Type,
 }
 
 /// Lots of type variables here.
