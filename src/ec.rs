@@ -25,11 +25,11 @@ pub struct Task<'a, O> {
 ///   will probably be just compression updating production probabilities and adding to the DSL).
 /// - `O` is the observation type, something which the recognizer/explorer can take advantage of
 ///   instead of just basing search off of the type and oracle response.
-/// - `RS` is something the recognizer returns that the enumerator can use. This could be, for
+/// - `RS` is something the recognizer returns that the explorer can use. This could be, for
 ///   example, a map from task number to a set of production probabilities.
 /// - `R`, `E`, and `C` are the types, described in the `where` clause of the function signature
-///   here, for a recognizer, an enumerator, and a compressor respectively. Note that the
-///   compressor returns a DSL as well as the best solution for each task.
+///   here, for a recognizer, an explorer, and a compressor respectively. Note that the compressor
+///   returns a DSL as well as the best solution for each task.
 pub fn ec<S, O, RS, R, E, C>(
     prior: &DSL,
     mut state: &mut S,
