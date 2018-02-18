@@ -1,5 +1,6 @@
-use std::collections::HashMap;
-use polytype::Type;
+use std::collections::{HashMap, VecDeque};
+use std::f64;
+use polytype::{Context, Type};
 
 use super::{Expression, Task, DSL};
 
@@ -49,6 +50,115 @@ impl Productions {
             primitives: vec![0f64; n_primitives],
             invented: vec![0f64; n_invented],
         }
+    }
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # fn main() {
+    /// # use std::collections::VecDeque;
+    /// # use polytype::Context;
+    /// use programinduction::{Expression, DSL};
+    /// use programinduction::ec::Productions;
+    ///
+    /// let dsl = DSL{
+    ///     primitives: vec![
+    ///         (String::from("0"), tp!(int)),
+    ///         (String::from("1"), tp!(int)),
+    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+    ///         (String::from(">"), arrow![tp!(int), tp!(int), tp!(bool)]),
+    ///     ],
+    ///     invented: vec![],
+    /// };
+    /// let productions = Productions::uniform(4, 0);
+    /// let request = tp!(int);
+    /// let ctx = Context::default();
+    /// let env = VecDeque::new();
+    ///
+    /// let candidates = productions.candidates(&dsl, &request, &ctx, &env, false);
+    /// let candidate_exprs: Vec<Expression> = candidates
+    ///     .into_iter()
+    ///     .map(|(p, expr, _, _)| expr)
+    ///     .collect();
+    /// assert_eq!(candidate_exprs, vec![
+    ///     Expression::Primitive(0),
+    ///     Expression::Primitive(1),
+    ///     Expression::Primitive(2),
+    /// ]);
+    /// # }
+    /// ```
+    pub fn candidates(
+        &self,
+        dsl: &DSL,
+        request: &Type,
+        ctx: &Context,
+        env: &VecDeque<Type>,
+        leaf_only: bool,
+    ) -> Vec<(f64, Expression, Type, Context)> {
+        let mut cands = Vec::new();
+        let prims = self.primitives
+            .iter()
+            .zip(&dsl.primitives)
+            .enumerate()
+            .map(|(i, (&p, &(_, ref tp)))| (p, tp, true, Expression::Primitive(i)));
+        let invented = self.invented
+            .iter()
+            .zip(&dsl.invented)
+            .enumerate()
+            .map(|(i, (&p, &(_, ref tp)))| (p, tp, true, Expression::Invented(i)));
+        let indices = env.iter()
+            .enumerate()
+            .map(|(i, tp)| (self.variable, tp, false, Expression::Index(i)));
+        for (p, tp, instantiate, expr) in prims.chain(invented).chain(indices) {
+            let mut ctx = ctx.clone();
+            let itp;
+            let tp = if instantiate {
+                itp = tp.instantiate_indep(&mut ctx);
+                &itp
+            } else {
+                tp
+            };
+            let ret = if let &Type::Arrow(ref arrow) = tp {
+                if leaf_only {
+                    continue;
+                }
+                arrow.returns()
+            } else {
+                &tp
+            };
+            if let Ok(_) = ctx.unify(ret, request) {
+                let tp = tp.apply(&ctx);
+                cands.push((p, expr, tp, ctx))
+            }
+        }
+        // update probabilities for variables (indices)
+        let n_indexed = cands
+            .iter()
+            .filter(|&&(_, ref expr, _, _)| match expr {
+                &Expression::Index(_) => true,
+                _ => false,
+            })
+            .count() as f64;
+        for mut c in &mut cands {
+            match c.1 {
+                Expression::Index(_) => c.0 -= n_indexed.ln(),
+                _ => (),
+            }
+        }
+        // normalize
+        let p_largest = cands
+            .iter()
+            .map(|&(p, _, _, _)| p)
+            .fold(f64::NEG_INFINITY, |acc, p| acc.max(p));
+        let z = p_largest
+            + cands
+                .iter()
+                .map(|&(p, _, _, _)| (p - p_largest).exp())
+                .sum::<f64>()
+                .ln();
+        for mut c in &mut cands {
+            c.0 -= z;
+        }
+        cands
     }
 }
 

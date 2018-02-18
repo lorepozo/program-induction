@@ -82,38 +82,6 @@ pub struct Task<'a, O> {
 /// assert_eq!(dsl.infer(&expr).unwrap(), tp!(list(tp!(bool))));
 /// # }
 /// ```
-///
-/// Get expressions which unify with a requested type.
-///
-/// ```
-/// # #[macro_use] extern crate polytype;
-/// # extern crate programinduction;
-/// # fn main() {
-/// # use programinduction::{Expression, DSL};
-/// # use std::collections::VecDeque;
-/// # use polytype::Context;
-/// let dsl = DSL{
-///     primitives: vec![
-///         (String::from("0"), tp!(int)),
-///         (String::from("1"), tp!(int)),
-///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
-///         (String::from(">"), arrow![tp!(int), tp!(int), tp!(bool)]),
-///     ],
-///     invented: vec![],
-/// };
-/// let request = tp!(int);
-/// let ctx = Context::default();
-/// let env = VecDeque::new();
-///
-/// let candidates = dsl.candidates(&request, &ctx, &env, false);
-/// let candidate_exprs: Vec<Expression> = candidates.into_iter().map(|(expr, _)| expr).collect();
-/// assert_eq!(candidate_exprs, vec![
-///     Expression::Primitive(0),
-///     Expression::Primitive(1),
-///     Expression::Primitive(2),
-/// ]);
-/// # }
-/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct DSL {
     pub primitives: Vec<(String, Type)>,
@@ -144,53 +112,6 @@ impl DSL {
         let env = VecDeque::new();
         let mut indices = HashMap::new();
         expr.infer_internal(self, &mut ctx, &env, &mut indices)
-    }
-    /// Get the primitives, invented expressions, and indices which have type that unifies with the
-    /// request type. For arrows, this only checks if the return type unifies with the request.
-    ///
-    /// If you have polymorphic types in the environment, be sure that all such types have been
-    /// instantiated in the type context.
-    pub fn candidates(
-        &self,
-        request: &Type,
-        ctx: &Context,
-        env: &VecDeque<Type>,
-        leaf_only: bool,
-    ) -> Vec<(Expression, Context)> {
-        let mut cands = Vec::new();
-        let prims = self.primitives
-            .iter()
-            .enumerate()
-            .map(|(i, &(_, ref tp))| (tp, true, Expression::Primitive(i)));
-        let invented = self.invented
-            .iter()
-            .enumerate()
-            .map(|(i, &(_, ref tp))| (tp, true, Expression::Invented(i)));
-        let indices = env.iter()
-            .enumerate()
-            .map(|(i, tp)| (tp, false, Expression::Index(i)));
-        for (tp, instantiate, expr) in prims.chain(invented).chain(indices) {
-            let mut ctx = ctx.clone();
-            let itp;
-            let tp = if instantiate {
-                itp = tp.instantiate_indep(&mut ctx);
-                &itp
-            } else {
-                tp
-            };
-            let ret = if let &Type::Arrow(ref arrow) = tp {
-                if leaf_only {
-                    continue;
-                }
-                arrow.returns()
-            } else {
-                &tp
-            };
-            if let Ok(_) = ctx.unify(ret, request) {
-                cands.push((expr, ctx))
-            }
-        }
-        cands
     }
     /// The inverse of [`stringify`].
     ///
