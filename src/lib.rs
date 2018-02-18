@@ -12,7 +12,6 @@ pub mod ec;
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
-
 use polytype::{Context, Type};
 
 /// The representation of a task which is solved by an [`Expression`] under some [`DSL`].
