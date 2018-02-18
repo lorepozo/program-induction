@@ -38,8 +38,18 @@ where
 
 /// Production log-probabilities for each primitive and invented expression.
 pub struct Productions {
+    pub variable: f64,
     pub primitives: Vec<f64>,
     pub invented: Vec<f64>,
+}
+impl Productions {
+    pub fn uniform(n_primitives: usize, n_invented: usize) -> Self {
+        Self {
+            variable: 0f64,
+            primitives: vec![0f64; n_primitives],
+            invented: vec![0f64; n_invented],
+        }
+    }
 }
 
 pub struct State {
