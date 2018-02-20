@@ -10,19 +10,52 @@ extern crate polytype;
 
 pub mod ec;
 
+use std::f64;
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use polytype::{Context, Type};
 
 /// The representation of a task which is solved by an [`Expression`] under some [`DSL`].
 ///
+/// A task can be made from an evaluator and examples with [`from_examples`].
+///
 /// [`DSL`]: struct.DSL.html
 /// [`Expression`]: enum.Expression.html
+/// [`from_examples`]: #method.from_examples
 pub struct Task<'a, O> {
     /// evaluate an expression by getting its log-likelihood.
-    pub oracle: Box<'a + Fn(&Expression, &DSL) -> f64>,
+    pub oracle: Box<Fn(&Expression, &DSL) -> f64 + 'a>,
     pub observation: O,
     pub tp: Type,
+}
+impl<'a, I: 'a, O: 'a> Task<'a, &'a Vec<(I, O)>>
+where
+    O: PartialEq,
+{
+    /// An `evaluator` takes an expression with type `tp` that has been stripped of all invented
+    /// expressions. The resulting task is "all-or-nothing": the oracle returns either `0` if all
+    /// tasks are hit or `f64::NEG_INFINITY` otherwise.
+    pub fn from_examples<F>(evaluator: &'a F, examples: &'a Vec<(I, O)>, tp: Type) -> Self
+    where
+        F: Fn(&Expression, &I) -> O + 'a,
+    {
+        let oracle = Box::new(move |expr: &Expression, dsl: &DSL| {
+            let ref expr = dsl.strip_invented(expr);
+            if examples
+                .iter()
+                .all(|&(ref i, ref o)| o == &evaluator(expr, i))
+            {
+                0f64
+            } else {
+                f64::NEG_INFINITY
+            }
+        });
+        Task {
+            oracle,
+            observation: examples,
+            tp,
+        }
+    }
 }
 
 /// A DSL is a registry for primitive and invented expressions in a polymorphically-typed lambda
@@ -103,7 +136,7 @@ impl DSL {
         let mut ctx = Context::default();
         let env = VecDeque::new();
         let mut indices = HashMap::new();
-        let tp = expr.infer_internal(&self, &mut ctx, &env, &mut indices)?;
+        let tp = expr.infer(&self, &mut ctx, &env, &mut indices)?;
         self.invented.push((expr, tp));
         Ok(self.invented.len() - 1)
     }
@@ -111,7 +144,10 @@ impl DSL {
         let mut ctx = Context::default();
         let env = VecDeque::new();
         let mut indices = HashMap::new();
-        expr.infer_internal(self, &mut ctx, &env, &mut indices)
+        expr.infer(self, &mut ctx, &env, &mut indices)
+    }
+    pub fn strip_invented(&self, expr: &Expression) -> Expression {
+        expr.strip_invented(&self.invented)
     }
     /// The inverse of [`stringify`].
     ///
@@ -157,7 +193,7 @@ pub enum Expression {
     Invented(usize),
 }
 impl Expression {
-    fn infer_internal(
+    fn infer(
         &self,
         dsl: &DSL,
         mut ctx: &mut Context,
@@ -171,8 +207,8 @@ impl Expression {
                 Err(InferenceError::BadPrimitive(num))
             },
             &Expression::Application(ref f, ref x) => {
-                let f_tp = f.infer_internal(dsl, &mut ctx, env, indices)?;
-                let x_tp = x.infer_internal(dsl, &mut ctx, env, indices)?;
+                let f_tp = f.infer(dsl, &mut ctx, env, indices)?;
+                let x_tp = x.infer(dsl, &mut ctx, env, indices)?;
                 let ret_tp = ctx.new_variable();
                 ctx.unify(&f_tp, &arrow![x_tp, ret_tp.clone()])?;
                 Ok(ret_tp.apply(ctx))
@@ -181,7 +217,7 @@ impl Expression {
                 let arg_tp = ctx.new_variable();
                 let mut env = env.clone();
                 env.push_front(arg_tp.clone());
-                let ret_tp = body.infer_internal(dsl, &mut ctx, &env, indices)?;
+                let ret_tp = body.infer(dsl, &mut ctx, &env, indices)?;
                 Ok(arrow![arg_tp, ret_tp].apply(ctx))
             }
             &Expression::Index(i) => {
@@ -199,6 +235,19 @@ impl Expression {
             } else {
                 Err(InferenceError::BadInvented(num))
             },
+        }
+    }
+    fn strip_invented(&self, invented: &Vec<(Expression, Type)>) -> Expression {
+        match self {
+            &Expression::Application(ref f, ref x) => Expression::Application(
+                Box::new(f.strip_invented(invented)),
+                Box::new(x.strip_invented(invented)),
+            ),
+            &Expression::Abstraction(ref body) => {
+                Expression::Abstraction(Box::new(body.strip_invented(invented)))
+            }
+            &Expression::Invented(num) => invented[num].0.clone(),
+            _ => self.clone(),
         }
     }
     fn show(&self, dsl: &DSL, is_function: bool) -> String {
