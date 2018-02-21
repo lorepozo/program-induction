@@ -261,7 +261,7 @@ impl Expression {
             &Expression::Abstraction(ref body) => {
                 Expression::Abstraction(Box::new(body.strip_invented(invented)))
             }
-            &Expression::Invented(num) => invented[num].0.clone(),
+            &Expression::Invented(num) => invented[num].0.strip_invented(invented),
             _ => self.clone(),
         }
     }
