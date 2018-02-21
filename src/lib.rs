@@ -436,8 +436,7 @@ impl<'a> ProbabilisticDSL<'a> {
     /// # fn main() {
     /// # use std::collections::VecDeque;
     /// # use polytype::Context;
-    /// use programinduction::{Expression, DSL};
-    /// use programinduction::ec::Productions;
+    /// use programinduction::{Expression, ProbabilisticDSL, DSL};
     ///
     /// let dsl = DSL{
     ///     primitives: vec![
@@ -448,12 +447,12 @@ impl<'a> ProbabilisticDSL<'a> {
     ///     ],
     ///     invented: vec![],
     /// };
-    /// let productions = Productions::uniform(4, 0);
+    /// let pdsl = ProbabilisticDSL::uniform(&dsl);
     /// let request = tp!(int);
     /// let ctx = Context::default();
     /// let env = VecDeque::new();
     ///
-    /// let candidates = productions.candidates(&dsl, &request, &ctx, &env, false);
+    /// let candidates = pdsl.candidates(&request, &ctx, &env, false);
     /// let candidate_exprs: Vec<Expression> = candidates
     ///     .into_iter()
     ///     .map(|(p, expr, _, _)| expr)
