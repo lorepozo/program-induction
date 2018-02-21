@@ -6,9 +6,12 @@
 //! [`ec`]: ec/index.html
 
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate polytype;
 
 pub mod ec;
+pub mod domains;
 
 use std::f64;
 use std::collections::{HashMap, VecDeque};

@@ -4,4 +4,5 @@ version = "0.1.0"
 authors = ["Lucas Morales <lucas@lucasem.com>"]
 
 [dependencies]
+lazy_static = "1.0"
 polytype = "1.2"
