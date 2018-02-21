@@ -5,7 +5,7 @@
 //!
 //! [`BASE_DSL`]: struct.BASE_DSL.html
 
-use super::super::{Expression, DSL};
+use super::super::DSL;
 
 lazy_static! {
     /// Treat this struct as any other DSL.
@@ -26,6 +26,9 @@ lazy_static! {
 }
 
 /// Evaluate an expression in this domain.
-pub fn evaluator(expr: &Expression, inp: &Vec<bool>) -> bool {
-    false // TODO
+pub fn evaluator(primitive: &str, inp: &Vec<bool>) -> bool {
+    match primitive {
+        "nand" => !(inp[0] & inp[1]),
+        _ => unreachable!(),
+    }
 }

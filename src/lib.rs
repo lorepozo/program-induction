@@ -12,6 +12,7 @@ extern crate polytype;
 
 pub mod ec;
 pub mod domains;
+mod eval;
 
 use std::f64;
 use std::collections::{HashMap, VecDeque};
@@ -31,22 +32,33 @@ pub struct Task<'a, O> {
     pub observation: O,
     pub tp: Type,
 }
-impl<'a, I: 'a, O: 'a> Task<'a, &'a Vec<(I, O)>>
+impl<'a, V: 'a> Task<'a, &'a Vec<(Vec<V>, V)>>
 where
-    O: PartialEq,
+    V: PartialEq,
 {
-    /// An `evaluator` takes an expression with type `tp` that has been stripped of all invented
-    /// expressions. The resulting task is "all-or-nothing": the oracle returns either `0` if all
-    /// tasks are hit or `f64::NEG_INFINITY` otherwise.
-    pub fn from_examples<F>(evaluator: &'a F, examples: &'a Vec<(I, O)>, tp: Type) -> Self
+    /// Here we let all tasks be represented by input/output pairs that are values in the space of
+    /// type `V`. For example, circuits may have `V` be just `bool`, whereas string editing may
+    /// have `V` be an enum featuring strings, chars, and natural numbers. All inputs or evaluated
+    /// expressions must be representable by `V`.
+    ///
+    /// An `evaluator` takes the name of a primitive and a vector of sequential inputs to the
+    /// expression (so an expression with unary type will have one input in a vec of size 1).
+    ///
+    /// The resulting task is "all-or-nothing": the oracle returns either `0` if all examples are
+    /// correctly hit or `f64::NEG_INFINITY` otherwise.
+    pub fn from_evaluated_examples<F>(
+        evaluator: &'a F,
+        examples: &'a Vec<(Vec<V>, V)>,
+        tp: Type,
+    ) -> Self
     where
-        F: Fn(&Expression, &I) -> O + 'a,
+        F: Fn(&str, &Vec<V>) -> V + 'a,
     {
         let oracle = Box::new(move |expr: &Expression, dsl: &DSL| {
             let ref expr = dsl.strip_invented(expr);
             if examples
                 .iter()
-                .all(|&(ref i, ref o)| o == &evaluator(expr, i))
+                .all(|&(ref inps, ref out)| eval::eval(evaluator, expr, inps, out))
             {
                 0f64
             } else {
