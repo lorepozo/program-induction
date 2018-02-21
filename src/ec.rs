@@ -4,7 +4,7 @@ use std::iter;
 use std::rc::Rc;
 use polytype::{Context, Type};
 
-use super::{Expression, Task, DSL};
+use super::{Expression, ProbabilisticDSL, Task};
 
 const BUDGET_INCREMENT: f64 = 1.0;
 const MAX_DEPTH: u32 = 256;
@@ -24,151 +24,26 @@ const MAX_DEPTH: u32 = 256;
 /// - `R`, `E`, and `C` are the types, described in the `where` clause of the function signature
 ///   here, for a recognizer, an explorer, and a compressor respectively. Note that the compressor
 ///   returns a DSL as well as the best solution for each task.
-pub fn ec<S, O, RS, R, E, C>(
-    prior: &DSL,
+pub fn ec<'a, S, O, RS, R, E, C>(
+    prior: &ProbabilisticDSL<'a>,
     mut state: &mut S,
     tasks: &Vec<Task<O>>,
     recognizer: Option<R>,
     explore: E,
     compress: C,
-) -> (DSL, Vec<Option<Expression>>)
+) -> (ProbabilisticDSL<'a>, Vec<Option<Expression>>)
 where
-    R: FnOnce(&DSL, &mut S, &Vec<Task<O>>) -> RS,
-    E: FnOnce(&DSL, &mut S, &Vec<Task<O>>, Option<RS>) -> Vec<Vec<Expression>>,
-    C: FnOnce(&DSL, &mut S, &Vec<Task<O>>, Vec<Vec<Expression>>) -> (DSL, Vec<Option<Expression>>),
+    R: FnOnce(&ProbabilisticDSL, &mut S, &Vec<Task<O>>) -> RS,
+    E: FnOnce(&ProbabilisticDSL, &mut S, &Vec<Task<O>>, Option<RS>) -> Vec<Vec<Expression>>,
+    C: FnOnce(&ProbabilisticDSL, &mut S, &Vec<Task<O>>, Vec<Vec<Expression>>)
+        -> (ProbabilisticDSL<'a>, Vec<Option<Expression>>),
 {
     let recognized = recognizer.map(|r| r(prior, &mut state, tasks));
     let frontiers = explore(prior, &mut state, tasks, recognized);
     compress(prior, &mut state, tasks, frontiers)
 }
 
-/// Production log-probabilities for each primitive and invented expression.
-pub struct Productions {
-    pub variable: f64,
-    pub primitives: Vec<f64>,
-    pub invented: Vec<f64>,
-}
-impl Productions {
-    pub fn uniform(n_primitives: usize, n_invented: usize) -> Self {
-        Self {
-            variable: 0f64,
-            primitives: vec![0f64; n_primitives],
-            invented: vec![0f64; n_invented],
-        }
-    }
-    /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # fn main() {
-    /// # use std::collections::VecDeque;
-    /// # use polytype::Context;
-    /// use programinduction::{Expression, DSL};
-    /// use programinduction::ec::Productions;
-    ///
-    /// let dsl = DSL{
-    ///     primitives: vec![
-    ///         (String::from("0"), tp!(int)),
-    ///         (String::from("1"), tp!(int)),
-    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
-    ///         (String::from(">"), arrow![tp!(int), tp!(int), tp!(bool)]),
-    ///     ],
-    ///     invented: vec![],
-    /// };
-    /// let productions = Productions::uniform(4, 0);
-    /// let request = tp!(int);
-    /// let ctx = Context::default();
-    /// let env = VecDeque::new();
-    ///
-    /// let candidates = productions.candidates(&dsl, &request, &ctx, &env, false);
-    /// let candidate_exprs: Vec<Expression> = candidates
-    ///     .into_iter()
-    ///     .map(|(p, expr, _, _)| expr)
-    ///     .collect();
-    /// assert_eq!(candidate_exprs, vec![
-    ///     Expression::Primitive(0),
-    ///     Expression::Primitive(1),
-    ///     Expression::Primitive(2),
-    /// ]);
-    /// # }
-    /// ```
-    pub fn candidates(
-        &self,
-        dsl: &DSL,
-        request: &Type,
-        ctx: &Context,
-        env: &VecDeque<Type>,
-        leaf_only: bool,
-    ) -> Vec<(f64, Expression, Type, Context)> {
-        let mut cands = Vec::new();
-        let prims = self.primitives
-            .iter()
-            .zip(&dsl.primitives)
-            .enumerate()
-            .map(|(i, (&p, &(_, ref tp)))| (p, tp, true, Expression::Primitive(i)));
-        let invented = self.invented
-            .iter()
-            .zip(&dsl.invented)
-            .enumerate()
-            .map(|(i, (&p, &(_, ref tp)))| (p, tp, true, Expression::Invented(i)));
-        let indices = env.iter()
-            .enumerate()
-            .map(|(i, tp)| (self.variable, tp, false, Expression::Index(i)));
-        for (p, tp, instantiate, expr) in prims.chain(invented).chain(indices) {
-            let mut ctx = ctx.clone();
-            let itp;
-            let tp = if instantiate {
-                itp = tp.instantiate_indep(&mut ctx);
-                &itp
-            } else {
-                tp
-            };
-            let ret = if let &Type::Arrow(ref arrow) = tp {
-                if leaf_only {
-                    continue;
-                }
-                arrow.returns()
-            } else {
-                &tp
-            };
-            if let Ok(_) = ctx.unify(ret, request) {
-                let tp = tp.apply(&ctx);
-                cands.push((p, expr, tp, ctx))
-            }
-        }
-        // update probabilities for variables (indices)
-        let n_indexed = cands
-            .iter()
-            .filter(|&&(_, ref expr, _, _)| match expr {
-                &Expression::Index(_) => true,
-                _ => false,
-            })
-            .count() as f64;
-        for mut c in &mut cands {
-            match c.1 {
-                Expression::Index(_) => c.0 -= n_indexed.ln(),
-                _ => (),
-            }
-        }
-        // normalize
-        let p_largest = cands
-            .iter()
-            .map(|&(p, _, _, _)| p)
-            .fold(f64::NEG_INFINITY, |acc, p| acc.max(p));
-        let z = p_largest
-            + cands
-                .iter()
-                .map(|&(p, _, _, _)| (p - p_largest).exp())
-                .sum::<f64>()
-                .ln();
-        for mut c in &mut cands {
-            c.0 -= z;
-        }
-        cands
-    }
-}
-
 pub struct State {
-    pub productions: Productions,
     /// frontier size is the number of task solutions to be hit before enumeration is stopped.
     pub frontier_size: usize,
     /// search limit is a hard limit of the number of expressions that are enumerated for a task.
@@ -180,20 +55,19 @@ pub struct State {
 /// finite log-probability according to a task's oracle. Each task will be associated with at most
 /// `frontier_size` many such expressions.
 pub fn explore<O>(
-    dsl: &DSL,
+    pdsl: &ProbabilisticDSL,
     state: &mut State,
     tasks: &Vec<Task<O>>,
-    recognized: Option<Vec<Productions>>,
+    recognized: Option<Vec<ProbabilisticDSL>>,
 ) -> Vec<Vec<Expression>> {
     if let Some(productions) = recognized {
         tasks
             .iter()
             .zip(productions)
             .enumerate()
-            .map(|(i, (ref t, ref p))| {
+            .map(|(i, (ref t, ref pdsl))| {
                 enumerate_solutions(
-                    dsl,
-                    p,
+                    pdsl,
                     t.tp.clone(),
                     vec![(i, t)],
                     state.frontier_size,
@@ -211,8 +85,7 @@ pub fn explore<O>(
         for (i, exprs) in tps.into_iter()
             .map(|(tp, tasks)| {
                 enumerate_solutions(
-                    dsl,
-                    &state.productions,
+                    pdsl,
                     tp.clone(),
                     tasks,
                     state.frontier_size,
@@ -228,8 +101,7 @@ pub fn explore<O>(
 }
 
 fn enumerate_solutions<O>(
-    dsl: &DSL,
-    productions: &Productions,
+    pdsl: &ProbabilisticDSL,
     tp: Type,
     mut tasks: Vec<(usize, &Task<O>)>,
     frontier_size: usize,
@@ -239,7 +111,7 @@ fn enumerate_solutions<O>(
     let mut searched = 0;
     let mut update = |frontier: &mut HashMap<_, _>, expr: Expression| {
         tasks.retain(|&(i, t)| {
-            if (t.oracle)(&expr, dsl).is_finite() {
+            if (t.oracle)(&expr, pdsl.dsl).is_finite() {
                 let v = frontier.entry(i).or_insert(Vec::new());
                 v.push(expr.clone());
                 v.len() < frontier_size
@@ -254,7 +126,7 @@ fn enumerate_solutions<O>(
             searched < search_limit
         }
     };
-    let ref enumerator = Enumerator::new(tp, dsl, productions);
+    let ref enumerator = Enumerator::new(tp, pdsl);
     for expr in enumerator {
         if !update(&mut frontier, expr) {
             break;
@@ -290,17 +162,15 @@ impl<T: Clone> Default for LinkedList<T> {
 
 struct Enumerator<'a> {
     tp: Type,
-    dsl: &'a DSL,
-    productions: &'a Productions,
+    pdsl: &'a ProbabilisticDSL<'a>,
     /// budget (lower, upper) in nats, i.e. negative log-likelihood.
     budget: (f64, f64),
 }
 impl<'a> Enumerator<'a> {
-    fn new(tp: Type, dsl: &'a DSL, productions: &'a Productions) -> Self {
+    fn new(tp: Type, pdsl: &'a ProbabilisticDSL) -> Self {
         Self {
             tp,
-            dsl,
-            productions,
+            pdsl,
             budget: (0f64, 0f64 + BUDGET_INCREMENT),
         }
     }
@@ -328,9 +198,8 @@ impl<'a> Enumerator<'a> {
                 .map(|(ll, ctx, body)| (ll, ctx, Expression::Abstraction(Box::new(body))));
             Box::new(it)
         } else {
-            let it = self.productions
+            let it = self.pdsl
                 .candidates(
-                    self.dsl,
                     &request,
                     ctx,
                     &LinkedList::as_vecdeque(&env),
