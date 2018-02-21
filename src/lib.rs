@@ -60,7 +60,7 @@ where
             let ref rexpr = ReducedExpression::new(dsl, expr);
             if examples
                 .iter()
-                .all(|&(ref inps, ref out)| rexpr.eval(evaluator, inps, out))
+                .all(|&(ref inps, ref out)| rexpr.check(evaluator, inps, out))
             {
                 0f64
             } else {
