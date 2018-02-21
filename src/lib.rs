@@ -415,6 +415,43 @@ impl Expression {
 }
 
 /// Associate production log-probabilities for each primitive and invented expression.
+///
+/// # Examples
+///
+/// ```
+/// # #[macro_use] extern crate polytype;
+/// # extern crate programinduction;
+/// # fn main() {
+/// # use std::collections::VecDeque;
+/// # use polytype::Context;
+/// use programinduction::{Expression, ProbabilisticDSL, DSL};
+///
+/// let dsl = DSL{
+///     primitives: vec![
+///         (String::from("0"), tp!(int)),
+///         (String::from("1"), tp!(int)),
+///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+///         (String::from(">"), arrow![tp!(int), tp!(int), tp!(bool)]),
+///     ],
+///     invented: vec![],
+/// };
+/// let pdsl = ProbabilisticDSL::uniform(&dsl);
+/// let request = tp!(int);
+/// let ctx = Context::default();
+/// let env = VecDeque::new();
+///
+/// let candidates = pdsl.candidates(&request, &ctx, &env, false);
+/// let candidate_exprs: Vec<Expression> = candidates
+///     .into_iter()
+///     .map(|(p, expr, _, _)| expr)
+///     .collect();
+/// assert_eq!(candidate_exprs, vec![
+///     Expression::Primitive(0),
+///     Expression::Primitive(1),
+///     Expression::Primitive(2),
+/// ]);
+/// # }
+/// ```
 pub struct ProbabilisticDSL<'a> {
     pub dsl: &'a DSL,
     pub variable: f64,
@@ -430,40 +467,6 @@ impl<'a> ProbabilisticDSL<'a> {
             invented: vec![0f64; dsl.invented.len()],
         }
     }
-    /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # fn main() {
-    /// # use std::collections::VecDeque;
-    /// # use polytype::Context;
-    /// use programinduction::{Expression, ProbabilisticDSL, DSL};
-    ///
-    /// let dsl = DSL{
-    ///     primitives: vec![
-    ///         (String::from("0"), tp!(int)),
-    ///         (String::from("1"), tp!(int)),
-    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
-    ///         (String::from(">"), arrow![tp!(int), tp!(int), tp!(bool)]),
-    ///     ],
-    ///     invented: vec![],
-    /// };
-    /// let pdsl = ProbabilisticDSL::uniform(&dsl);
-    /// let request = tp!(int);
-    /// let ctx = Context::default();
-    /// let env = VecDeque::new();
-    ///
-    /// let candidates = pdsl.candidates(&request, &ctx, &env, false);
-    /// let candidate_exprs: Vec<Expression> = candidates
-    ///     .into_iter()
-    ///     .map(|(p, expr, _, _)| expr)
-    ///     .collect();
-    /// assert_eq!(candidate_exprs, vec![
-    ///     Expression::Primitive(0),
-    ///     Expression::Primitive(1),
-    ///     Expression::Primitive(2),
-    /// ]);
-    /// # }
-    /// ```
     pub fn candidates(
         &self,
         request: &Type,
