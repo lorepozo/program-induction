@@ -5,10 +5,10 @@ use super::{Expression, DSL};
 
 /// do not manipulate a ReducedExpression manually.
 pub enum ReducedExpression<'a, V> {
-    Value(V),
-    Primitive { name: &'a str, arity: usize },
-    Application(Box<Vec<ReducedExpression<'a, V>>>),
-    Abstraction(Box<ReducedExpression<'a, V>>),
+    Value(V, Type),
+    Primitive(&'a str, &'a Type),
+    Application(Box<Vec<ReducedExpression<'a, V>>>, Type),
+    Abstraction(Box<ReducedExpression<'a, V>>, Type),
     Index(usize),
 }
 impl<'a, V> ReducedExpression<'a, V>
@@ -23,7 +23,7 @@ where
         F: Fn(&str, &Vec<V>) -> V,
     {
         match self.eval(evaluator, inps) {
-            ReducedExpression::Value(ref o) => o == out,
+            ReducedExpression::Value(ref o, _) => o == out,
             _ => false,
         }
     }
@@ -37,15 +37,7 @@ where
     fn from_expr(dsl: &'a DSL, expr: &Expression) -> Self {
         match expr {
             &Expression::Primitive(num) => {
-                let arity = if let Type::Arrow(ref arrow) = dsl.primitives[num].1 {
-                    arrow.args().len()
-                } else {
-                    0
-                };
-                ReducedExpression::Primitive {
-                    name: &dsl.primitives[num].0,
-                    arity,
-                }
+                ReducedExpression::Primitive(&dsl.primitives[num].0, &dsl.primitives[num].1)
             }
             &Expression::Application(ref f, ref x) => {
                 let mut v = vec![Self::from_expr(dsl, x)];
@@ -60,13 +52,28 @@ where
                     }
                 }
                 v.reverse();
-                ReducedExpression::Application(Box::new(v))
+                ReducedExpression::Application(Box::new(v), dsl.infer(expr).unwrap())
             }
-            &Expression::Abstraction(ref body) => {
-                ReducedExpression::Abstraction(Box::new(Self::from_expr(dsl, body)))
-            }
+            &Expression::Abstraction(ref body) => ReducedExpression::Abstraction(
+                Box::new(Self::from_expr(dsl, body)),
+                dsl.infer(expr).unwrap(),
+            ),
             &Expression::Index(i) => ReducedExpression::Index(i),
             &Expression::Invented(_) => unreachable!(/* invented was stripped */),
         }
     }
+}
+
+// TODO:
+pub trait HigherOrderValueSpace {
+    /// Reduce is only called if the first arg is an arrow which takes a type that unifies with
+    /// type of the second arg.
+    fn reduce(Self, Self) -> Self;
+}
+
+impl<'a, V> ReducedExpression<'a, V>
+where
+    V: PartialEq + HigherOrderValueSpace,
+{
+    // replace from_expr with something more complicated
 }
