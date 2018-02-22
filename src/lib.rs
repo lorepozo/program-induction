@@ -19,8 +19,6 @@ use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use polytype::{Context, Type};
 
-use eval::ReducedExpression;
-
 /// The representation of a task which is solved by an [`Expression`] under some [`DSL`].
 ///
 /// A task can be made from an evaluator and examples with [`from_examples`].
@@ -57,10 +55,10 @@ where
         F: Fn(&str, &Vec<V>) -> V + 'a,
     {
         let oracle = Box::new(move |expr: &Expression, dsl: &DSL| {
-            let ref rexpr = ReducedExpression::new(dsl, expr);
+            let ref expr = dsl.strip_invented(expr);
             if examples
                 .iter()
-                .all(|&(ref inps, ref out)| rexpr.check(evaluator, inps, out))
+                .all(|&(ref inps, ref out)| eval::check(dsl, expr, evaluator, inps, out))
             {
                 0f64
             } else {
