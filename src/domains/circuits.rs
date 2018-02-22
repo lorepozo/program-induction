@@ -5,7 +5,7 @@
 //!
 //! [`BASE_DSL`]: struct.BASE_DSL.html
 
-use super::super::DSL;
+use super::super::lambda::DSL;
 
 lazy_static! {
     /// Treat this struct as any other DSL.
@@ -16,12 +16,12 @@ lazy_static! {
     /// "nand": arrow![tp!(bool), tp!(bool), tp!(bool)])
     /// ```
     pub static ref BASE_DSL: DSL = {
-        DSL {
-            primitives: vec![
+        DSL::uniform(
+            vec![
                 (String::from("nand"), arrow![tp!(bool), tp!(bool), tp!(bool)]),
             ],
-            invented: vec![],
-        }
+            vec![],
+        )
     };
 }
 
