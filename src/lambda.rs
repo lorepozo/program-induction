@@ -136,6 +136,10 @@ impl Language {
     ///
     /// Inputs are given as a sequence representing sequentially applied arguments.
     ///
+    /// This is not capable of dealing with first order functions. For now, if you need that kind
+    /// of behavior, you must implement your own evaluator (e.g. call scheme and run appropriate
+    /// code).
+    ///
     /// # Examples
     ///
     /// ```
@@ -176,8 +180,27 @@ impl Language {
         eval::ReducedExpression::new(self, expr).check(evaluator, inps, out)
     }
 
-    /// Get details (expression, type, log-likelihood) about a primitive according to its
+    /// Get details (name, type, log-likelihood) about a primitive according to its
     /// identifier (which is used in [`Expression::Primitive`]).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # fn main() {
+    /// # use programinduction::lambda::{Language, Expression};
+    /// let dsl = Language::uniform(
+    ///     vec![
+    ///         (String::from("0"), tp!(int)),
+    ///         (String::from("1"), tp!(int)),
+    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+    ///     ],
+    ///     vec![],
+    /// );
+    /// assert_eq!(dsl.primitive(0), Some(("0", &tp!(int), 0.)));
+    /// # }
+    /// ```
     ///
     /// [`Expression::Primitive`]: enum.Expression.html#variant.Primitive
     pub fn primitive(&self, num: usize) -> Option<(&str, &Type, f64)> {
@@ -201,12 +224,38 @@ impl Language {
     }
 
     /// Register a new invented expression. If it has a valid type, this will be `Ok(num)`.
-    pub fn invent(&mut self, expr: Expression) -> Result<usize, InferenceError> {
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # fn main() {
+    /// # use programinduction::lambda::{Language, Expression};
+    /// let mut dsl = Language::uniform(
+    ///     vec![
+    ///         (String::from("0"), tp!(int)),
+    ///         (String::from("1"), tp!(int)),
+    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+    ///     ],
+    ///     vec![]
+    /// );
+    /// let expr = dsl.parse("(+ 1)").unwrap();
+    /// dsl.invent(expr.clone(), -0.5).unwrap();
+    /// assert_eq!(dsl.invented(0), Some((&expr, &arrow![tp!(int), tp!(int)], -0.5)));
+    /// # }
+    /// ```
+    pub fn invent(
+        &mut self,
+        expr: Expression,
+        log_probability: f64,
+    ) -> Result<usize, InferenceError> {
         let mut ctx = Context::default();
         let env = VecDeque::new();
         let mut indices = HashMap::new();
         let tp = expr.infer(&self, &mut ctx, &env, &mut indices)?;
         self.invented.push((expr, tp));
+        self.invented_logprob.push(log_probability);
         Ok(self.invented.len() - 1)
     }
 
