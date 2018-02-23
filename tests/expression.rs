@@ -3,16 +3,16 @@ extern crate polytype;
 
 extern crate programinduction;
 
-use programinduction::{Expression, DSL};
+use programinduction::lambda::{Expression, DSL};
 
 #[test]
 fn expression_parse_primitive() {
-    let dsl = DSL {
-        primitives: vec![
+    let dsl = DSL::uniform(
+        vec![
             (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
         ],
-        invented: vec![],
-    };
+        vec![],
+    );
     let expr = dsl.parse("singleton").unwrap();
     assert_eq!(expr, Expression::Primitive(0));
 
@@ -22,13 +22,13 @@ fn expression_parse_primitive() {
 
 #[test]
 fn expression_parse_application() {
-    let dsl = DSL {
-        primitives: vec![
+    let dsl = DSL::uniform(
+        vec![
             (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
             (String::from("thing"), arrow![tp!(int), tp!(int)]),
         ],
-        invented: vec![],
-    };
+        vec![],
+    );
     assert_eq!(
         dsl.parse("(singleton singleton)").unwrap(),
         Expression::Application(
@@ -61,12 +61,12 @@ fn expression_parse_application() {
 
 #[test]
 fn expression_parse_index() {
-    let dsl = DSL {
-        primitives: vec![
+    let dsl = DSL::uniform(
+        vec![
             (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
         ],
-        invented: vec![],
-    };
+        vec![],
+    );
     assert_eq!(
         dsl.parse("(singleton $0)").unwrap(),
         Expression::Application(
@@ -81,12 +81,12 @@ fn expression_parse_index() {
 
 #[test]
 fn expression_parse_invented() {
-    let dsl = DSL {
-        primitives: vec![
+    let dsl = DSL::uniform(
+        vec![
             (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
             (String::from("1"), tp!(int)),
         ],
-        invented: vec![
+        vec![
             (
                 Expression::Application(
                     Box::new(Expression::Primitive(0)),
@@ -95,7 +95,7 @@ fn expression_parse_invented() {
                 arrow![tp!(int), tp!(int)],
             ),
         ],
-    };
+    );
     assert_eq!(
         dsl.parse("(#(+ 1) 1)").unwrap(),
         Expression::Application(
@@ -108,12 +108,12 @@ fn expression_parse_invented() {
 
 #[test]
 fn expression_parse_abstraction() {
-    let dsl = DSL {
-        primitives: vec![
+    let dsl = DSL::uniform(
+        vec![
             (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
             (String::from("1"), tp!(int)),
         ],
-        invented: vec![
+        vec![
             (
                 Expression::Abstraction(Box::new(Expression::Application(
                     Box::new(Expression::Application(
@@ -131,7 +131,7 @@ fn expression_parse_abstraction() {
                 arrow![tp!(int), tp!(int)],
             ),
         ],
-    };
+    );
     let expr = dsl.parse("(λ (+ $0))").unwrap();
     assert_eq!(
         expr,
@@ -173,15 +173,15 @@ fn expression_parse_abstraction() {
 
 #[test]
 fn expression_infer() {
-    let dsl = DSL {
-        primitives: vec![
+    let dsl = DSL::uniform(
+        vec![
             (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
             (String::from(">="), arrow![tp!(int), tp!(int), tp!(bool)]),
             (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
             (String::from("0"), tp!(int)),
             (String::from("1"), tp!(int)),
         ],
-        invented: vec![
+        vec![
             (
                 Expression::Application(
                     Box::new(Expression::Primitive(2)),
@@ -190,7 +190,7 @@ fn expression_infer() {
                 arrow![tp!(int), tp!(int)],
             ),
         ],
-    };
+    );
     let expr = Expression::Application(
         Box::new(Expression::Primitive(0)),
         Box::new(Expression::Application(

@@ -17,7 +17,7 @@ use super::{InferenceError, Representation, Task, EC};
 /// # #[macro_use] extern crate polytype;
 /// # extern crate programinduction;
 /// # fn main() {
-/// # use programinduction::{Expression, DSL};
+/// # use programinduction::lambda::{Expression, DSL};
 /// let dsl = DSL::uniform(
 ///     vec![(String::from("+"), arrow![tp!(int), tp!(int), tp!(int)])],
 ///     vec![],
@@ -40,7 +40,7 @@ use super::{InferenceError, Representation, Task, EC};
 /// # #[macro_use] extern crate polytype;
 /// # extern crate programinduction;
 /// # fn main() {
-/// # use programinduction::{DSL, Expression};
+/// # use programinduction::lambda::{DSL, Expression};
 /// let dsl = DSL::uniform(
 ///     vec![
 ///         (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
@@ -73,7 +73,7 @@ use super::{InferenceError, Representation, Task, EC};
 /// # fn main() {
 /// # use std::collections::VecDeque;
 /// # use polytype::Context;
-/// use programinduction::{Expression, DSL};
+/// use programinduction::lambda::{Expression, DSL};
 ///
 /// let dsl = DSL::uniform(
 ///     vec![
