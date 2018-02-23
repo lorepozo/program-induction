@@ -149,7 +149,7 @@ impl Language {
     /// # extern crate programinduction;
     /// use programinduction::lambda::Language;
     ///
-    /// fn evaluator(name: &str, inps: &Vec<i32>) -> i32 {
+    /// fn evaluator(name: &str, inps: &[i32]) -> i32 {
     ///     match name {
     ///         "0" => 0,
     ///         "1" => 1,
@@ -168,14 +168,14 @@ impl Language {
     ///     vec![],
     /// );
     /// let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
-    /// let inps: Vec<i32> = vec![2, 5];
-    /// let out: i32 = 8;
+    /// let inps = vec![2, 5];
+    /// let out = 8;
     /// assert!(dsl.check(&expr, &evaluator, &inps, &out));
     /// # }
     /// ```
-    pub fn check<V, F>(&self, expr: &Expression, evaluator: &F, inps: &Vec<V>, out: &V) -> bool
+    pub fn check<V, F>(&self, expr: &Expression, evaluator: &F, inps: &[V], out: &V) -> bool
     where
-        F: Fn(&str, &Vec<V>) -> V,
+        F: Fn(&str, &[V]) -> V,
         V: Clone + PartialEq + Debug,
     {
         eval::ReducedExpression::new(self, expr).check(evaluator, inps, out)
@@ -254,7 +254,7 @@ impl Language {
         let mut ctx = Context::default();
         let env = VecDeque::new();
         let mut indices = HashMap::new();
-        let tp = expr.infer(&self, &mut ctx, &env, &mut indices)?;
+        let tp = expr.infer(self, &mut ctx, &env, &mut indices)?;
         self.invented.push((expr, tp));
         self.invented_logprob.push(log_probability);
         Ok(self.invented.len() - 1)
@@ -278,7 +278,7 @@ impl Language {
             if s[di..].chars().all(char::is_whitespace) {
                 Ok(expr)
             } else {
-                Err(ParseError(
+                Err(ParseError::new(
                     offset + di,
                     "expected end of expression, found more tokens",
                 ))
@@ -293,7 +293,9 @@ impl Language {
     }
 }
 
-/// Expressions of lambda calculus, which only make sense with an accompanying Language.
+/// Expressions of lambda calculus, which only make sense with an accompanying [`Language`].
+///
+/// [`Language`]: struct.Language.html
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     /// The number associated with a primitive is used by the Language to identify the primitive.
@@ -315,8 +317,8 @@ impl Expression {
         env: &VecDeque<Type>,
         indices: &mut HashMap<usize, Type>,
     ) -> Result<Type, InferenceError> {
-        match self {
-            &Expression::Primitive(num) => if let Some(prim) = dsl.primitives.get(num as usize) {
+        match *self {
+            Expression::Primitive(num) => if let Some(prim) = dsl.primitives.get(num as usize) {
                 Ok(prim.1.instantiate_indep(ctx))
             } else {
                 Err(InferenceError::BadExpression(format!(
@@ -324,21 +326,21 @@ impl Expression {
                     num
                 )))
             },
-            &Expression::Application(ref f, ref x) => {
+            Expression::Application(ref f, ref x) => {
                 let f_tp = f.infer(dsl, &mut ctx, env, indices)?;
                 let x_tp = x.infer(dsl, &mut ctx, env, indices)?;
                 let ret_tp = ctx.new_variable();
                 ctx.unify(&f_tp, &arrow![x_tp, ret_tp.clone()])?;
                 Ok(ret_tp.apply(ctx))
             }
-            &Expression::Abstraction(ref body) => {
+            Expression::Abstraction(ref body) => {
                 let arg_tp = ctx.new_variable();
                 let mut env = env.clone();
                 env.push_front(arg_tp.clone());
                 let ret_tp = body.infer(dsl, &mut ctx, &env, indices)?;
                 Ok(arrow![arg_tp, ret_tp].apply(ctx))
             }
-            &Expression::Index(i) => {
+            Expression::Index(i) => {
                 if (i as usize) < env.len() {
                     Ok(env[i as usize].apply(ctx))
                 } else {
@@ -348,7 +350,7 @@ impl Expression {
                         .apply(ctx))
                 }
             }
-            &Expression::Invented(num) => if let Some(inv) = dsl.invented.get(num as usize) {
+            Expression::Invented(num) => if let Some(inv) = dsl.invented.get(num as usize) {
                 Ok(inv.1.instantiate_indep(ctx))
             } else {
                 Err(InferenceError::BadExpression(format!(
@@ -358,30 +360,30 @@ impl Expression {
             },
         }
     }
-    fn strip_invented(&self, invented: &Vec<(Expression, Type)>) -> Expression {
-        match self {
-            &Expression::Application(ref f, ref x) => Expression::Application(
+    fn strip_invented(&self, invented: &[(Expression, Type)]) -> Expression {
+        match *self {
+            Expression::Application(ref f, ref x) => Expression::Application(
                 Box::new(f.strip_invented(invented)),
                 Box::new(x.strip_invented(invented)),
             ),
-            &Expression::Abstraction(ref body) => {
+            Expression::Abstraction(ref body) => {
                 Expression::Abstraction(Box::new(body.strip_invented(invented)))
             }
-            &Expression::Invented(num) => invented[num].0.strip_invented(invented),
+            Expression::Invented(num) => invented[num].0.strip_invented(invented),
             _ => self.clone(),
         }
     }
     fn show(&self, dsl: &Language, is_function: bool) -> String {
-        match self {
-            &Expression::Primitive(num) => dsl.primitives[num as usize].0.clone(),
-            &Expression::Application(ref f, ref x) => if is_function {
+        match *self {
+            Expression::Primitive(num) => dsl.primitives[num as usize].0.clone(),
+            Expression::Application(ref f, ref x) => if is_function {
                 format!("{} {}", f.show(dsl, true), x.show(dsl, false))
             } else {
                 format!("({} {})", f.show(dsl, true), x.show(dsl, false))
             },
-            &Expression::Abstraction(ref body) => format!("(λ {})", body.show(dsl, false)),
-            &Expression::Index(i) => format!("${}", i),
-            &Expression::Invented(num) => {
+            Expression::Abstraction(ref body) => format!("(λ {})", body.show(dsl, false)),
+            Expression::Index(i) => format!("${}", i),
+            Expression::Invented(num) => {
                 format!("#{}", dsl.invented[num as usize].0.show(dsl, false))
             }
         }
@@ -396,7 +398,7 @@ impl Expression {
 
         let primitive = || {
             match inp.find(|c: char| c.is_whitespace() || c == ')') {
-                None if inp.len() > 0 => Some(inp.len()),
+                None if !inp.is_empty() => Some(inp.len()),
                 Some(next) if next > 0 => Some(next),
                 _ => None,
             }.map(|di| {
@@ -406,7 +408,7 @@ impl Expression {
                 {
                     Ok((di, Expression::Primitive(num)))
                 } else {
-                    Err(ParseError(offset + di, "unexpected end of expression"))
+                    Err(ParseError::new(offset + di, "unexpected end of expression"))
                 }
             })
         };
@@ -430,7 +432,9 @@ impl Expression {
                         di += inp[di..].chars().take_while(|c| c.is_whitespace()).count();
                         // check if complete
                         match inp[di..].chars().nth(0) {
-                            None => break Err(ParseError(offset + di, "incomplete application")),
+                            None => {
+                                break Err(ParseError::new(offset + di, "incomplete application"))
+                            }
                             Some(')') => {
                                 di += 1;
                                 break if let Some(init) = items.pop_front() {
@@ -439,7 +443,7 @@ impl Expression {
                                     });
                                     Ok((di, app))
                                 } else {
-                                    Err(ParseError(offset + di, "empty application"))
+                                    Err(ParseError::new(offset + di, "empty application"))
                                 };
                             }
                             _ => (),
@@ -473,7 +477,7 @@ impl Expression {
                         .chars()
                         .nth(0)
                         .and_then(|c| if c == ')' { Some(di + 1) } else { None })
-                        .ok_or(ParseError(offset + di, "incomplete application"))
+                        .ok_or_else(|| ParseError::new(offset + di, "incomplete application"))
                         .map(|di| (di, Expression::Abstraction(Box::new(body))))
                 })
         };
@@ -498,7 +502,7 @@ impl Expression {
                 if let Some(num) = dsl.invented.iter().position(|&(ref x, _)| x == &expr) {
                     Ok((di, Expression::Invented(num)))
                 } else {
-                    Err(ParseError(
+                    Err(ParseError::new(
                         offset + di,
                         "invented expr is unfamiliar to context",
                     ))
@@ -513,10 +517,12 @@ impl Expression {
             .or_else(index)
             .or_else(invented)
             .or_else(primitive)
-            .unwrap_or(Err(ParseError(
-                offset,
-                "could not parse any expression variant",
-            )))
+            .unwrap_or_else(|| {
+                Err(ParseError::new(
+                    offset,
+                    "could not parse any expression variant",
+                ))
+            })
     }
 }
 impl Representation for Language {
@@ -529,11 +535,7 @@ impl EC for Language {
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = Expression> + 'a> {
         enumerator::new(self, tp)
     }
-    fn mutate<O>(
-        &self,
-        tasks: &Vec<Task<Self, O>>,
-        frontiers: &Vec<Vec<Self::Expression>>,
-    ) -> Self {
+    fn mutate<O>(&self, tasks: &[Task<Self, O>], frontiers: &[Vec<Self::Expression>]) -> Self {
         let _ = (tasks, frontiers);
         self.clone()
         // TODO
@@ -552,17 +554,52 @@ impl EC for Language {
 ///
 /// The resulting task is "all-or-nothing": the oracle returns either `0` if all examples are
 /// correctly hit or `f64::NEG_INFINITY` otherwise.
+///
+/// # Examples
+///
+/// ```
+/// # #[macro_use]
+/// # extern crate polytype;
+/// # extern crate programinduction;
+/// use programinduction::lambda::{Language, task_by_example};
+///
+/// fn evaluator(name: &str, inps: &[i32]) -> i32 {
+///     match name {
+///         "0" => 0,
+///         "1" => 1,
+///         "+" => inps[0] + inps[1],
+///         _ => unreachable!(),
+///     }
+/// }
+///
+/// # fn main() {
+/// let examples = vec![(vec![2, 5], 8), (vec![1, 2], 4)];
+/// let tp = arrow![tp!(int), tp!(int), tp!(int)];
+/// let task = task_by_example(&evaluator, &examples, tp);
+///
+/// let dsl = Language::uniform(
+///     vec![
+///         (String::from("0"), tp!(int)),
+///         (String::from("1"), tp!(int)),
+///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+///     ],
+///     vec![],
+/// );
+/// let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
+/// assert!((task.oracle)(&dsl, &expr).is_finite())
+/// # }
+/// ```
 pub fn task_by_example<'a, V, F>(
     evaluator: &'a F,
-    examples: &'a Vec<(Vec<V>, V)>,
+    examples: &'a [(Vec<V>, V)],
     tp: Type,
-) -> Task<'a, Language, &'a Vec<(Vec<V>, V)>>
+) -> Task<'a, Language, &'a [(Vec<V>, V)]>
 where
     V: PartialEq + Clone + Debug + 'a,
-    F: Fn(&str, &Vec<V>) -> V + 'a,
+    F: Fn(&str, &[V]) -> V + 'a,
 {
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
-        let ref expr = dsl.strip_invented(expr);
+        let expr = &dsl.strip_invented(expr);
         if examples
             .iter()
             .all(|&(ref inps, ref out)| dsl.check(expr, evaluator, inps, out))
@@ -597,7 +634,7 @@ mod enumerator {
         let depth = 0;
         Box::new(
             (0..)
-                .map(|n| BUDGET_INCREMENT * (n as f64))
+                .map(|n| BUDGET_INCREMENT * f64::from(n))
                 .flat_map(move |offset| {
                     enumerate(
                         dsl,
@@ -621,13 +658,13 @@ mod enumerator {
         if budget.1 <= 0f64 || depth > MAX_DEPTH {
             Box::new(iter::empty())
         } else if let Type::Arrow(arrow) = request {
-            let env = LinkedList::prepend(env, *arrow.arg);
+            let env = LinkedList::prepend(&env, *arrow.arg);
             let it = enumerate(dsl, *arrow.ret, ctx, env, budget, depth)
                 .map(|(ll, ctx, body)| (ll, ctx, Expression::Abstraction(Box::new(body))));
             Box::new(it)
         } else {
             Box::new(
-                candidates(dsl, &request, ctx, &LinkedList::as_vecdeque(&env))
+                candidates(dsl, &request, ctx, &env.as_vecdeque())
                     .into_iter()
                     .filter(move |&(ll, _, _, _)| -ll <= budget.1)
                     .flat_map(move |(ll, expr, tp, ctx)| {
@@ -678,13 +715,10 @@ mod enumerator {
                     },
                 ),
             )
+        } else if budget.0 < 0f64 && 0f64 <= budget.1 {
+            Box::new(iter::once((0f64, ctx.clone(), f)))
         } else {
-            // no more args (base case)
-            if budget.0 < 0f64 && 0f64 <= budget.1 {
-                Box::new(iter::once((0f64, ctx.clone(), f)))
-            } else {
-                Box::new(iter::empty())
-            }
+            Box::new(iter::empty())
         }
     }
 
@@ -717,12 +751,12 @@ mod enumerator {
             } else {
                 tp
             };
-            let ret = if let &Type::Arrow(ref arrow) = tp {
+            let ret = if let Type::Arrow(ref arrow) = *tp {
                 arrow.returns()
             } else {
                 &tp
             };
-            if let Ok(_) = ctx.unify(ret, request) {
+            if ctx.unify(ret, request).is_ok() {
                 let tp = tp.apply(&ctx);
                 cands.push((p, expr, tp, ctx))
             }
@@ -730,15 +764,14 @@ mod enumerator {
         // update probabilities for variables (indices)
         let n_indexed = cands
             .iter()
-            .filter(|&&(_, ref expr, _, _)| match expr {
-                &Expression::Index(_) => true,
+            .filter(|&&(_, ref expr, _, _)| match *expr {
+                Expression::Index(_) => true,
                 _ => false,
             })
             .count() as f64;
         for mut c in &mut cands {
-            match c.1 {
-                Expression::Index(_) => c.0 -= n_indexed.ln(),
-                _ => (),
+            if let Expression::Index(_) = c.1 {
+                c.0 -= n_indexed.ln()
             }
         }
         // normalize
@@ -772,7 +805,7 @@ mod eval {
     pub enum ReducedExpression<'a, V: Clone + PartialEq + Debug> {
         Value(V),
         Primitive(&'a str, &'a Type),
-        Application(Box<Vec<ReducedExpression<'a, V>>>),
+        Application(Vec<ReducedExpression<'a, V>>),
         Abstraction(Box<ReducedExpression<'a, V>>),
         Index(usize),
     }
@@ -783,15 +816,15 @@ mod eval {
         pub fn new(dsl: &'a Language, expr: &Expression) -> Self {
             Self::from_expr(dsl, &dsl.strip_invented(expr))
         }
-        pub fn check<F>(&self, evaluator: &F, inps: &Vec<V>, out: &V) -> bool
+        pub fn check<F>(&self, evaluator: &F, inps: &[V], out: &V) -> bool
         where
-            F: Fn(&str, &Vec<V>) -> V,
+            F: Fn(&str, &[V]) -> V,
         {
             let expr = self.clone().with_args(inps);
-            let env = Rc::new(VecDeque::new());
-            let mut evaluated = expr.eval(evaluator, env.clone());
+            let env = &Rc::new(VecDeque::new());
+            let mut evaluated = expr.eval(evaluator, env);
             loop {
-                let next = evaluated.eval(evaluator, env.clone());
+                let next = evaluated.eval(evaluator, env);
                 if next == evaluated {
                     break;
                 } else {
@@ -806,26 +839,23 @@ mod eval {
         fn eval<F>(
             &self,
             evaluator: &F,
-            env: Rc<VecDeque<ReducedExpression<'a, V>>>,
+            env: &Rc<VecDeque<ReducedExpression<'a, V>>>,
         ) -> ReducedExpression<'a, V>
         where
-            F: Fn(&str, &Vec<V>) -> V,
+            F: Fn(&str, &[V]) -> V,
         {
-            match self {
-                &ReducedExpression::Application(ref xs) => {
+            match *self {
+                ReducedExpression::Application(ref xs) => {
                     let f = &xs[0];
-                    let mut xs: Vec<_> = xs[1..]
-                        .iter()
-                        .map(|x| x.eval(evaluator, env.clone()))
-                        .collect();
-                    match f {
-                        &ReducedExpression::Primitive(name, tp) => {
+                    let mut xs: Vec<_> = xs[1..].iter().map(|x| x.eval(evaluator, env)).collect();
+                    match *f {
+                        ReducedExpression::Primitive(name, tp) => {
                             // when applying a primitive, check if all arity-many args are concrete
                             // values and evaluate if possible.
-                            if let &Type::Arrow(ref arrow) = tp {
+                            if let Type::Arrow(ref arrow) = *tp {
                                 let arity = arrow.args().len();
-                                if arity <= xs.len() && xs.iter().take(arity).all(|x| match x {
-                                    &ReducedExpression::Value(_) => true,
+                                if arity <= xs.len() && xs.iter().take(arity).all(|x| match *x {
+                                    ReducedExpression::Value(_) => true,
                                     _ => false,
                                 }) {
                                     let mut args = xs;
@@ -841,25 +871,25 @@ mod eval {
                                         v
                                     } else {
                                         xs.insert(0, v);
-                                        ReducedExpression::Application(Box::new(xs))
+                                        ReducedExpression::Application(xs)
                                     }
                                 } else {
-                                    xs.insert(0, f.eval(evaluator, env.clone()));
-                                    ReducedExpression::Application(Box::new(xs))
+                                    xs.insert(0, f.eval(evaluator, env));
+                                    ReducedExpression::Application(xs)
                                 }
                             } else {
                                 panic!("tried to apply a primitive that wasn't a function")
                             }
                         }
-                        &ReducedExpression::Abstraction(ref body) => {
+                        ReducedExpression::Abstraction(ref body) => {
                             // when applying an abstraction, try to beta-reduce
                             if xs.is_empty() {
                                 ReducedExpression::Abstraction(body.clone())
                             } else {
                                 let binding = xs.remove(0);
-                                let mut env = (*env).clone();
+                                let mut env = (**env).clone();
                                 env.push_front(binding);
-                                let v = body.eval(evaluator, Rc::new(env));
+                                let v = body.eval(evaluator, &Rc::new(env));
                                 if xs.is_empty() {
                                     v
                                 } else if let ReducedExpression::Application(mut v) = v {
@@ -867,70 +897,70 @@ mod eval {
                                     ReducedExpression::Application(v)
                                 } else {
                                     xs.insert(0, v);
-                                    ReducedExpression::Application(Box::new(xs))
+                                    ReducedExpression::Application(xs)
                                 }
                             }
                         }
                         _ => {
-                            xs.insert(0, f.eval(evaluator, env.clone()));
-                            ReducedExpression::Application(Box::new(xs))
+                            xs.insert(0, f.eval(evaluator, env));
+                            ReducedExpression::Application(xs)
                         }
                     }
                 }
-                &ReducedExpression::Primitive(name, tp) => {
-                    if let &Type::Arrow(_) = tp {
+                ReducedExpression::Primitive(name, tp) => {
+                    if let Type::Arrow(_) = *tp {
                         ReducedExpression::Primitive(name, tp)
                     } else {
-                        ReducedExpression::Value(evaluator(name, &vec![]))
+                        ReducedExpression::Value(evaluator(name, &[]))
                     }
                 }
-                &ReducedExpression::Index(i) => match env.get(i) {
+                ReducedExpression::Index(i) => match env.get(i) {
                     Some(x) => x.clone(),
                     None => ReducedExpression::Index(i),
                 },
                 _ => self.clone(),
             }
         }
-        fn with_args(mut self, inps: &Vec<V>) -> Self {
+        fn with_args(self, inps: &[V]) -> Self {
             let mut inps: Vec<_> = inps.iter()
                 .map(|v| ReducedExpression::Value(v.clone()))
                 .collect();
             match self {
-                ReducedExpression::Application(ref mut xs) => {
+                ReducedExpression::Application(mut xs) => {
                     xs.extend(inps);
-                    ReducedExpression::Application(Box::new(xs.to_vec()))
+                    ReducedExpression::Application(xs)
                 }
                 _ => {
                     inps.insert(0, self);
-                    ReducedExpression::Application(Box::new(inps))
+                    ReducedExpression::Application(inps)
                 }
             }
         }
         fn from_expr(dsl: &'a Language, expr: &Expression) -> Self {
-            match expr {
-                &Expression::Primitive(num) => {
+            match *expr {
+                Expression::Primitive(num) => {
                     ReducedExpression::Primitive(&dsl.primitives[num].0, &dsl.primitives[num].1)
                 }
-                &Expression::Application(ref f, ref x) => {
+                Expression::Application(ref f, ref x) => {
                     let mut v = vec![Self::from_expr(dsl, x)];
                     let mut f: &Expression = f;
                     loop {
-                        if let &Expression::Application(ref inner_f, ref x) = f {
+                        if let Expression::Application(ref inner_f, ref x) = *f {
                             v.push(Self::from_expr(dsl, x));
-                            f = &inner_f;
+                            f = inner_f;
                         } else {
                             v.push(Self::from_expr(dsl, f));
                             break;
                         }
                     }
                     v.reverse();
-                    ReducedExpression::Application(Box::new(v))
+                    ReducedExpression::Application(v)
                 }
-                &Expression::Abstraction(ref body) => {
+                Expression::Abstraction(ref body) => {
                     ReducedExpression::Abstraction(Box::new(Self::from_expr(dsl, body)))
                 }
-                &Expression::Index(i) => ReducedExpression::Index(i),
-                &Expression::Invented(_) => unreachable!(/* invented was stripped */),
+                Expression::Index(i) => ReducedExpression::Index(i),
+                Expression::Invented(_) => unreachable!(/* invented was stripped */),
             }
         }
     }
@@ -939,17 +969,18 @@ mod eval {
 #[derive(Debug, Clone)]
 struct LinkedList<T: Clone>(Option<(T, Rc<LinkedList<T>>)>);
 impl<T: Clone> LinkedList<T> {
-    fn prepend(lst: Rc<LinkedList<T>>, v: T) -> Rc<LinkedList<T>> {
+    fn prepend(lst: &Rc<LinkedList<T>>, v: T) -> Rc<LinkedList<T>> {
         Rc::new(LinkedList(Some((v, lst.clone()))))
     }
-    fn as_vecdeque(mut lst: &Rc<LinkedList<T>>) -> VecDeque<T> {
+    fn as_vecdeque(&self) -> VecDeque<T> {
+        let mut lst: &Rc<LinkedList<T>>;
         let mut out = VecDeque::new();
-        loop {
-            if let Some((ref v, ref nlst)) = lst.0 {
+        if let Some((ref v, ref nlst)) = self.0 {
+            out.push_back(v.clone());
+            lst = nlst;
+            while let Some((ref v, ref nlst)) = lst.0 {
                 out.push_back(v.clone());
                 lst = nlst;
-            } else {
-                break;
             }
         }
         out
@@ -962,10 +993,20 @@ impl<T: Clone> Default for LinkedList<T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ParseError(usize, &'static str);
+pub struct ParseError {
+    /// The location of the original string where parsing failed.
+    pub location: usize,
+    /// A message associated with the parse error.
+    pub msg: &'static str,
+}
+impl ParseError {
+    fn new(location: usize, msg: &'static str) -> Self {
+        Self { location, msg }
+    }
+}
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{} at index {}", self.1, self.0)
+        write!(f, "{} at index {}", self.msg, self.location)
     }
 }
 impl ::std::error::Error for ParseError {

@@ -53,9 +53,9 @@ impl From<polytype::UnificationError> for InferenceError {
 }
 impl fmt::Display for InferenceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            &InferenceError::BadExpression(ref msg) => write!(f, "invalid expression: '{}'", msg),
-            &InferenceError::Unify(ref err) => write!(f, "could not unify to infer type: {}", err),
+        match *self {
+            InferenceError::BadExpression(ref msg) => write!(f, "invalid expression: '{}'", msg),
+            InferenceError::Unify(ref err) => write!(f, "could not unify to infer type: {}", err),
         }
     }
 }

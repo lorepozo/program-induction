@@ -34,7 +34,7 @@ lazy_static! {
 /// [`lambda::task_by_examples`].
 ///
 /// [`lambda::task_by_examples`]: ../../lambda/fn.task_by_example.html
-pub fn evaluator(primitive: &str, inp: &Vec<bool>) -> bool {
+pub fn evaluator(primitive: &str, inp: &[bool]) -> bool {
     match primitive {
         "nand" => !(inp[0] & inp[1]),
         _ => unreachable!(),

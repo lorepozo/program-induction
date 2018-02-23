@@ -31,8 +31,7 @@ pub trait EC: Representation {
     ///
     /// [`Representation`]: trait.Representation.html
     /// [`Task`]: struct.Task.html
-    fn mutate<O>(&self, tasks: &Vec<Task<Self, O>>, frontiers: &Vec<Vec<Self::Expression>>)
-        -> Self;
+    fn mutate<O>(&self, tasks: &[Task<Self, O>], frontiers: &[Vec<Self::Expression>]) -> Self;
 
     // provided methods:
 
@@ -40,11 +39,11 @@ pub trait EC: Representation {
     fn ec<O, R>(
         &self,
         params: &Params,
-        tasks: &Vec<Task<Self, O>>,
+        tasks: &[Task<Self, O>],
         recognizer: Option<R>,
     ) -> (Self, Vec<Option<<Self as Representation>::Expression>>)
     where
-        R: FnOnce(&Self, &Vec<Task<Self, O>>) -> Vec<Self>,
+        R: FnOnce(&Self, &[Task<Self, O>]) -> Vec<Self>,
     {
         let recognized = recognizer.map(|r| r(self, tasks));
         let frontiers = self.explore(params, tasks, recognized);
@@ -73,7 +72,7 @@ pub trait EC: Representation {
     fn explore<O>(
         &self,
         params: &Params,
-        tasks: &Vec<Task<Self, O>>,
+        tasks: &[Task<Self, O>],
         recognized: Option<Vec<Self>>,
     ) -> Vec<Vec<<Self as Representation>::Expression>> {
         if let Some(representations) = recognized {
@@ -81,16 +80,16 @@ pub trait EC: Representation {
                 .iter()
                 .zip(representations)
                 .enumerate()
-                .map(|(i, (ref t, ref repr))| {
+                .map(|(i, (t, ref repr))| {
                     repr.enumerate_solutions(params, t.tp.clone(), vec![(i, t)])
                         .remove(&i)
-                        .unwrap_or(vec![])
+                        .unwrap_or_else(Vec::new)
                 })
                 .collect()
         } else {
             let mut tps = HashMap::new();
             for (i, task) in tasks.into_iter().enumerate() {
-                tps.entry(&task.tp).or_insert(Vec::new()).push((i, task))
+                tps.entry(&task.tp).or_insert_with(Vec::new).push((i, task))
             }
             let mut results = vec![vec![]; tasks.len()];
             for (i, exprs) in tps.into_iter()
@@ -122,7 +121,7 @@ pub trait EC: Representation {
                           expr: <Self as Representation>::Expression| {
             tasks.retain(|&(i, t)| {
                 if (t.oracle)(self, &expr).is_finite() {
-                    let v = frontier.entry(i).or_insert(Vec::new());
+                    let v = frontier.entry(i).or_insert_with(Vec::new);
                     v.push(expr.clone());
                     v.len() < params.frontier_size
                 } else {
