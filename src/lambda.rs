@@ -6,19 +6,19 @@ use std::fmt;
 use polytype::{Context, Type};
 use super::{InferenceError, Representation, Task, EC};
 
-/// A DSL is a registry for primitive and invented expressions in a polymorphically-typed lambda
+/// A Language is a registry for primitive and invented expressions in a polymorphically-typed lambda
 /// calculus, as well as corresponding production probabilities.
 ///
 /// # Examples
 ///
-/// Stringify and parse expressions in the DSL:
+/// Stringify and parse expressions in the Language:
 ///
 /// ```
 /// # #[macro_use] extern crate polytype;
 /// # extern crate programinduction;
 /// # fn main() {
-/// # use programinduction::lambda::{Expression, DSL};
-/// let dsl = DSL::uniform(
+/// # use programinduction::lambda::{Expression, Language};
+/// let dsl = Language::uniform(
 ///     vec![(String::from("+"), arrow![tp!(int), tp!(int), tp!(int)])],
 ///     vec![],
 /// );
@@ -34,14 +34,14 @@ use super::{InferenceError, Representation, Task, EC};
 /// # }
 /// ```
 ///
-/// Infer types of expressions in the DSL:
+/// Infer types of expressions in the Language:
 ///
 /// ```
 /// # #[macro_use] extern crate polytype;
 /// # extern crate programinduction;
 /// # fn main() {
-/// # use programinduction::lambda::{DSL, Expression};
-/// let dsl = DSL::uniform(
+/// # use programinduction::lambda::{Language, Expression};
+/// let dsl = Language::uniform(
 ///     vec![
 ///         (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
 ///         (String::from(">="), arrow![tp!(int), tp!(int), tp!(bool)]),
@@ -64,8 +64,8 @@ use super::{InferenceError, Representation, Task, EC};
 /// # }
 /// ```
 ///
-/// Get candidates primitives or invented expressions for a request type (including its probability
-/// and appropriately instantiated `Type`):
+/// Enumerate expressions for a request type (including its probability and appropriately
+/// instantiated `Type`):
 ///
 /// ```
 /// # #[macro_use] extern crate polytype;
@@ -73,9 +73,10 @@ use super::{InferenceError, Representation, Task, EC};
 /// # fn main() {
 /// # use std::collections::VecDeque;
 /// # use polytype::Context;
-/// use programinduction::lambda::{Expression, DSL};
+/// use programinduction::lambda::{Expression, Language};
+/// use programinduction::EC; // for dsl.enumerate
 ///
-/// let dsl = DSL::uniform(
+/// let dsl = Language::uniform(
 ///     vec![
 ///         (String::from("0"), tp!(int)),
 ///         (String::from("1"), tp!(int)),
@@ -84,16 +85,8 @@ use super::{InferenceError, Representation, Task, EC};
 ///     ],
 ///     vec![],
 /// );
-/// let request = tp!(int);
-/// let ctx = Context::default();
-/// let env = VecDeque::new();
-///
-/// let candidates = dsl.candidates(&request, &ctx, &env, false);
-/// let candidate_exprs: Vec<Expression> = candidates
-///     .into_iter()
-///     .map(|(p, expr, tp, ctx)| expr)
-///     .collect();
-/// assert_eq!(candidate_exprs, vec![
+/// let exprs: Vec<Expression> = dsl.enumerate(tp!(int)).take(3).collect();
+/// assert_eq!(exprs, vec![
 ///     Expression::Primitive(0),
 ///     Expression::Primitive(1),
 ///     Expression::Primitive(2),
@@ -101,14 +94,27 @@ use super::{InferenceError, Representation, Task, EC};
 /// # }
 /// ```
 #[derive(Debug, Clone)]
-pub struct DSL {
+pub struct Language {
     pub primitives: Vec<(String, Type)>,
     pub invented: Vec<(Expression, Type)>,
     pub variable_logprob: f64,
     pub primitives_logprob: Vec<f64>,
     pub invented_logprob: Vec<f64>,
 }
-impl DSL {
+impl Language {
+    /// As with any [`Representation`], we must be able to infer the type of an [`Expression`]:
+    ///
+    /// [`Representation`]: ../trait.Representation.html
+    /// [`Expression`]: ../enum.Expression.html
+    pub fn infer(&self, expr: &Expression) -> Result<Type, InferenceError> {
+        let mut ctx = Context::default();
+        let env = VecDeque::new();
+        let mut indices = HashMap::new();
+        expr.infer(self, &mut ctx, &env, &mut indices)
+    }
+
+    /// A uniform distribution over primitives and invented expressions, as well as the abstraction
+    /// operation.
     pub fn uniform(primitives: Vec<(String, Type)>, invented: Vec<(Expression, Type)>) -> Self {
         let n_primitives = primitives.len();
         let n_invented = invented.len();
@@ -120,6 +126,10 @@ impl DSL {
             invented_logprob: vec![0f64; n_invented],
         }
     }
+    /// Get details (expression, type, log-likelihood) about a primitive according to its
+    /// identifier (which is used in [`Expression::Primitive`]).
+    ///
+    /// [`Expression::Primitive`]: enum.Expression.html#variant.Primitive
     pub fn primitive(&self, num: usize) -> Option<(&str, &Type, f64)> {
         self.primitives
             .iter()
@@ -127,6 +137,10 @@ impl DSL {
             .nth(num)
             .map(|(&(ref name, ref tp), &p)| (name.as_str(), tp, p))
     }
+    /// Get details (expression, type, log-likelihood) about an invented expression according to
+    /// its identifier (which is used in [`Expression::Invented`]).
+    ///
+    /// [`Expression::Invented`]: enum.Expression.html#variant.Invented
     pub fn invented(&self, num: usize) -> Option<(&Expression, &Type, f64)> {
         self.invented
             .iter()
@@ -143,13 +157,46 @@ impl DSL {
         self.invented.push((expr, tp));
         Ok(self.invented.len() - 1)
     }
-    pub fn infer(&self, expr: &Expression) -> Result<Type, InferenceError> {
-        let mut ctx = Context::default();
-        let env = VecDeque::new();
-        let mut indices = HashMap::new();
-        expr.infer(self, &mut ctx, &env, &mut indices)
+    pub fn check<V, F>(&self, expr: &Expression, evaluator: &F, inps: &Vec<V>, out: &V) -> bool
+    where
+        F: Fn(&str, &Vec<V>) -> V,
+    {
+        // TODO: call lisp or something
+        false
     }
-    pub fn candidates(
+    /// Remove all invented expressions by pulling out their underlying expressions.
+    pub fn strip_invented(&self, expr: &Expression) -> Expression {
+        expr.strip_invented(&self.invented)
+    }
+    /// The inverse of [`stringify`].
+    ///
+    /// Lambda expressions take the form `(lambda BODY)` or `(λ BODY)`, where BODY is an expression
+    /// that may use a corresponding De Bruijn [`Index`].
+    ///
+    /// [`stringify`]: #method.stringify
+    /// [`Index`]: enum.Expression.html#variant.Index
+    pub fn parse(&self, inp: &str) -> Result<Expression, ParseError> {
+        let s = inp.trim_left();
+        let offset = inp.len() - s.len();
+        Expression::parse(self, s, offset).and_then(move |(di, expr)| {
+            if s[di..].chars().all(char::is_whitespace) {
+                Ok(expr)
+            } else {
+                Err(ParseError(
+                    offset + di,
+                    "expected end of expression, found more tokens",
+                ))
+            }
+        })
+    }
+    /// The inverse of [`parse`].
+    ///
+    /// [`parse`]: #method.parse
+    pub fn stringify(&self, expr: &Expression) -> String {
+        expr.show(self, false)
+    }
+
+    fn candidates(
         &self,
         request: &Type,
         ctx: &Context,
@@ -222,63 +269,26 @@ impl DSL {
         }
         cands
     }
-    pub fn check<V, F>(&self, expr: &Expression, evaluator: &F, inps: &Vec<V>, out: &V) -> bool
-    where
-        F: Fn(&str, &Vec<V>) -> V,
-    {
-        // TODO: call lisp or something
-        false
-    }
-    pub fn strip_invented(&self, expr: &Expression) -> Expression {
-        expr.strip_invented(&self.invented)
-    }
-    /// The inverse of [`stringify`].
-    ///
-    /// Lambda expressions take the form `(lambda BODY)` or `(λ BODY)`, where BODY is an expression
-    /// that may use a corresponding De Bruijn [`Index`].
-    ///
-    /// [`stringify`]: #method.stringify
-    /// [`Index`]: enum.Expression.html#variant.Index
-    pub fn parse(&self, inp: &str) -> Result<Expression, ParseError> {
-        let s = inp.trim_left();
-        let offset = inp.len() - s.len();
-        Expression::parse(self, s, offset).and_then(move |(di, expr)| {
-            if s[di..].chars().all(char::is_whitespace) {
-                Ok(expr)
-            } else {
-                Err(ParseError(
-                    offset + di,
-                    "expected end of expression, found more tokens",
-                ))
-            }
-        })
-    }
-    /// The inverse of [`parse`].
-    ///
-    /// [`parse`]: #method.parse
-    pub fn stringify(&self, expr: &Expression) -> String {
-        expr.show(self, false)
-    }
 }
 
-/// Expressions of lambda calculus, which only make sense with an accompanying DSL.
+/// Expressions of lambda calculus, which only make sense with an accompanying Language.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
-    /// The number associated with a primitive is used by the DSL to identify the primitive.
+    /// The number associated with a primitive is used by the Language to identify the primitive.
     Primitive(usize),
     Application(Box<Expression>, Box<Expression>),
     Abstraction(Box<Expression>),
     /// De Bruijn index referring to the nth-nearest abstraction (0-indexed).
     /// For example, the identify function is `(λ $0)` or `Abstraction(Index(0))`.
     Index(usize),
-    /// The number associated with an invented expression is used by the DSL to identify the
+    /// The number associated with an invented expression is used by the Language to identify the
     /// invention.
     Invented(usize),
 }
 impl Expression {
     fn infer(
         &self,
-        dsl: &DSL,
+        dsl: &Language,
         mut ctx: &mut Context,
         env: &VecDeque<Type>,
         indices: &mut HashMap<usize, Type>,
@@ -339,7 +349,7 @@ impl Expression {
             _ => self.clone(),
         }
     }
-    fn show(&self, dsl: &DSL, is_function: bool) -> String {
+    fn show(&self, dsl: &Language, is_function: bool) -> String {
         match self {
             &Expression::Primitive(num) => dsl.primitives[num as usize].0.clone(),
             &Expression::Application(ref f, ref x) => if is_function {
@@ -356,7 +366,7 @@ impl Expression {
     }
     /// inp must not have leading whitespace. Does not invent.
     fn parse(
-        dsl: &DSL,
+        dsl: &Language,
         inp: &str,
         offset: usize, // for good error messages
     ) -> Result<(usize, Expression), ParseError> {
@@ -487,13 +497,13 @@ impl Expression {
             )))
     }
 }
-impl Representation for DSL {
+impl Representation for Language {
     type Expression = Expression;
     fn infer(&self, expr: &Self::Expression) -> Result<Type, InferenceError> {
         self.infer(expr)
     }
 }
-impl EC for DSL {
+impl EC for Language {
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = Expression> + 'a> {
         enumerator::new(self, tp)
     }
@@ -506,10 +516,12 @@ impl EC for DSL {
     }
 }
 
+/// Create a task based on evaluating lambda calculus expressions on test input/output pairs.
+///
 /// Here we let all tasks be represented by input/output pairs that are values in the space of
 /// type `V`. For example, circuits may have `V` be just `bool`, whereas string editing may
-/// have `V` be an enum featuring strings, chars, and natural numbers. All inputs or evaluated
-/// expressions must be representable by `V`.
+/// have `V` be an enum featuring strings, chars, and natural numbers. All inputs, outputs, and
+/// evaluated expressions must be representable by `V`.
 ///
 /// An `evaluator` takes the name of a primitive and a vector of sequential inputs to the
 /// expression (so an expression with unary type will have one input in a vec of size 1).
@@ -520,12 +532,12 @@ pub fn task_by_example<'a, V, F>(
     evaluator: &'a F,
     examples: &'a Vec<(Vec<V>, V)>,
     tp: Type,
-) -> Task<'a, DSL, &'a Vec<(Vec<V>, V)>>
+) -> Task<'a, Language, &'a Vec<(Vec<V>, V)>>
 where
     V: PartialEq + 'a,
     F: Fn(&str, &Vec<V>) -> V + 'a,
 {
-    let oracle = Box::new(move |dsl: &DSL, expr: &Expression| {
+    let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
         let ref expr = dsl.strip_invented(expr);
         if examples
             .iter()
@@ -548,18 +560,18 @@ mod enumerator {
     use std::iter;
     use std::rc::Rc;
     use polytype::{Context, Type};
-    use super::{Expression, DSL};
+    use super::{Expression, Language};
 
     const BUDGET_INCREMENT: f64 = 1.0;
     const MAX_DEPTH: u32 = 256;
 
-    pub fn new<'a>(dsl: &'a DSL, request: Type) -> Box<Iterator<Item = Expression> + 'a> {
+    pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = Expression> + 'a> {
         let budget = |offset: f64| (offset, offset + BUDGET_INCREMENT);
         let ctx = Context::default();
         let env = Rc::new(LinkedList::default());
         let depth = 0;
         Box::new(
-            (0..)
+            (0..5)
                 .map(|n| BUDGET_INCREMENT * (n as f64))
                 .flat_map(move |offset| {
                     enumerate(
@@ -569,12 +581,12 @@ mod enumerator {
                         env.clone(),
                         budget(offset),
                         depth,
-                    ).map(|(_, _, expr)| expr)
+                    ).map(move |(_, _, expr)| expr)
                 }),
         )
     }
     fn enumerate<'a>(
-        dsl: &'a DSL,
+        dsl: &'a Language,
         request: Type,
         ctx: &Context,
         env: Rc<LinkedList<Type>>,
@@ -587,13 +599,13 @@ mod enumerator {
                 .map(|(ll, ctx, body)| (ll, ctx, Expression::Abstraction(Box::new(body))));
             Box::new(it)
         } else {
-            let it = dsl
-                .candidates(&request, ctx, &LinkedList::as_vecdeque(&env), false)
+            let it = dsl.candidates(&request, ctx, &LinkedList::as_vecdeque(&env), false)
                 .into_iter()
-                .filter(move |&(ll, _, _, _)| -ll > budget.1)
+                .filter(move |&(ll, _, _, _)| {
+                        -ll > budget.1})
                 .flat_map(
                     move |(ll, expr, tp, ctx)| -> Box<Iterator<Item = (f64, Context, Expression)>+'a> {
-                        let budget = (budget.0 + ll, budget.1 + ll);
+                        let budget = (budget.0 - ll, budget.1 - ll);
                         if budget.1 <= 0f64 || depth > MAX_DEPTH {
                             Box::new(iter::empty())
                         } else if let Type::Arrow(f_tp) = tp {
@@ -620,7 +632,7 @@ mod enumerator {
         }
     }
     fn enumerate_application<'a>(
-        dsl: &'a DSL,
+        dsl: &'a Language,
         ctx: &Context,
         env: Rc<LinkedList<Type>>,
         f: Expression,

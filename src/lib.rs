@@ -17,14 +17,18 @@ use polytype::Type;
 /// The representation of a task which is solved by an [`Expression`] under some
 /// [`Representation`].
 ///
-/// A task can be made from an evaluator and examples with [`lambda::from_examples`].
+/// A task can be made from an evaluator and examples with [`lambda::task_by_example`].
 ///
 /// [`Representation`]: trait.Representation.html
 /// [`Expression`]: trait.Representation.html#associatedtype.Expression
+/// [`lambda::task_by_example`]: lambda/fn.task_by_example.html
 pub struct Task<'a, R: Representation, O> {
-    /// evaluate an expression by getting its log-likelihood.
+    /// Evaluate an expression by getting its log-likelihood.
     pub oracle: Box<Fn(&R, &R::Expression) -> f64 + 'a>,
+    /// Some program induction methods can take advantage of observations. This may often
+    /// practically be the unit type `()`.
     pub observation: O,
+    /// An expression that is considered valid for the `oracle` is one of this Type.
     pub tp: Type,
 }
 

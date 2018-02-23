@@ -3,11 +3,11 @@ extern crate polytype;
 
 extern crate programinduction;
 
-use programinduction::lambda::{Expression, DSL};
+use programinduction::lambda::{Expression, Language};
 
 #[test]
 fn expression_parse_primitive() {
-    let dsl = DSL::uniform(
+    let dsl = Language::uniform(
         vec![
             (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
         ],
@@ -22,7 +22,7 @@ fn expression_parse_primitive() {
 
 #[test]
 fn expression_parse_application() {
-    let dsl = DSL::uniform(
+    let dsl = Language::uniform(
         vec![
             (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
             (String::from("thing"), arrow![tp!(int), tp!(int)]),
@@ -61,7 +61,7 @@ fn expression_parse_application() {
 
 #[test]
 fn expression_parse_index() {
-    let dsl = DSL::uniform(
+    let dsl = Language::uniform(
         vec![
             (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
         ],
@@ -81,7 +81,7 @@ fn expression_parse_index() {
 
 #[test]
 fn expression_parse_invented() {
-    let dsl = DSL::uniform(
+    let dsl = Language::uniform(
         vec![
             (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
             (String::from("1"), tp!(int)),
@@ -108,7 +108,7 @@ fn expression_parse_invented() {
 
 #[test]
 fn expression_parse_abstraction() {
-    let dsl = DSL::uniform(
+    let dsl = Language::uniform(
         vec![
             (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
             (String::from("1"), tp!(int)),
@@ -173,7 +173,7 @@ fn expression_parse_abstraction() {
 
 #[test]
 fn expression_infer() {
-    let dsl = DSL::uniform(
+    let dsl = Language::uniform(
         vec![
             (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
             (String::from(">="), arrow![tp!(int), tp!(int), tp!(bool)]),

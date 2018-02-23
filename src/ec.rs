@@ -11,9 +11,26 @@ pub struct Params {
     pub search_limit: usize,
 }
 
-/// A kind of representation suitable for EC.
+/// A kind of representation suitable for EC, and default methods for exploration-compression.
+///
+/// Implementors of `EC` need only provide an [`enumerate`] and [`mutate`] methods.
+///
+/// [`enumerate`]: #method.enumerator
+/// [`mutate`]: #method.mutate
 pub trait EC: Representation {
+    /// Get an iterator over [`Expression`]s for a given type.
+    ///
+    /// This will in most cases iterate infinitely, giving increasingly complex expressions.
+    ///
+    /// [`Expression`]: trait.Representation.html#associatedtype.Expression
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = Self::Expression> + 'a>;
+    /// Update the [`Representation`] based on findings of expressions that solve [`Task`]s.
+    ///
+    /// The `frontiers` argument must always be of the same size as `tasks`. Each frontier is a
+    /// possibly-empty list of expressions that solve the corresponding task.
+    ///
+    /// [`Representation`]: trait.Representation.html
+    /// [`Task`]: struct.Task.html
     fn mutate<O>(&self, tasks: &Vec<Task<Self, O>>, frontiers: &Vec<Vec<Self::Expression>>)
         -> Self;
 
@@ -46,9 +63,13 @@ pub trait EC: Representation {
         (updated, solutions)
     }
 
-    /// Enumerate solutions for the given tasks. Considers a "solution" to be any expression with
-    /// finite log-probability according to a task's oracle. Each task will be associated with at most
-    /// `frontier_size` many such expressions.
+    /// Enumerate solutions for the given tasks.
+    ///
+    /// Considers a "solution" to be any expression with finite log-probability according to a
+    /// task's oracle.
+    ///
+    /// Each task will be associated with at most `params.frontier_size` many such expressions, and
+    /// enumeration is stopped when `params.search_limit` valid expressions have been checked.
     fn explore<O>(
         &self,
         params: &Params,
@@ -82,6 +103,13 @@ pub trait EC: Representation {
         }
     }
 
+    /// Enumerate solutions for the given tasks which all accord to the given type.
+    ///
+    /// Considers a "solution" to be any expression with finite log-probability according to a
+    /// task's oracle.
+    ///
+    /// Each task will be associated with at most `params.frontier_size` many such expressions, and
+    /// enumeration is stopped when `params.search_limit` valid expressions have been checked.
     fn enumerate_solutions<O>(
         &self,
         params: &Params,
