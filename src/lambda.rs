@@ -161,6 +161,7 @@ impl Language {
     where
         F: Fn(&str, &Vec<V>) -> V,
     {
+        let _ = (expr, evaluator, inps, out);
         // TODO: call lisp or something
         false
     }
@@ -512,7 +513,9 @@ impl EC for Language {
         tasks: &Vec<Task<Self, O>>,
         frontiers: &Vec<Vec<Self::Expression>>,
     ) -> Self {
+        let _ = (tasks, frontiers);
         self.clone()
+        // TODO
     }
 }
 
