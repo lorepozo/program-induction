@@ -85,11 +85,16 @@ use super::{InferenceError, Representation, Task, EC};
 ///     ],
 ///     vec![],
 /// );
-/// let exprs: Vec<Expression> = dsl.enumerate(tp!(int)).take(3).collect();
+/// let exprs: Vec<Expression> = dsl.enumerate(tp!(int)).take(8).collect();
 /// assert_eq!(exprs, vec![
 ///     Expression::Primitive(0),
 ///     Expression::Primitive(1),
-///     Expression::Primitive(2),
+///     dsl.parse("(+ 0 0)").unwrap(),
+///     dsl.parse("(+ 0 1)").unwrap(),
+///     dsl.parse("(+ 1 0)").unwrap(),
+///     dsl.parse("(+ 1 1)").unwrap(),
+///     dsl.parse("(+ 0 (+ 0 0))").unwrap(),
+///     dsl.parse("(+ 0 (+ 0 1))").unwrap(),
 /// ]);
 /// # }
 /// ```
@@ -195,80 +200,6 @@ impl Language {
     /// [`parse`]: #method.parse
     pub fn stringify(&self, expr: &Expression) -> String {
         expr.show(self, false)
-    }
-
-    fn candidates(
-        &self,
-        request: &Type,
-        ctx: &Context,
-        env: &VecDeque<Type>,
-        leaf_only: bool,
-    ) -> Vec<(f64, Expression, Type, Context)> {
-        let mut cands = Vec::new();
-        let prims = self.primitives
-            .iter()
-            .zip(&self.primitives_logprob)
-            .enumerate()
-            .map(|(i, (&(_, ref tp), &p))| (p, tp, true, Expression::Primitive(i)));
-        let invented = self.invented
-            .iter()
-            .zip(&self.invented_logprob)
-            .enumerate()
-            .map(|(i, (&(_, ref tp), &p))| (p, tp, true, Expression::Invented(i)));
-        let indices = env.iter()
-            .enumerate()
-            .map(|(i, tp)| (self.variable_logprob, tp, false, Expression::Index(i)));
-        for (p, tp, instantiate, expr) in prims.chain(invented).chain(indices) {
-            let mut ctx = ctx.clone();
-            let itp;
-            let tp = if instantiate {
-                itp = tp.instantiate_indep(&mut ctx);
-                &itp
-            } else {
-                tp
-            };
-            let ret = if let &Type::Arrow(ref arrow) = tp {
-                if leaf_only {
-                    continue;
-                }
-                arrow.returns()
-            } else {
-                &tp
-            };
-            if let Ok(_) = ctx.unify(ret, request) {
-                let tp = tp.apply(&ctx);
-                cands.push((p, expr, tp, ctx))
-            }
-        }
-        // update probabilities for variables (indices)
-        let n_indexed = cands
-            .iter()
-            .filter(|&&(_, ref expr, _, _)| match expr {
-                &Expression::Index(_) => true,
-                _ => false,
-            })
-            .count() as f64;
-        for mut c in &mut cands {
-            match c.1 {
-                Expression::Index(_) => c.0 -= n_indexed.ln(),
-                _ => (),
-            }
-        }
-        // normalize
-        let p_largest = cands
-            .iter()
-            .map(|&(p, _, _, _)| p)
-            .fold(f64::NEG_INFINITY, |acc, p| acc.max(p));
-        let z = p_largest
-            + cands
-                .iter()
-                .map(|&(p, _, _, _)| (p - p_largest).exp())
-                .sum::<f64>()
-                .ln();
-        for mut c in &mut cands {
-            c.0 -= z;
-        }
-        cands
     }
 }
 
@@ -561,6 +492,7 @@ where
 mod enumerator {
     use std::collections::VecDeque;
     use std::iter;
+    use std::f64;
     use std::rc::Rc;
     use polytype::{Context, Type};
     use super::{Expression, Language};
@@ -574,7 +506,7 @@ mod enumerator {
         let env = Rc::new(LinkedList::default());
         let depth = 0;
         Box::new(
-            (0..5)
+            (0..)
                 .map(|n| BUDGET_INCREMENT * (n as f64))
                 .flat_map(move |offset| {
                     enumerate(
@@ -596,42 +528,36 @@ mod enumerator {
         budget: (f64, f64),
         depth: u32,
     ) -> Box<Iterator<Item = (f64, Context, Expression)> + 'a> {
-        if let Type::Arrow(arrow) = request {
+        if budget.1 <= 0f64 || depth > MAX_DEPTH {
+            Box::new(iter::empty())
+        } else if let Type::Arrow(arrow) = request {
             let env = LinkedList::prepend(env, *arrow.arg);
             let it = enumerate(dsl, *arrow.ret, ctx, env, budget, depth)
                 .map(|(ll, ctx, body)| (ll, ctx, Expression::Abstraction(Box::new(body))));
             Box::new(it)
         } else {
-            let it = dsl.candidates(&request, ctx, &LinkedList::as_vecdeque(&env), false)
-                .into_iter()
-                .filter(move |&(ll, _, _, _)| {
-                        -ll > budget.1})
-                .flat_map(
-                    move |(ll, expr, tp, ctx)| -> Box<Iterator<Item = (f64, Context, Expression)>+'a> {
-                        let budget = (budget.0 - ll, budget.1 - ll);
-                        if budget.1 <= 0f64 || depth > MAX_DEPTH {
-                            Box::new(iter::empty())
-                        } else if let Type::Arrow(f_tp) = tp {
-                            let arg_tps: VecDeque<Type> =
-                                f_tp.args().into_iter().cloned().collect();
-                            enumerate_application(
-                                dsl,
-                                &ctx,
-                                env.clone(),
-                                expr,
-                                ll,
-                                arg_tps,
-                                budget,
-                                depth + 1,
-                            )
-                        } else if budget.0 < 0f64 && 0f64 <= budget.1 {
-                            Box::new(iter::once((ll, ctx, expr)))
+            Box::new(
+                candidates(dsl, &request, ctx, &LinkedList::as_vecdeque(&env))
+                    .into_iter()
+                    .filter(move |&(ll, _, _, _)| -ll <= budget.1)
+                    .flat_map(move |(ll, expr, tp, ctx)| {
+                        let arg_tps: VecDeque<Type> = if let Type::Arrow(f_tp) = tp {
+                            f_tp.args().into_iter().cloned().collect()
                         } else {
-                            Box::new(iter::empty())
-                        }
-                    },
-                );
-            Box::new(it)
+                            VecDeque::new()
+                        };
+                        let budget = (budget.0 + ll, budget.1 + ll);
+                        enumerate_application(
+                            dsl,
+                            &ctx,
+                            env.clone(),
+                            expr,
+                            arg_tps,
+                            budget,
+                            depth + 1,
+                        ).map(move |(l, c, x)| (l + ll, c, x))
+                    }),
+            )
         }
     }
     fn enumerate_application<'a>(
@@ -639,38 +565,107 @@ mod enumerator {
         ctx: &Context,
         env: Rc<LinkedList<Type>>,
         f: Expression,
-        f_ll: f64,
         mut arg_tps: VecDeque<Type>,
         budget: (f64, f64),
         depth: u32,
     ) -> Box<Iterator<Item = (f64, Context, Expression)> + 'a> {
-        if arg_tps.is_empty() {
+        if let Some(arg_tp) = arg_tps.pop_front() {
+            let arg_tp = arg_tp.apply(ctx);
+            Box::new(
+                enumerate(dsl, arg_tp, ctx, env.clone(), (0f64, budget.1), depth).flat_map(
+                    move |(arg_ll, ctx, arg)| {
+                        let f_next = Expression::Application(Box::new(f.clone()), Box::new(arg));
+                        let budget = (budget.0 + arg_ll, budget.1 + arg_ll);
+                        enumerate_application(
+                            dsl,
+                            &ctx,
+                            env.clone(),
+                            f_next,
+                            arg_tps.clone(),
+                            budget,
+                            depth,
+                        ).map(move |(l, c, x)| (arg_ll + l, c, x))
+                    },
+                ),
+            )
+        } else {
+            // no more args (base case)
             if budget.0 < 0f64 && 0f64 <= budget.1 {
-                Box::new(iter::once((f_ll, ctx.clone(), f)))
+                Box::new(iter::once((0f64, ctx.clone(), f)))
             } else {
                 Box::new(iter::empty())
             }
-        } else {
-            let arg_tp = arg_tps.pop_front().unwrap();
-            let budget = (0f64, budget.1);
-            let it = enumerate(dsl, arg_tp, ctx, env.clone(), budget, depth).flat_map(
-                move |(arg_ll, ctx, arg)| {
-                    let f_next = Expression::Application(Box::new(f.clone()), Box::new(arg));
-                    let budget = (budget.0 + arg_ll, budget.1 + arg_ll);
-                    enumerate_application(
-                        dsl,
-                        &ctx,
-                        env.clone(),
-                        f_next,
-                        f_ll + arg_ll,
-                        arg_tps.clone(),
-                        budget,
-                        depth,
-                    )
-                },
-            );
-            Box::new(it)
         }
+    }
+
+    fn candidates(
+        dsl: &Language,
+        request: &Type,
+        ctx: &Context,
+        env: &VecDeque<Type>,
+    ) -> Vec<(f64, Expression, Type, Context)> {
+        let mut cands = Vec::new();
+        let prims = dsl.primitives
+            .iter()
+            .zip(&dsl.primitives_logprob)
+            .enumerate()
+            .map(|(i, (&(_, ref tp), &p))| (p, tp, true, Expression::Primitive(i)));
+        let invented = dsl.invented
+            .iter()
+            .zip(&dsl.invented_logprob)
+            .enumerate()
+            .map(|(i, (&(_, ref tp), &p))| (p, tp, true, Expression::Invented(i)));
+        let indices = env.iter()
+            .enumerate()
+            .map(|(i, tp)| (dsl.variable_logprob, tp, false, Expression::Index(i)));
+        for (p, tp, instantiate, expr) in prims.chain(invented).chain(indices) {
+            let mut ctx = ctx.clone();
+            let itp;
+            let tp = if instantiate {
+                itp = tp.instantiate_indep(&mut ctx);
+                &itp
+            } else {
+                tp
+            };
+            let ret = if let &Type::Arrow(ref arrow) = tp {
+                arrow.returns()
+            } else {
+                &tp
+            };
+            if let Ok(_) = ctx.unify(ret, request) {
+                let tp = tp.apply(&ctx);
+                cands.push((p, expr, tp, ctx))
+            }
+        }
+        // update probabilities for variables (indices)
+        let n_indexed = cands
+            .iter()
+            .filter(|&&(_, ref expr, _, _)| match expr {
+                &Expression::Index(_) => true,
+                _ => false,
+            })
+            .count() as f64;
+        for mut c in &mut cands {
+            match c.1 {
+                Expression::Index(_) => c.0 -= n_indexed.ln(),
+                _ => (),
+            }
+        }
+        // normalize
+        let p_largest = cands
+            .iter()
+            .map(|&(p, _, _, _)| p)
+            .fold(f64::NEG_INFINITY, |acc, p| acc.max(p));
+        let z = p_largest
+            + cands
+                .iter()
+                .map(|&(p, _, _, _)| (p - p_largest).exp())
+                .sum::<f64>()
+                .ln();
+        for mut c in &mut cands {
+            c.0 -= z;
+        }
+        cands
     }
 
     #[derive(Debug, Clone)]

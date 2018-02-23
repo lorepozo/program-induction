@@ -1,4 +1,4 @@
-//! A library for program induction and learning grammars.
+//! A library for program induction and learning representations.
 
 #[macro_use]
 extern crate lazy_static;
