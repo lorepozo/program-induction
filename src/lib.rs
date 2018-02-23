@@ -1,9 +1,4 @@
 //! A library for program induction and learning grammars.
-//!
-//! Good places to look are [`DSL`] and [`ec`].
-//!
-//! [`DSL`]: struct.DSL.html
-//! [`ec`]: ec/index.html
 
 #[macro_use]
 extern crate lazy_static;
@@ -19,13 +14,13 @@ use std::f64;
 use std::fmt;
 use polytype::Type;
 
-/// The representation of a task which is solved by an [`Expression`] under some [`DSL`].
+/// The representation of a task which is solved by an [`Expression`] under some
+/// [`Representation`].
 ///
-/// A task can be made from an evaluator and examples with [`from_examples`].
+/// A task can be made from an evaluator and examples with [`lambda::from_examples`].
 ///
-/// [`DSL`]: struct.DSL.html
-/// [`Expression`]: enum.Expression.html
-/// [`from_examples`]: #method.from_examples
+/// [`Representation`]: trait.Representation.html
+/// [`Expression`]: trait.Representation.html#associatedtype.Expression
 pub struct Task<'a, R: Representation, O> {
     /// evaluate an expression by getting its log-likelihood.
     pub oracle: Box<Fn(&R, &R::Expression) -> f64 + 'a>,
@@ -44,8 +39,7 @@ pub trait Representation: Sized {
 
 #[derive(Debug, Clone)]
 pub enum InferenceError {
-    BadPrimitive(usize),
-    BadInvented(usize),
+    BadExpression(String),
     Unify(polytype::UnificationError),
 }
 impl From<polytype::UnificationError> for InferenceError {
@@ -56,8 +50,7 @@ impl From<polytype::UnificationError> for InferenceError {
 impl fmt::Display for InferenceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            &InferenceError::BadPrimitive(i) => write!(f, "invalid primitive: '{}'", i),
-            &InferenceError::BadInvented(i) => write!(f, "invalid invented: '{}'", i),
+            &InferenceError::BadExpression(ref msg) => write!(f, "invalid expression: '{}'", msg),
             &InferenceError::Unify(ref err) => write!(f, "could not unify to infer type: {}", err),
         }
     }

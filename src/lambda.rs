@@ -287,7 +287,10 @@ impl Expression {
             &Expression::Primitive(num) => if let Some(prim) = dsl.primitives.get(num as usize) {
                 Ok(prim.1.instantiate_indep(ctx))
             } else {
-                Err(InferenceError::BadPrimitive(num))
+                Err(InferenceError::BadExpression(format!(
+                    "primitive does not exist: {}",
+                    num
+                )))
             },
             &Expression::Application(ref f, ref x) => {
                 let f_tp = f.infer(dsl, &mut ctx, env, indices)?;
@@ -316,7 +319,10 @@ impl Expression {
             &Expression::Invented(num) => if let Some(inv) = dsl.invented.get(num as usize) {
                 Ok(inv.1.instantiate_indep(ctx))
             } else {
-                Err(InferenceError::BadInvented(num))
+                Err(InferenceError::BadExpression(format!(
+                    "invention does not exist: {}",
+                    num
+                )))
             },
         }
     }
@@ -500,44 +506,40 @@ impl EC for DSL {
     }
 }
 
-impl<'a, V: 'a> Task<'a, DSL, &'a Vec<(Vec<V>, V)>>
+/// Here we let all tasks be represented by input/output pairs that are values in the space of
+/// type `V`. For example, circuits may have `V` be just `bool`, whereas string editing may
+/// have `V` be an enum featuring strings, chars, and natural numbers. All inputs or evaluated
+/// expressions must be representable by `V`.
+///
+/// An `evaluator` takes the name of a primitive and a vector of sequential inputs to the
+/// expression (so an expression with unary type will have one input in a vec of size 1).
+///
+/// The resulting task is "all-or-nothing": the oracle returns either `0` if all examples are
+/// correctly hit or `f64::NEG_INFINITY` otherwise.
+pub fn task_by_example<'a, V, F>(
+    evaluator: &'a F,
+    examples: &'a Vec<(Vec<V>, V)>,
+    tp: Type,
+) -> Task<'a, DSL, &'a Vec<(Vec<V>, V)>>
 where
-    V: PartialEq,
+    V: PartialEq + 'a,
+    F: Fn(&str, &Vec<V>) -> V + 'a,
 {
-    /// Here we let all tasks be represented by input/output pairs that are values in the space of
-    /// type `V`. For example, circuits may have `V` be just `bool`, whereas string editing may
-    /// have `V` be an enum featuring strings, chars, and natural numbers. All inputs or evaluated
-    /// expressions must be representable by `V`.
-    ///
-    /// An `evaluator` takes the name of a primitive and a vector of sequential inputs to the
-    /// expression (so an expression with unary type will have one input in a vec of size 1).
-    ///
-    /// The resulting task is "all-or-nothing": the oracle returns either `0` if all examples are
-    /// correctly hit or `f64::NEG_INFINITY` otherwise.
-    pub fn from_evaluated_examples<F>(
-        evaluator: &'a F,
-        examples: &'a Vec<(Vec<V>, V)>,
-        tp: Type,
-    ) -> Self
-    where
-        F: Fn(&str, &Vec<V>) -> V + 'a,
-    {
-        let oracle = Box::new(move |dsl: &DSL, expr: &Expression| {
-            let ref expr = dsl.strip_invented(expr);
-            if examples
-                .iter()
-                .all(|&(ref inps, ref out)| dsl.check(expr, evaluator, inps, out))
-            {
-                0f64
-            } else {
-                f64::NEG_INFINITY
-            }
-        });
-        Task {
-            oracle,
-            observation: examples,
-            tp,
+    let oracle = Box::new(move |dsl: &DSL, expr: &Expression| {
+        let ref expr = dsl.strip_invented(expr);
+        if examples
+            .iter()
+            .all(|&(ref inps, ref out)| dsl.check(expr, evaluator, inps, out))
+        {
+            0f64
+        } else {
+            f64::NEG_INFINITY
         }
+    });
+    Task {
+        oracle,
+        observation: examples,
+        tp,
     }
 }
 
