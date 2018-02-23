@@ -3,6 +3,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::f64;
 use std::fmt::{self, Debug};
+use std::rc::Rc;
 use polytype::{Context, Type};
 use super::{InferenceError, Representation, Task, EC};
 
@@ -166,9 +167,9 @@ impl Language {
     ///     ],
     ///     vec![],
     /// );
-    /// let expr = dsl.parse("(+ 1)").unwrap();
-    /// let inps = vec![5i32];
-    /// let out = 6i32;
+    /// let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
+    /// let inps: Vec<i32> = vec![2, 5];
+    /// let out: i32 = 8;
     /// assert!(dsl.check(&expr, &evaluator, &inps, &out));
     /// # }
     /// ```
@@ -584,7 +585,7 @@ mod enumerator {
     use std::f64;
     use std::rc::Rc;
     use polytype::{Context, Type};
-    use super::{Expression, Language};
+    use super::{Expression, Language, LinkedList};
 
     const BUDGET_INCREMENT: f64 = 1.0;
     const MAX_DEPTH: u32 = 256;
@@ -756,42 +757,19 @@ mod enumerator {
         }
         cands
     }
-
-    #[derive(Debug, Clone)]
-    struct LinkedList<T: Clone>(Option<(T, Rc<LinkedList<T>>)>);
-    impl<T: Clone> LinkedList<T> {
-        fn prepend(lst: Rc<LinkedList<T>>, v: T) -> Rc<LinkedList<T>> {
-            Rc::new(LinkedList(Some((v, lst.clone()))))
-        }
-        fn as_vecdeque(mut lst: &Rc<LinkedList<T>>) -> VecDeque<T> {
-            let mut out = VecDeque::new();
-            loop {
-                if let Some((ref v, ref nlst)) = lst.0 {
-                    out.push_back(v.clone());
-                    lst = nlst;
-                } else {
-                    break;
-                }
-            }
-            out
-        }
-    }
-    impl<T: Clone> Default for LinkedList<T> {
-        fn default() -> Self {
-            LinkedList(None)
-        }
-    }
 }
 
 mod eval {
     //! Only works with systems that don't have first order functions. (i.e. evaluation only
     //! happens by calling primitives.)
+    use std::collections::VecDeque;
     use std::fmt::Debug;
+    use std::rc::Rc;
     use polytype::Type;
     use super::{Expression, Language};
 
-    #[derive(Clone, Debug)]
-    pub enum ReducedExpression<'a, V: Clone + Debug> {
+    #[derive(Clone, Debug, PartialEq)]
+    pub enum ReducedExpression<'a, V: Clone + PartialEq + Debug> {
         Value(V),
         Primitive(&'a str, &'a Type),
         Application(Box<Vec<ReducedExpression<'a, V>>>),
@@ -810,64 +788,91 @@ mod eval {
             F: Fn(&str, &Vec<V>) -> V,
         {
             let expr = self.clone().with_args(inps);
-            let evaluated = expr.eval(evaluator);
+            let env = Rc::new(VecDeque::new());
+            let mut evaluated = expr.eval(evaluator, env.clone());
+            loop {
+                let next = evaluated.eval(evaluator, env.clone());
+                if next == evaluated {
+                    break;
+                } else {
+                    evaluated = next
+                }
+            }
             match evaluated {
                 ReducedExpression::Value(ref o) => o == out,
                 _ => false,
             }
         }
-        fn eval<F>(&self, evaluator: &F) -> ReducedExpression<V>
+        fn eval<F>(
+            &self,
+            evaluator: &F,
+            env: Rc<VecDeque<ReducedExpression<'a, V>>>,
+        ) -> ReducedExpression<'a, V>
         where
             F: Fn(&str, &Vec<V>) -> V,
         {
             match self {
                 &ReducedExpression::Application(ref xs) => {
-                    let f = xs[0].eval(evaluator);
-                    let mut xs: Vec<_> = xs[1..].iter().map(|x| x.eval(evaluator)).collect();
+                    let f = &xs[0];
+                    let mut xs: Vec<_> = xs[1..]
+                        .iter()
+                        .map(|x| x.eval(evaluator, env.clone()))
+                        .collect();
                     match f {
-                        ReducedExpression::Primitive(name, tp) => {
+                        &ReducedExpression::Primitive(name, tp) => {
+                            // when applying a primitive, check if all arity-many args are concrete
+                            // values and evaluate if possible.
                             if let &Type::Arrow(ref arrow) = tp {
                                 let arity = arrow.args().len();
-                                if arity <= xs.len() {
-                                    let have_values = xs.iter().take(arity).all(|x| match x {
-                                        &ReducedExpression::Value(_) => true,
-                                        _ => false,
-                                    });
-                                    if have_values {
-                                        let args: Vec<V> = xs.iter()
-                                            .take(arity)
-                                            .map(|x| {
-                                                if let &ReducedExpression::Value(ref v) = x {
-                                                    v.clone()
-                                                } else {
-                                                    unreachable!()
-                                                }
-                                            })
-                                            .collect();
-                                        let v = ReducedExpression::Value(evaluator(name, &args));
-                                        let mut rest: Vec<
-                                            _,
-                                        > = xs.into_iter().skip(arity).collect();
-                                        if rest.is_empty() {
-                                            v
-                                        } else {
-                                            rest.insert(0, v);
-                                            ReducedExpression::Application(Box::new(rest))
-                                        }
+                                if arity <= xs.len() && xs.iter().take(arity).all(|x| match x {
+                                    &ReducedExpression::Value(_) => true,
+                                    _ => false,
+                                }) {
+                                    let mut args = xs;
+                                    let mut xs = args.split_off(arity);
+                                    let args: Vec<V> = args.into_iter()
+                                        .map(|x| match x {
+                                            ReducedExpression::Value(v) => v,
+                                            _ => unreachable!(),
+                                        })
+                                        .collect();
+                                    let v = ReducedExpression::Value(evaluator(name, &args));
+                                    if xs.is_empty() {
+                                        v
                                     } else {
-                                        xs.insert(0, f);
+                                        xs.insert(0, v);
                                         ReducedExpression::Application(Box::new(xs))
                                     }
                                 } else {
-                                    xs.insert(0, f);
+                                    xs.insert(0, f.eval(evaluator, env.clone()));
                                     ReducedExpression::Application(Box::new(xs))
                                 }
                             } else {
                                 panic!("tried to apply a primitive that wasn't a function")
                             }
                         }
+                        &ReducedExpression::Abstraction(ref body) => {
+                            // when applying an abstraction, try to beta-reduce
+                            if xs.is_empty() {
+                                ReducedExpression::Abstraction(body.clone())
+                            } else {
+                                let binding = xs.remove(0);
+                                let mut env = (*env).clone();
+                                env.push_front(binding);
+                                let v = body.eval(evaluator, Rc::new(env));
+                                if xs.is_empty() {
+                                    v
+                                } else if let ReducedExpression::Application(mut v) = v {
+                                    v.extend(xs);
+                                    ReducedExpression::Application(v)
+                                } else {
+                                    xs.insert(0, v);
+                                    ReducedExpression::Application(Box::new(xs))
+                                }
+                            }
+                        }
                         _ => {
-                            xs.insert(0, f);
+                            xs.insert(0, f.eval(evaluator, env.clone()));
                             ReducedExpression::Application(Box::new(xs))
                         }
                     }
@@ -879,6 +884,10 @@ mod eval {
                         ReducedExpression::Value(evaluator(name, &vec![]))
                     }
                 }
+                &ReducedExpression::Index(i) => match env.get(i) {
+                    Some(x) => x.clone(),
+                    None => ReducedExpression::Index(i),
+                },
                 _ => self.clone(),
             }
         }
@@ -924,6 +933,31 @@ mod eval {
                 &Expression::Invented(_) => unreachable!(/* invented was stripped */),
             }
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LinkedList<T: Clone>(Option<(T, Rc<LinkedList<T>>)>);
+impl<T: Clone> LinkedList<T> {
+    fn prepend(lst: Rc<LinkedList<T>>, v: T) -> Rc<LinkedList<T>> {
+        Rc::new(LinkedList(Some((v, lst.clone()))))
+    }
+    fn as_vecdeque(mut lst: &Rc<LinkedList<T>>) -> VecDeque<T> {
+        let mut out = VecDeque::new();
+        loop {
+            if let Some((ref v, ref nlst)) = lst.0 {
+                out.push_back(v.clone());
+                lst = nlst;
+            } else {
+                break;
+            }
+        }
+        out
+    }
+}
+impl<T: Clone> Default for LinkedList<T> {
+    fn default() -> Self {
+        LinkedList(None)
     }
 }
 
