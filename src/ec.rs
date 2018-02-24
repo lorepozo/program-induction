@@ -1,7 +1,9 @@
 //! The Exploration-Compression algorithm.
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use polytype::Type;
+use rayon::prelude::*;
 
 use super::{Representation, Task};
 
@@ -62,14 +64,14 @@ pub trait EC: Representation {
     ///
     /// [`Representation`]: ../trait.Representation.html
     /// [`Task`]: ../struct.Task.html
-    fn mutate<O>(&self, tasks: &[Task<Self, O>], frontiers: &[Frontier<Self>]) -> Self;
+    fn mutate<O: Sync>(&self, tasks: &[Task<Self, O>], frontiers: &[Frontier<Self>]) -> Self;
 
     // provided methods:
 
     /// The entry point for one iteration of the EC algorithm.
     ///
     /// Returned solutions include the log-prior and log-likelihood of successful expressions.
-    fn ec<O, R>(
+    fn ec<O: Sync, R>(
         &self,
         params: &ECParams,
         tasks: &[Task<Self, O>],
@@ -91,7 +93,7 @@ pub trait EC: Representation {
     ///
     /// Each task will be associated with at most `params.frontier_size` many such expressions, and
     /// enumeration is stopped when `params.search_limit` valid expressions have been checked.
-    fn explore<O>(
+    fn explore<O: Sync>(
         &self,
         params: &ECParams,
         tasks: &[Task<Self, O>],
@@ -99,7 +101,7 @@ pub trait EC: Representation {
     ) -> Vec<Frontier<Self>> {
         if let Some(representations) = recognized {
             tasks
-                .iter()
+                .par_iter()
                 .zip(representations)
                 .enumerate()
                 .map(|(i, (t, ref repr))| {
@@ -115,11 +117,15 @@ pub trait EC: Representation {
             }
             let mut results: Vec<Frontier<Self>> =
                 (0..tasks.len()).map(|_| Frontier::new()).collect();
-            for (i, exprs) in tps.into_iter()
-                .map(|(tp, tasks)| self.enumerate_solutions(params, tp.clone(), tasks))
-                .flat_map(|iter| iter)
             {
-                results[i] = exprs
+                let mutex = Arc::new(Mutex::new(&mut results));
+                tps.into_par_iter()
+                    .map(|(tp, tasks)| self.enumerate_solutions(params, tp.clone(), tasks))
+                    .flat_map(|iter| iter)
+                    .for_each(move |(i, frontier)| {
+                        let mut results = mutex.lock().unwrap();
+                        results[i] = frontier
+                    });
             }
             results
         }
@@ -132,7 +138,7 @@ pub trait EC: Representation {
     ///
     /// Each task will be associated with at most `params.frontier_size` many such expressions, and
     /// enumeration is stopped when `params.search_limit` valid expressions have been checked.
-    fn enumerate_solutions<O>(
+    fn enumerate_solutions<O: Sync>(
         &self,
         params: &ECParams,
         tp: Type,

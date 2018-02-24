@@ -4,6 +4,7 @@
 extern crate lazy_static;
 #[macro_use]
 extern crate polytype;
+extern crate rayon;
 
 pub mod domains;
 mod ec;
@@ -22,9 +23,9 @@ use polytype::Type;
 /// [`Representation`]: trait.Representation.html
 /// [`Expression`]: trait.Representation.html#associatedtype.Expression
 /// [`lambda::task_by_example`]: lambda/fn.task_by_example.html
-pub struct Task<'a, R: Representation, O> {
+pub struct Task<'a, R: Representation, O: Sync> {
     /// Evaluate an expression by getting its log-likelihood.
-    pub oracle: Box<Fn(&R, &R::Expression) -> f64 + 'a>,
+    pub oracle: Box<Fn(&R, &R::Expression) -> f64 + Send + Sync + 'a>,
     /// Some program induction methods can take advantage of observations. This may often
     /// practically be the unit type `()`.
     pub observation: O,
@@ -34,7 +35,7 @@ pub struct Task<'a, R: Representation, O> {
 
 /// A representation gives a space of expressions. It will, in most cases, be a probability
 /// distribution over expressions (e.g. PCFG).
-pub trait Representation: Send + Sized {
+pub trait Representation: Send + Sync + Sized {
     /// An Expression is a sentence in the representation. Tasks are solved by Expressions.
     type Expression: Clone + Send;
 

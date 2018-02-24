@@ -550,7 +550,7 @@ impl EC for Language {
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
         self.enumerate(tp)
     }
-    fn mutate<O>(&self, tasks: &[Task<Self, O>], frontiers: &[Frontier<Self>]) -> Self {
+    fn mutate<O: Sync>(&self, tasks: &[Task<Self, O>], frontiers: &[Frontier<Self>]) -> Self {
         let _ = (tasks, frontiers);
         self.clone()
         // TODO
@@ -610,8 +610,8 @@ pub fn task_by_example<'a, V, F>(
     tp: Type,
 ) -> Task<'a, Language, &'a [(Vec<V>, V)]>
 where
-    V: PartialEq + Clone + Debug + 'a,
-    F: Fn(&str, &[V]) -> V + 'a,
+    V: PartialEq + Clone + Sync + Debug + 'a,
+    F: Fn(&str, &[V]) -> V + Sync + 'a,
 {
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
         let expr = &dsl.strip_invented(expr);
