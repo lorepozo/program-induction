@@ -1,12 +1,37 @@
 //! A polymorphically-typed lambda calculus representation.
 
+mod enumerator;
+mod eval;
+
 use std::collections::{HashMap, VecDeque};
 use std::f64;
 use std::fmt::{self, Debug};
-use std::rc::Rc;
 use polytype::{Context, Type};
 use super::{InferenceError, Representation, Task};
 use super::ec::{Frontier, EC};
+
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    /// The location of the original string where parsing failed.
+    pub location: usize,
+    /// A message associated with the parse error.
+    pub msg: &'static str,
+}
+impl ParseError {
+    fn new(location: usize, msg: &'static str) -> Self {
+        Self { location, msg }
+    }
+}
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{} at index {}", self.msg, self.location)
+    }
+}
+impl ::std::error::Error for ParseError {
+    fn description(&self) -> &str {
+        "could not parse expression"
+    }
+}
 
 /// A Language is a registry for primitive and invented expressions in a polymorphically-typed lambda
 /// calculus, as well as corresponding production probabilities.
@@ -306,6 +331,22 @@ impl Language {
         expr.show(self, false)
     }
 }
+impl Representation for Language {
+    type Expression = Expression;
+    fn infer(&self, expr: &Self::Expression) -> Result<Type, InferenceError> {
+        self.infer(expr)
+    }
+}
+impl EC for Language {
+    fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
+        self.enumerate(tp)
+    }
+    fn mutate<O: Sync>(&self, tasks: &[Task<Self, O>], frontiers: &[Frontier<Self>]) -> Self {
+        let _ = (tasks, frontiers);
+        self.clone()
+        // TODO
+    }
+}
 
 /// Expressions of lambda calculus, which only make sense with an accompanying [`Language`].
 ///
@@ -540,23 +581,6 @@ impl Expression {
     }
 }
 
-impl Representation for Language {
-    type Expression = Expression;
-    fn infer(&self, expr: &Self::Expression) -> Result<Type, InferenceError> {
-        self.infer(expr)
-    }
-}
-impl EC for Language {
-    fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
-        self.enumerate(tp)
-    }
-    fn mutate<O: Sync>(&self, tasks: &[Task<Self, O>], frontiers: &[Frontier<Self>]) -> Self {
-        let _ = (tasks, frontiers);
-        self.clone()
-        // TODO
-    }
-}
-
 /// Create a task based on evaluating lambda calculus expressions on test input/output pairs.
 ///
 /// Here we let all tasks be represented by input/output pairs that are values in the space of
@@ -628,407 +652,5 @@ where
         oracle,
         observation: examples,
         tp,
-    }
-}
-
-mod enumerator {
-    use std::collections::VecDeque;
-    use std::iter;
-    use std::f64;
-    use std::rc::Rc;
-    use polytype::{Context, Type};
-    use super::{Expression, Language, LinkedList};
-
-    const BUDGET_INCREMENT: f64 = 1.0;
-    const MAX_DEPTH: u32 = 256;
-
-    pub fn new<'a>(
-        dsl: &'a Language,
-        request: Type,
-    ) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
-        let budget = |offset: f64| (offset, offset + BUDGET_INCREMENT);
-        let ctx = Context::default();
-        let env = Rc::new(LinkedList::default());
-        let depth = 0;
-        Box::new(
-            (0..)
-                .map(|n| BUDGET_INCREMENT * f64::from(n))
-                .flat_map(move |offset| {
-                    enumerate(
-                        dsl,
-                        request.clone(),
-                        &ctx,
-                        env.clone(),
-                        budget(offset),
-                        depth,
-                    ).map(move |(log_prior, _, expr)| (expr, log_prior))
-                }),
-        )
-    }
-    fn enumerate<'a>(
-        dsl: &'a Language,
-        request: Type,
-        ctx: &Context,
-        env: Rc<LinkedList<Type>>,
-        budget: (f64, f64),
-        depth: u32,
-    ) -> Box<Iterator<Item = (f64, Context, Expression)> + 'a> {
-        if budget.1 <= 0f64 || depth > MAX_DEPTH {
-            Box::new(iter::empty())
-        } else if let Type::Arrow(arrow) = request {
-            let env = LinkedList::prepend(&env, *arrow.arg);
-            let it = enumerate(dsl, *arrow.ret, ctx, env, budget, depth)
-                .map(|(ll, ctx, body)| (ll, ctx, Expression::Abstraction(Box::new(body))));
-            Box::new(it)
-        } else {
-            Box::new(
-                candidates(dsl, &request, ctx, &env.as_vecdeque())
-                    .into_iter()
-                    .filter(move |&(ll, _, _, _)| -ll <= budget.1)
-                    .flat_map(move |(ll, expr, tp, ctx)| {
-                        let arg_tps: VecDeque<Type> = if let Type::Arrow(f_tp) = tp {
-                            f_tp.args().into_iter().cloned().collect()
-                        } else {
-                            VecDeque::new()
-                        };
-                        let budget = (budget.0 + ll, budget.1 + ll);
-                        enumerate_application(
-                            dsl,
-                            &ctx,
-                            env.clone(),
-                            expr,
-                            arg_tps,
-                            budget,
-                            depth + 1,
-                        ).map(move |(l, c, x)| (l + ll, c, x))
-                    }),
-            )
-        }
-    }
-    fn enumerate_application<'a>(
-        dsl: &'a Language,
-        ctx: &Context,
-        env: Rc<LinkedList<Type>>,
-        f: Expression,
-        mut arg_tps: VecDeque<Type>,
-        budget: (f64, f64),
-        depth: u32,
-    ) -> Box<Iterator<Item = (f64, Context, Expression)> + 'a> {
-        if let Some(arg_tp) = arg_tps.pop_front() {
-            let arg_tp = arg_tp.apply(ctx);
-            Box::new(
-                enumerate(dsl, arg_tp, ctx, env.clone(), (0f64, budget.1), depth).flat_map(
-                    move |(arg_ll, ctx, arg)| {
-                        let f_next = Expression::Application(Box::new(f.clone()), Box::new(arg));
-                        let budget = (budget.0 + arg_ll, budget.1 + arg_ll);
-                        enumerate_application(
-                            dsl,
-                            &ctx,
-                            env.clone(),
-                            f_next,
-                            arg_tps.clone(),
-                            budget,
-                            depth,
-                        ).map(move |(l, c, x)| (arg_ll + l, c, x))
-                    },
-                ),
-            )
-        } else if budget.0 < 0f64 && 0f64 <= budget.1 {
-            Box::new(iter::once((0f64, ctx.clone(), f)))
-        } else {
-            Box::new(iter::empty())
-        }
-    }
-
-    fn candidates(
-        dsl: &Language,
-        request: &Type,
-        ctx: &Context,
-        env: &VecDeque<Type>,
-    ) -> Vec<(f64, Expression, Type, Context)> {
-        let mut cands = Vec::new();
-        let prims = dsl.primitives
-            .iter()
-            .zip(&dsl.primitives_logprob)
-            .enumerate()
-            .map(|(i, (&(_, ref tp), &p))| (p, tp, true, Expression::Primitive(i)));
-        let invented = dsl.invented
-            .iter()
-            .zip(&dsl.invented_logprob)
-            .enumerate()
-            .map(|(i, (&(_, ref tp), &p))| (p, tp, true, Expression::Invented(i)));
-        let indices = env.iter()
-            .enumerate()
-            .map(|(i, tp)| (dsl.variable_logprob, tp, false, Expression::Index(i)));
-        for (p, tp, instantiate, expr) in prims.chain(invented).chain(indices) {
-            let mut ctx = ctx.clone();
-            let itp;
-            let tp = if instantiate {
-                itp = tp.instantiate_indep(&mut ctx);
-                &itp
-            } else {
-                tp
-            };
-            let ret = if let Type::Arrow(ref arrow) = *tp {
-                arrow.returns()
-            } else {
-                &tp
-            };
-            if ctx.unify(ret, request).is_ok() {
-                let tp = tp.apply(&ctx);
-                cands.push((p, expr, tp, ctx))
-            }
-        }
-        // update probabilities for variables (indices)
-        let n_indexed = cands
-            .iter()
-            .filter(|&&(_, ref expr, _, _)| match *expr {
-                Expression::Index(_) => true,
-                _ => false,
-            })
-            .count() as f64;
-        for mut c in &mut cands {
-            if let Expression::Index(_) = c.1 {
-                c.0 -= n_indexed.ln()
-            }
-        }
-        // normalize
-        let p_largest = cands
-            .iter()
-            .map(|&(p, _, _, _)| p)
-            .fold(f64::NEG_INFINITY, |acc, p| acc.max(p));
-        let z = p_largest
-            + cands
-                .iter()
-                .map(|&(p, _, _, _)| (p - p_largest).exp())
-                .sum::<f64>()
-                .ln();
-        for mut c in &mut cands {
-            c.0 -= z;
-        }
-        cands
-    }
-}
-
-mod eval {
-    //! Only works with systems that don't have first order functions. (i.e. evaluation only
-    //! happens by calling primitives.)
-    use std::collections::VecDeque;
-    use std::fmt::Debug;
-    use std::rc::Rc;
-    use polytype::Type;
-    use super::{Expression, Language};
-
-    #[derive(Clone, Debug, PartialEq)]
-    pub enum ReducedExpression<'a, V: Clone + PartialEq + Debug> {
-        Value(V),
-        Primitive(&'a str, &'a Type),
-        Application(Vec<ReducedExpression<'a, V>>),
-        Abstraction(Box<ReducedExpression<'a, V>>),
-        Index(usize),
-    }
-    impl<'a, V> ReducedExpression<'a, V>
-    where
-        V: Clone + PartialEq + Debug,
-    {
-        pub fn new(dsl: &'a Language, expr: &Expression) -> Self {
-            Self::from_expr(dsl, &dsl.strip_invented(expr))
-        }
-        pub fn check<F>(&self, evaluator: &F, inps: &[V], out: &V) -> bool
-        where
-            F: Fn(&str, &[V]) -> V,
-        {
-            let expr = self.clone().with_args(inps);
-            let env = &Rc::new(VecDeque::new());
-            let mut evaluated = expr.eval(evaluator, env);
-            loop {
-                let next = evaluated.eval(evaluator, env);
-                if next == evaluated {
-                    break;
-                } else {
-                    evaluated = next
-                }
-            }
-            match evaluated {
-                ReducedExpression::Value(ref o) => o == out,
-                _ => false,
-            }
-        }
-        fn eval<F>(
-            &self,
-            evaluator: &F,
-            env: &Rc<VecDeque<ReducedExpression<'a, V>>>,
-        ) -> ReducedExpression<'a, V>
-        where
-            F: Fn(&str, &[V]) -> V,
-        {
-            match *self {
-                ReducedExpression::Application(ref xs) => {
-                    let f = &xs[0];
-                    let mut xs: Vec<_> = xs[1..].iter().map(|x| x.eval(evaluator, env)).collect();
-                    match *f {
-                        ReducedExpression::Primitive(name, tp) => {
-                            // when applying a primitive, check if all arity-many args are concrete
-                            // values and evaluate if possible.
-                            if let Type::Arrow(ref arrow) = *tp {
-                                let arity = arrow.args().len();
-                                if arity <= xs.len() && xs.iter().take(arity).all(|x| match *x {
-                                    ReducedExpression::Value(_) => true,
-                                    _ => false,
-                                }) {
-                                    let mut args = xs;
-                                    let mut xs = args.split_off(arity);
-                                    let args: Vec<V> = args.into_iter()
-                                        .map(|x| match x {
-                                            ReducedExpression::Value(v) => v,
-                                            _ => unreachable!(),
-                                        })
-                                        .collect();
-                                    let v = ReducedExpression::Value(evaluator(name, &args));
-                                    if xs.is_empty() {
-                                        v
-                                    } else {
-                                        xs.insert(0, v);
-                                        ReducedExpression::Application(xs)
-                                    }
-                                } else {
-                                    xs.insert(0, f.eval(evaluator, env));
-                                    ReducedExpression::Application(xs)
-                                }
-                            } else {
-                                panic!("tried to apply a primitive that wasn't a function")
-                            }
-                        }
-                        ReducedExpression::Abstraction(ref body) => {
-                            // when applying an abstraction, try to beta-reduce
-                            if xs.is_empty() {
-                                ReducedExpression::Abstraction(body.clone())
-                            } else {
-                                let binding = xs.remove(0);
-                                let mut env = (**env).clone();
-                                env.push_front(binding);
-                                let v = body.eval(evaluator, &Rc::new(env));
-                                if xs.is_empty() {
-                                    v
-                                } else if let ReducedExpression::Application(mut v) = v {
-                                    v.extend(xs);
-                                    ReducedExpression::Application(v)
-                                } else {
-                                    xs.insert(0, v);
-                                    ReducedExpression::Application(xs)
-                                }
-                            }
-                        }
-                        _ => {
-                            xs.insert(0, f.eval(evaluator, env));
-                            ReducedExpression::Application(xs)
-                        }
-                    }
-                }
-                ReducedExpression::Primitive(name, tp) => {
-                    if let Type::Arrow(_) = *tp {
-                        ReducedExpression::Primitive(name, tp)
-                    } else {
-                        ReducedExpression::Value(evaluator(name, &[]))
-                    }
-                }
-                ReducedExpression::Index(i) => match env.get(i) {
-                    Some(x) => x.clone(),
-                    None => ReducedExpression::Index(i),
-                },
-                _ => self.clone(),
-            }
-        }
-        fn with_args(self, inps: &[V]) -> Self {
-            let mut inps: Vec<_> = inps.iter()
-                .map(|v| ReducedExpression::Value(v.clone()))
-                .collect();
-            match self {
-                ReducedExpression::Application(mut xs) => {
-                    xs.extend(inps);
-                    ReducedExpression::Application(xs)
-                }
-                _ => {
-                    inps.insert(0, self);
-                    ReducedExpression::Application(inps)
-                }
-            }
-        }
-        fn from_expr(dsl: &'a Language, expr: &Expression) -> Self {
-            match *expr {
-                Expression::Primitive(num) => {
-                    ReducedExpression::Primitive(&dsl.primitives[num].0, &dsl.primitives[num].1)
-                }
-                Expression::Application(ref f, ref x) => {
-                    let mut v = vec![Self::from_expr(dsl, x)];
-                    let mut f: &Expression = f;
-                    loop {
-                        if let Expression::Application(ref inner_f, ref x) = *f {
-                            v.push(Self::from_expr(dsl, x));
-                            f = inner_f;
-                        } else {
-                            v.push(Self::from_expr(dsl, f));
-                            break;
-                        }
-                    }
-                    v.reverse();
-                    ReducedExpression::Application(v)
-                }
-                Expression::Abstraction(ref body) => {
-                    ReducedExpression::Abstraction(Box::new(Self::from_expr(dsl, body)))
-                }
-                Expression::Index(i) => ReducedExpression::Index(i),
-                Expression::Invented(_) => unreachable!(/* invented was stripped */),
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct LinkedList<T: Clone>(Option<(T, Rc<LinkedList<T>>)>);
-impl<T: Clone> LinkedList<T> {
-    fn prepend(lst: &Rc<LinkedList<T>>, v: T) -> Rc<LinkedList<T>> {
-        Rc::new(LinkedList(Some((v, lst.clone()))))
-    }
-    fn as_vecdeque(&self) -> VecDeque<T> {
-        let mut lst: &Rc<LinkedList<T>>;
-        let mut out = VecDeque::new();
-        if let Some((ref v, ref nlst)) = self.0 {
-            out.push_back(v.clone());
-            lst = nlst;
-            while let Some((ref v, ref nlst)) = lst.0 {
-                out.push_back(v.clone());
-                lst = nlst;
-            }
-        }
-        out
-    }
-}
-impl<T: Clone> Default for LinkedList<T> {
-    fn default() -> Self {
-        LinkedList(None)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ParseError {
-    /// The location of the original string where parsing failed.
-    pub location: usize,
-    /// A message associated with the parse error.
-    pub msg: &'static str,
-}
-impl ParseError {
-    fn new(location: usize, msg: &'static str) -> Self {
-        Self { location, msg }
-    }
-}
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{} at index {}", self.msg, self.location)
-    }
-}
-impl ::std::error::Error for ParseError {
-    fn description(&self) -> &str {
-        "could not parse expression"
     }
 }
