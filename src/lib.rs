@@ -8,7 +8,7 @@ extern crate polytype;
 pub mod domains;
 mod ec;
 pub mod lambda;
-pub use ec::EC;
+pub use ec::*;
 
 use std::f64;
 use std::fmt;
@@ -34,9 +34,9 @@ pub struct Task<'a, R: Representation, O> {
 
 /// A representation gives a space of expressions. It will, in most cases, be a probability
 /// distribution over expressions (e.g. PCFG).
-pub trait Representation: Sized {
+pub trait Representation: Send + Sized {
     /// An Expression is a sentence in the representation. Tasks are solved by Expressions.
-    type Expression: Clone;
+    type Expression: Clone + Send;
 
     fn infer(&self, expr: &Self::Expression) -> Result<Type, InferenceError>;
 }

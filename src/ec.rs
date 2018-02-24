@@ -1,8 +1,35 @@
+//! The Exploration-Compression algorithm.
+
 use std::collections::HashMap;
 use polytype::Type;
 
 use super::{Representation, Task};
 
+/// A set of expressions which solve a task.
+///
+/// Stores tuples of [`Expression`], log-prior, and log-likelihood.
+///
+/// [`Expression`]: trait.Representation.html#associatetype.Expression
+#[derive(Clone)]
+pub struct Frontier<R: Representation>(pub Vec<(R::Expression, f64, f64)>);
+impl<R: Representation> Frontier<R> {
+    pub fn new() -> Self {
+        Frontier(vec![])
+    }
+    pub fn push(&mut self, expr: R::Expression, log_prior: f64, log_likelihood: f64) {
+        self.0.push((expr, log_prior, log_likelihood))
+    }
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+    pub fn best_solution(&self) -> Option<&(R::Expression, f64, f64)> {
+        self.0
+            .iter()
+            .max_by(|&&(_, _, ref x), &&(_, _, ref y)| x.partial_cmp(y).unwrap())
+    }
+}
+
+/// Parameters for the EC algorithm.
 pub struct Params {
     /// frontier size is the number of task solutions to be hit before enumeration is stopped.
     pub frontier_size: usize,
@@ -11,55 +38,50 @@ pub struct Params {
     pub search_limit: usize,
 }
 
-/// A kind of representation suitable for EC, and default methods for exploration-compression.
+/// A kind of [`Representation`] suitable for EC, and default methods for exploration-compression.
 ///
 /// Implementors of `EC` need only provide an [`enumerate`] and [`mutate`] methods.
 ///
+/// [`Representation`]: trait.Representation.html
 /// [`enumerate`]: #method.enumerator
 /// [`mutate`]: #method.mutate
 pub trait EC: Representation {
-    /// Get an iterator over [`Expression`]s for a given type.
+    /// Get an iterator over [`Expression`]s for a given type and corresponding log-priors.
+    /// This enumeration should be best-first: the log-prior of enumerated expressions should never
+    /// decrease.
     ///
     /// This will in most cases iterate infinitely, giving increasingly complex expressions.
     ///
-    /// [`Expression`]: trait.Representation.html#associatedtype.Expression
-    fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = Self::Expression> + 'a>;
+    /// [`Expression`]: ../trait.Representation.html#associatedtype.Expression
+    fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Self::Expression, f64)> + 'a>;
     /// Update the [`Representation`] based on findings of expressions that solve [`Task`]s.
     ///
     /// The `frontiers` argument must always be of the same size as `tasks`. Each frontier is a
-    /// possibly-empty list of expressions that solve the corresponding task.
+    /// possibly-empty list of expressions that solve the corresponding task, and the log-prior and
+    /// log-likelihood for that expression.
     ///
-    /// [`Representation`]: trait.Representation.html
-    /// [`Task`]: struct.Task.html
-    fn mutate<O>(&self, tasks: &[Task<Self, O>], frontiers: &[Vec<Self::Expression>]) -> Self;
+    /// [`Representation`]: ../trait.Representation.html
+    /// [`Task`]: ../struct.Task.html
+    fn mutate<O>(&self, tasks: &[Task<Self, O>], frontiers: &[Frontier<Self>]) -> Self;
 
     // provided methods:
 
     /// The entry point for one iteration of the EC algorithm.
+    ///
+    /// Returned solutions include the log-prior and log-likelihood of successful expressions.
     fn ec<O, R>(
         &self,
         params: &Params,
         tasks: &[Task<Self, O>],
         recognizer: Option<R>,
-    ) -> (Self, Vec<Option<<Self as Representation>::Expression>>)
+    ) -> (Self, Vec<Frontier<Self>>)
     where
         R: FnOnce(&Self, &[Task<Self, O>]) -> Vec<Self>,
     {
         let recognized = recognizer.map(|r| r(self, tasks));
         let frontiers = self.explore(params, tasks, recognized);
         let updated = self.mutate(tasks, &frontiers);
-        let solutions = tasks
-            .iter()
-            .zip(frontiers)
-            .map(|(t, frontier)| {
-                frontier
-                    .into_iter()
-                    .map(|expr| ((t.oracle)(self, &expr), expr))
-                    .max_by(|&(ref x, _), &(ref y, _)| x.partial_cmp(y).unwrap())
-                    .map(|(_ll, expr)| expr)
-            })
-            .collect();
-        (updated, solutions)
+        (updated, frontiers)
     }
 
     /// Enumerate solutions for the given tasks.
@@ -74,7 +96,7 @@ pub trait EC: Representation {
         params: &Params,
         tasks: &[Task<Self, O>],
         recognized: Option<Vec<Self>>,
-    ) -> Vec<Vec<<Self as Representation>::Expression>> {
+    ) -> Vec<Frontier<Self>> {
         if let Some(representations) = recognized {
             tasks
                 .iter()
@@ -83,7 +105,7 @@ pub trait EC: Representation {
                 .map(|(i, (t, ref repr))| {
                     repr.enumerate_solutions(params, t.tp.clone(), vec![(i, t)])
                         .remove(&i)
-                        .unwrap_or_else(Vec::new)
+                        .unwrap_or_else(Frontier::new)
                 })
                 .collect()
         } else {
@@ -91,7 +113,8 @@ pub trait EC: Representation {
             for (i, task) in tasks.into_iter().enumerate() {
                 tps.entry(&task.tp).or_insert_with(Vec::new).push((i, task))
             }
-            let mut results = vec![vec![]; tasks.len()];
+            let mut results: Vec<Frontier<Self>> =
+                (0..tasks.len()).map(|_| Frontier::new()).collect();
             for (i, exprs) in tps.into_iter()
                 .map(|(tp, tasks)| self.enumerate_solutions(params, tp.clone(), tasks))
                 .flat_map(|iter| iter)
@@ -114,16 +137,18 @@ pub trait EC: Representation {
         params: &Params,
         tp: Type,
         mut tasks: Vec<(usize, &Task<Self, O>)>,
-    ) -> HashMap<usize, Vec<<Self as Representation>::Expression>> {
-        let mut frontier = HashMap::new();
+    ) -> HashMap<usize, Frontier<Self>> {
+        let mut frontiers = HashMap::new();
         let mut searched = 0;
-        let mut update = |frontier: &mut HashMap<_, _>,
-                          expr: <Self as Representation>::Expression| {
+        let mut update = |frontiers: &mut HashMap<_, _>,
+                          expr: <Self as Representation>::Expression,
+                          log_prior: f64| {
             tasks.retain(|&(i, t)| {
-                if (t.oracle)(self, &expr).is_finite() {
-                    let v = frontier.entry(i).or_insert_with(Vec::new);
-                    v.push(expr.clone());
-                    v.len() < params.frontier_size
+                let log_likelihood = (t.oracle)(self, &expr);
+                if log_likelihood.is_finite() {
+                    let f = frontiers.entry(i).or_insert_with(Frontier::new);
+                    f.push(expr.clone(), log_prior, log_likelihood);
+                    f.len() < params.frontier_size
                 } else {
                     true
                 }
@@ -135,11 +160,11 @@ pub trait EC: Representation {
                 searched < params.search_limit
             }
         };
-        for expr in self.enumerate(tp) {
-            if !update(&mut frontier, expr) {
+        for (expr, log_prior) in self.enumerate(tp) {
+            if !update(&mut frontiers, expr, log_prior) {
                 break;
             }
         }
-        frontier
+        frontiers
     }
 }

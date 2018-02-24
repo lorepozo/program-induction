@@ -87,12 +87,9 @@ fn expression_parse_invented() {
             (String::from("1"), tp!(int)),
         ],
         vec![
-            (
-                Expression::Application(
-                    Box::new(Expression::Primitive(0)),
-                    Box::new(Expression::Primitive(1)),
-                ),
-                arrow![tp!(int), tp!(int)],
+            Expression::Application(
+                Box::new(Expression::Primitive(0)),
+                Box::new(Expression::Primitive(1)),
             ),
         ],
     );
@@ -114,22 +111,19 @@ fn expression_parse_abstraction() {
             (String::from("1"), tp!(int)),
         ],
         vec![
-            (
-                Expression::Abstraction(Box::new(Expression::Application(
+            Expression::Abstraction(Box::new(Expression::Application(
+                Box::new(Expression::Application(
+                    Box::new(Expression::Primitive(0)),
                     Box::new(Expression::Application(
-                        Box::new(Expression::Primitive(0)),
                         Box::new(Expression::Application(
-                            Box::new(Expression::Application(
-                                Box::new(Expression::Primitive(0)),
-                                Box::new(Expression::Primitive(1)),
-                            )),
+                            Box::new(Expression::Primitive(0)),
                             Box::new(Expression::Primitive(1)),
                         )),
+                        Box::new(Expression::Primitive(1)),
                     )),
-                    Box::new(Expression::Index(0)),
-                ))),
-                arrow![tp!(int), tp!(int)],
-            ),
+                )),
+                Box::new(Expression::Index(0)),
+            ))),
         ],
     );
     let expr = dsl.parse("(λ (+ $0))").unwrap();
@@ -182,12 +176,9 @@ fn expression_infer() {
             (String::from("1"), tp!(int)),
         ],
         vec![
-            (
-                Expression::Application(
-                    Box::new(Expression::Primitive(2)),
-                    Box::new(Expression::Primitive(4)),
-                ),
-                arrow![tp!(int), tp!(int)],
+            Expression::Application(
+                Box::new(Expression::Primitive(2)),
+                Box::new(Expression::Primitive(4)),
             ),
         ],
     );

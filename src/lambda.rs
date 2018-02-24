@@ -5,70 +5,11 @@ use std::f64;
 use std::fmt::{self, Debug};
 use std::rc::Rc;
 use polytype::{Context, Type};
-use super::{InferenceError, Representation, Task, EC};
+use super::{InferenceError, Representation, Task};
+use super::ec::{Frontier, EC};
 
 /// A Language is a registry for primitive and invented expressions in a polymorphically-typed lambda
 /// calculus, as well as corresponding production probabilities.
-///
-/// # Examples
-///
-/// Stringify and parse expressions in the Language:
-///
-/// ```
-/// # #[macro_use] extern crate polytype;
-/// # extern crate programinduction;
-/// # fn main() {
-/// # use programinduction::lambda::{Expression, Language};
-/// let dsl = Language::uniform(
-///     vec![(String::from("+"), arrow![tp!(int), tp!(int), tp!(int)])],
-///     vec![],
-/// );
-/// let expr = Expression::Abstraction(
-///     Box::new(Expression::Application(
-///         Box::new(Expression::Primitive(0)),
-///         Box::new(Expression::Index(0)),
-///     ))
-/// );
-/// assert_eq!(dsl.stringify(&expr), "(λ (+ $0))");
-/// // stringify round-trips with dsl.parse
-/// assert_eq!(expr, dsl.parse("(λ (+ $0))").unwrap());
-/// # }
-/// ```
-///
-/// Enumerate expressions for a request type (including its probability and appropriately
-/// instantiated `Type`):
-///
-/// ```
-/// # #[macro_use] extern crate polytype;
-/// # extern crate programinduction;
-/// # fn main() {
-/// # use std::collections::VecDeque;
-/// # use polytype::Context;
-/// use programinduction::lambda::{Expression, Language};
-/// use programinduction::EC; // for dsl.enumerate
-///
-/// let dsl = Language::uniform(
-///     vec![
-///         (String::from("0"), tp!(int)),
-///         (String::from("1"), tp!(int)),
-///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
-///         (String::from(">"), arrow![tp!(int), tp!(int), tp!(bool)]),
-///     ],
-///     vec![],
-/// );
-/// let exprs: Vec<Expression> = dsl.enumerate(tp!(int)).take(8).collect();
-/// assert_eq!(exprs, vec![
-///     Expression::Primitive(0),
-///     Expression::Primitive(1),
-///     dsl.parse("(+ 0 0)").unwrap(),
-///     dsl.parse("(+ 0 1)").unwrap(),
-///     dsl.parse("(+ 1 0)").unwrap(),
-///     dsl.parse("(+ 1 1)").unwrap(),
-///     dsl.parse("(+ 0 (+ 0 0))").unwrap(),
-///     dsl.parse("(+ 0 (+ 0 1))").unwrap(),
-/// ]);
-/// # }
-/// ```
 #[derive(Debug, Clone)]
 pub struct Language {
     pub primitives: Vec<(String, Type)>,
@@ -78,6 +19,31 @@ pub struct Language {
     pub invented_logprob: Vec<f64>,
 }
 impl Language {
+    /// A uniform distribution over primitives and invented expressions, as well as the abstraction
+    /// operation.
+    pub fn uniform(primitives: Vec<(String, Type)>, invented: Vec<Expression>) -> Self {
+        let n_primitives = primitives.len();
+        let mut dsl = Self {
+            primitives,
+            invented: vec![],
+            variable_logprob: 0f64,
+            primitives_logprob: vec![0f64; n_primitives],
+            invented_logprob: vec![],
+        };
+        if !invented.is_empty() {
+            let n_invented = invented.len();
+            dsl.invented = invented
+                .into_iter()
+                .map(|expr| {
+                    let tp = dsl.infer(&expr).unwrap();
+                    (expr, tp)
+                })
+                .collect();
+            dsl.invented_logprob = vec![0f64; n_invented];
+        }
+        dsl
+    }
+
     /// As with any [`Representation`], we must be able to infer the type of an [`Expression`]:
     ///
     /// # Examples
@@ -96,12 +62,9 @@ impl Language {
     ///         (String::from("1"), tp!(int)),
     ///     ],
     ///     vec![
-    ///         (
-    ///             Expression::Application(
-    ///                 Box::new(Expression::Primitive(2)),
-    ///                 Box::new(Expression::Primitive(4)),
-    ///             ),
-    ///             arrow![tp!(int), tp!(int)],
+    ///         Expression::Application(
+    ///             Box::new(Expression::Primitive(2)),
+    ///             Box::new(Expression::Primitive(4)),
     ///         ),
     ///     ],
     /// );
@@ -119,18 +82,46 @@ impl Language {
         expr.infer(self, &mut ctx, &env, &mut indices)
     }
 
-    /// A uniform distribution over primitives and invented expressions, as well as the abstraction
-    /// operation.
-    pub fn uniform(primitives: Vec<(String, Type)>, invented: Vec<(Expression, Type)>) -> Self {
-        let n_primitives = primitives.len();
-        let n_invented = invented.len();
-        Self {
-            primitives,
-            invented,
-            variable_logprob: 0f64,
-            primitives_logprob: vec![0f64; n_primitives],
-            invented_logprob: vec![0f64; n_invented],
-        }
+    /// Enumerate expressions for a request type (including its probability and appropriately
+    /// instantiated `Type`):
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # fn main() {
+    /// use programinduction::lambda::{Expression, Language};
+    ///
+    /// let dsl = Language::uniform(
+    ///     vec![
+    ///         (String::from("0"), tp!(int)),
+    ///         (String::from("1"), tp!(int)),
+    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+    ///         (String::from(">"), arrow![tp!(int), tp!(int), tp!(bool)]),
+    ///     ],
+    ///     vec![],
+    /// );
+    /// let exprs: Vec<Expression> = dsl.enumerate(tp!(int))
+    ///     .take(8)
+    ///     .map(|(expr, _log_prior)| expr)
+    ///     .collect();
+    ///
+    /// assert_eq!(
+    ///     exprs,
+    ///     vec![
+    ///         Expression::Primitive(0),
+    ///         Expression::Primitive(1),
+    ///         dsl.parse("(+ 0 0)").unwrap(),
+    ///         dsl.parse("(+ 0 1)").unwrap(),
+    ///         dsl.parse("(+ 1 0)").unwrap(),
+    ///         dsl.parse("(+ 1 1)").unwrap(),
+    ///         dsl.parse("(+ 0 (+ 0 0))").unwrap(),
+    ///         dsl.parse("(+ 0 (+ 0 1))").unwrap(),
+    ///     ]
+    /// );
+    /// # }
+    /// ```
+    pub fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
+        enumerator::new(self, tp)
     }
 
     /// Evaluate an expressions based on an input/output pair.
@@ -268,6 +259,29 @@ impl Language {
     ///
     /// Lambda expressions take the form `(lambda BODY)` or `(λ BODY)`, where BODY is an expression
     /// that may use a corresponding De Bruijn [`Index`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # fn main() {
+    /// # use programinduction::lambda::{Expression, Language};
+    /// let dsl = Language::uniform(
+    ///     vec![(String::from("+"), arrow![tp!(int), tp!(int), tp!(int)])],
+    ///     vec![],
+    /// );
+    /// let expr = Expression::Abstraction(
+    ///     Box::new(Expression::Application(
+    ///         Box::new(Expression::Primitive(0)),
+    ///         Box::new(Expression::Index(0)),
+    ///     ))
+    /// );
+    /// assert_eq!(dsl.stringify(&expr), "(λ (+ $0))");
+    /// // stringify round-trips with dsl.parse
+    /// assert_eq!(expr, dsl.parse("(λ (+ $0))").unwrap());
+    /// # }
+    /// ```
     ///
     /// [`stringify`]: #method.stringify
     /// [`Index`]: enum.Expression.html#variant.Index
@@ -525,6 +539,7 @@ impl Expression {
             })
     }
 }
+
 impl Representation for Language {
     type Expression = Expression;
     fn infer(&self, expr: &Self::Expression) -> Result<Type, InferenceError> {
@@ -532,10 +547,10 @@ impl Representation for Language {
     }
 }
 impl EC for Language {
-    fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = Expression> + 'a> {
-        enumerator::new(self, tp)
+    fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
+        self.enumerate(tp)
     }
-    fn mutate<O>(&self, tasks: &[Task<Self, O>], frontiers: &[Vec<Self::Expression>]) -> Self {
+    fn mutate<O>(&self, tasks: &[Task<Self, O>], frontiers: &[Frontier<Self>]) -> Self {
         let _ = (tasks, frontiers);
         self.clone()
         // TODO
@@ -627,7 +642,10 @@ mod enumerator {
     const BUDGET_INCREMENT: f64 = 1.0;
     const MAX_DEPTH: u32 = 256;
 
-    pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = Expression> + 'a> {
+    pub fn new<'a>(
+        dsl: &'a Language,
+        request: Type,
+    ) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
         let budget = |offset: f64| (offset, offset + BUDGET_INCREMENT);
         let ctx = Context::default();
         let env = Rc::new(LinkedList::default());
@@ -643,7 +661,7 @@ mod enumerator {
                         env.clone(),
                         budget(offset),
                         depth,
-                    ).map(move |(_, _, expr)| expr)
+                    ).map(move |(log_prior, _, expr)| (expr, log_prior))
                 }),
         )
     }
