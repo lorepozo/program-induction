@@ -30,7 +30,7 @@ impl<R: Representation> Frontier<R> {
 }
 
 /// Parameters for the EC algorithm.
-pub struct Params {
+pub struct ECParams {
     /// frontier size is the number of task solutions to be hit before enumeration is stopped.
     pub frontier_size: usize,
     /// search limit is a hard limit of the number of expressions that are enumerated for a task.
@@ -71,7 +71,7 @@ pub trait EC: Representation {
     /// Returned solutions include the log-prior and log-likelihood of successful expressions.
     fn ec<O, R>(
         &self,
-        params: &Params,
+        params: &ECParams,
         tasks: &[Task<Self, O>],
         recognizer: Option<R>,
     ) -> (Self, Vec<Frontier<Self>>)
@@ -93,7 +93,7 @@ pub trait EC: Representation {
     /// enumeration is stopped when `params.search_limit` valid expressions have been checked.
     fn explore<O>(
         &self,
-        params: &Params,
+        params: &ECParams,
         tasks: &[Task<Self, O>],
         recognized: Option<Vec<Self>>,
     ) -> Vec<Frontier<Self>> {
@@ -134,7 +134,7 @@ pub trait EC: Representation {
     /// enumeration is stopped when `params.search_limit` valid expressions have been checked.
     fn enumerate_solutions<O>(
         &self,
-        params: &Params,
+        params: &ECParams,
         tp: Type,
         mut tasks: Vec<(usize, &Task<Self, O>)>,
     ) -> HashMap<usize, Frontier<Self>> {
