@@ -28,6 +28,67 @@ pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Express
             }),
     )
 }
+
+pub fn likelihood<'a>(dsl: &'a Language, request: &Type, expr: &Expression) -> f64 {
+    let ctx = Context::default();
+    let env = Rc::new(LinkedList::default());
+    likelihood_internal(dsl, request, &ctx, &env, expr).0
+}
+fn likelihood_internal<'a>(
+    dsl: &'a Language,
+    request: &Type,
+    ctx: &Context,
+    env: &Rc<LinkedList<Type>>,
+    mut expr: &Expression,
+) -> (f64, Context) {
+    if let &Type::Arrow(ref arrow) = request {
+        let env = LinkedList::prepend(&env, *arrow.arg.clone());
+        if let &Expression::Abstraction(ref body) = expr {
+            likelihood_internal(dsl, &*arrow.ret, ctx, &env, body)
+        } else {
+            eprintln!("likelihood for arrow found expression that wasn't abstraction");
+            (f64::NEG_INFINITY, ctx.clone()) // invalid expression
+        }
+    } else {
+        let mut xs: Vec<&Expression> = vec![];
+        while let &Expression::Application(ref l, ref r) = expr {
+            expr = l;
+            xs.push(r);
+        }
+        let candidates = dsl.candidates(&request, ctx, &env.as_vecdeque());
+        match candidates
+            .into_iter()
+            .find(|&(_, ref c_expr, _, _)| expr == c_expr)
+        {
+            Some((f_l, _, f_tp, ctx)) => {
+                if let Type::Arrow(f_tp) = f_tp {
+                    let arg_tps = f_tp.args();
+                    assert_eq!(xs.len(), arg_tps.len());
+                    xs.into_iter()
+                        .zip(arg_tps)
+                        .fold((f_l, ctx), |(l, ctx), (x, x_tp)| {
+                            let (x_l, ctx) = likelihood_internal(dsl, x_tp, &ctx, env, x);
+                            (l + x_l, ctx)
+                        })
+                } else {
+                    assert!(xs.is_empty());
+                    (f_l, ctx)
+                }
+            }
+            None => {
+                let s = dsl.stringify(expr);
+                panic!(
+                    "expression {} (with type {}) is not in candidates for request type {}",
+                    s,
+                    dsl.infer(expr)
+                        .expect(&format!("could not infer type for {}", s)),
+                    request,
+                );
+            }
+        }
+    }
+}
+
 fn enumerate<'a>(
     dsl: &'a Language,
     request: Type,
@@ -45,7 +106,7 @@ fn enumerate<'a>(
         Box::new(it)
     } else {
         Box::new(
-            candidates(dsl, &request, ctx, &env.as_vecdeque())
+            dsl.candidates(&request, ctx, &env.as_vecdeque())
                 .into_iter()
                 .filter(move |&(ll, _, _, _)| -ll <= budget.1)
                 .flat_map(move |(ll, expr, tp, ctx)| {
@@ -61,6 +122,7 @@ fn enumerate<'a>(
         )
     }
 }
+
 fn enumerate_application<'a>(
     dsl: &'a Language,
     ctx: &Context,
@@ -94,75 +156,6 @@ fn enumerate_application<'a>(
     } else {
         Box::new(iter::empty())
     }
-}
-
-fn candidates(
-    dsl: &Language,
-    request: &Type,
-    ctx: &Context,
-    env: &VecDeque<Type>,
-) -> Vec<(f64, Expression, Type, Context)> {
-    let mut cands = Vec::new();
-    let prims = dsl.primitives
-        .iter()
-        .zip(&dsl.primitives_logprob)
-        .enumerate()
-        .map(|(i, (&(_, ref tp), &p))| (p, tp, true, Expression::Primitive(i)));
-    let invented = dsl.invented
-        .iter()
-        .zip(&dsl.invented_logprob)
-        .enumerate()
-        .map(|(i, (&(_, ref tp), &p))| (p, tp, true, Expression::Invented(i)));
-    let indices = env.iter()
-        .enumerate()
-        .map(|(i, tp)| (dsl.variable_logprob, tp, false, Expression::Index(i)));
-    for (p, tp, instantiate, expr) in prims.chain(invented).chain(indices) {
-        let mut ctx = ctx.clone();
-        let itp;
-        let tp = if instantiate {
-            itp = tp.instantiate_indep(&mut ctx);
-            &itp
-        } else {
-            tp
-        };
-        let ret = if let Type::Arrow(ref arrow) = *tp {
-            arrow.returns()
-        } else {
-            &tp
-        };
-        if ctx.unify(ret, request).is_ok() {
-            let tp = tp.apply(&ctx);
-            cands.push((p, expr, tp, ctx))
-        }
-    }
-    // update probabilities for variables (indices)
-    let n_indexed = cands
-        .iter()
-        .filter(|&&(_, ref expr, _, _)| match *expr {
-            Expression::Index(_) => true,
-            _ => false,
-        })
-        .count() as f64;
-    for mut c in &mut cands {
-        if let Expression::Index(_) = c.1 {
-            c.0 -= n_indexed.ln()
-        }
-    }
-    // normalize
-    let p_largest = cands
-        .iter()
-        .map(|&(p, _, _, _)| p)
-        .fold(f64::NEG_INFINITY, |acc, p| acc.max(p));
-    let z = p_largest
-        + cands
-            .iter()
-            .map(|&(p, _, _, _)| (p - p_largest).exp())
-            .sum::<f64>()
-            .ln();
-    for mut c in &mut cands {
-        c.0 -= z;
-    }
-    cands
 }
 
 #[derive(Debug, Clone)]

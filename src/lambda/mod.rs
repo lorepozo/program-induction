@@ -2,6 +2,7 @@
 
 mod enumerator;
 mod eval;
+mod fragmentgrammar;
 
 use std::collections::{HashMap, VecDeque};
 use std::f64;
@@ -197,6 +198,38 @@ impl Language {
         eval::ReducedExpression::new(self, expr).check(evaluator, inps, out)
     }
 
+    /// Get the log-likelihood of an expression normalized with other expressions with the given
+    /// request type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[macro_use]
+    /// # extern crate polytype;
+    /// # extern crate programinduction;
+    /// # use programinduction::lambda::Language;
+    /// # fn main() {
+    /// let dsl = Language::uniform(
+    ///     vec![
+    ///         (String::from("0"), tp!(int)),
+    ///         (String::from("1"), tp!(int)),
+    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+    ///     ],
+    ///     vec![],
+    /// );
+    /// let req = arrow![tp!(int), tp!(int), tp!(int)];
+    ///
+    /// let expr = dsl.parse("(λ (λ (+ $0 $1)))").unwrap();
+    /// assert_eq!(dsl.likelihood(&req, &expr), -5.545177444479561);
+    ///
+    /// let expr = dsl.parse("(λ (λ (+ (+ $0 1) $1)))").unwrap();
+    /// assert_eq!(dsl.likelihood(&req, &expr), -8.317766166719343);
+    /// # }
+    /// ```
+    pub fn likelihood(&self, request: &Type, expr: &Expression) -> f64 {
+        enumerator::likelihood(self, request, expr)
+    }
+
     /// Get details (name, type, log-likelihood) about a primitive according to its
     /// identifier (which is used in [`Expression::Primitive`]).
     ///
@@ -330,6 +363,75 @@ impl Language {
     pub fn stringify(&self, expr: &Expression) -> String {
         expr.show(self, false)
     }
+
+    fn candidates(
+        &self,
+        request: &Type,
+        ctx: &Context,
+        env: &VecDeque<Type>,
+    ) -> Vec<(f64, Expression, Type, Context)> {
+        let mut cands = Vec::new();
+        let prims = self.primitives
+            .iter()
+            .zip(&self.primitives_logprob)
+            .enumerate()
+            .map(|(i, (&(_, ref tp), &p))| (p, tp, true, Expression::Primitive(i)));
+        let invented = self.invented
+            .iter()
+            .zip(&self.invented_logprob)
+            .enumerate()
+            .map(|(i, (&(_, ref tp), &p))| (p, tp, true, Expression::Invented(i)));
+        let indices = env.iter()
+            .enumerate()
+            .map(|(i, tp)| (self.variable_logprob, tp, false, Expression::Index(i)));
+        for (p, tp, instantiate, expr) in prims.chain(invented).chain(indices) {
+            let mut ctx = ctx.clone();
+            let itp;
+            let tp = if instantiate {
+                itp = tp.instantiate_indep(&mut ctx);
+                &itp
+            } else {
+                tp
+            };
+            let ret = if let Type::Arrow(ref arrow) = *tp {
+                arrow.returns()
+            } else {
+                &tp
+            };
+            if ctx.unify(ret, request).is_ok() {
+                let tp = tp.apply(&ctx);
+                cands.push((p, expr, tp, ctx))
+            }
+        }
+        // update probabilities for variables (indices)
+        let n_indexed = cands
+            .iter()
+            .filter(|&&(_, ref expr, _, _)| match *expr {
+                Expression::Index(_) => true,
+                _ => false,
+            })
+            .count() as f64;
+        for mut c in &mut cands {
+            if let Expression::Index(_) = c.1 {
+                c.0 -= n_indexed.ln()
+            }
+        }
+        // normalize
+        let p_largest = cands
+            .iter()
+            .map(|&(p, _, _, _)| p)
+            .fold(f64::NEG_INFINITY, |acc, p| acc.max(p));
+        let z = p_largest
+            + cands
+                .iter()
+                .map(|&(p, _, _, _)| (p - p_largest).exp())
+                .sum::<f64>()
+                .ln();
+        for mut c in &mut cands {
+            c.0 -= z;
+        }
+        cands
+    }
 }
 impl Representation for Language {
     type Expression = Expression;
@@ -342,16 +444,14 @@ impl EC for Language {
         self.enumerate(tp)
     }
     fn mutate<O: Sync>(&self, tasks: &[Task<Self, O>], frontiers: &[Frontier<Self>]) -> Self {
-        let _ = (tasks, frontiers);
-        self.clone()
-        // TODO
+        fragmentgrammar::induce(self, tasks, frontiers)
     }
 }
 
 /// Expressions of lambda calculus, which only make sense with an accompanying [`Language`].
 ///
 /// [`Language`]: struct.Language.html
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Expression {
     /// The number associated with a primitive is used by the Language to identify the primitive.
     Primitive(usize),
