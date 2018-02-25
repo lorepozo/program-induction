@@ -49,8 +49,8 @@ pub struct ECParams {
 /// [`mutate`]: #method.mutate
 pub trait EC: Representation {
     /// Get an iterator over [`Expression`]s for a given type and corresponding log-priors.
-    /// This enumeration should be best-first: the log-prior of enumerated expressions should never
-    /// decrease.
+    /// This enumeration should be best-first: the log-prior of enumerated expressions should not
+    /// significantly decrease.
     ///
     /// This will in most cases iterate infinitely, giving increasingly complex expressions.
     ///

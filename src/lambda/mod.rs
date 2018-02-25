@@ -184,7 +184,7 @@ impl Language {
     ///     ],
     ///     vec![],
     /// );
-    /// let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
+    /// let expr = dsl.parse("(λ (λ (+ (+ 1 $0) $1)))").unwrap();
     /// let inps = vec![2, 5];
     /// let out = 8;
     /// assert!(dsl.check(&expr, &evaluator, &inps, &out));
