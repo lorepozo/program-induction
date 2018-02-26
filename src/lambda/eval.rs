@@ -23,7 +23,7 @@ where
     pub fn new(dsl: &'a Language, expr: &Expression) -> Self {
         Self::from_expr(dsl, &dsl.strip_invented(expr))
     }
-    pub fn check<F>(&self, evaluator: &F, inps: &[V], out: &V) -> bool
+    pub fn eval_inps<F>(&self, evaluator: &F, inps: &[V]) -> Option<V>
     where
         F: Fn(&str, &[V]) -> V,
     {
@@ -39,8 +39,8 @@ where
             }
         }
         match evaluated {
-            ReducedExpression::Value(ref o) => o == out,
-            _ => false,
+            ReducedExpression::Value(o) => Some(o),
+            _ => None,
         }
     }
     fn eval<F>(

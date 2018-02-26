@@ -188,16 +188,16 @@ impl Language {
     /// );
     /// let expr = dsl.parse("(λ (λ (+ (+ 1 $0) $1)))").unwrap();
     /// let inps = vec![2, 5];
-    /// let out = 8;
-    /// assert!(dsl.check(&expr, &evaluator, &inps, &out));
+    /// let evaluated = dsl.eval(&expr, &evaluator, &inps).unwrap();
+    /// assert_eq!(evaluated, 8);
     /// # }
     /// ```
-    pub fn check<V, F>(&self, expr: &Expression, evaluator: &F, inps: &[V], out: &V) -> bool
+    pub fn eval<V, F>(&self, expr: &Expression, evaluator: &F, inps: &[V]) -> Option<V>
     where
         F: Fn(&str, &[V]) -> V,
         V: Clone + PartialEq + Debug,
     {
-        eval::ReducedExpression::new(self, expr).check(evaluator, inps, out)
+        eval::ReducedExpression::new(self, expr).eval_inps(evaluator, inps)
     }
 
     /// Get the log-likelihood of an expression normalized with other expressions with the given
@@ -319,29 +319,6 @@ impl Language {
     ///
     /// Lambda expressions take the form `(lambda BODY)` or `(λ BODY)`, where BODY is an expression
     /// that may use a corresponding De Bruijn [`Index`].
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # fn main() {
-    /// # use programinduction::lambda::{Expression, Language};
-    /// let dsl = Language::uniform(
-    ///     vec![(String::from("+"), arrow![tp!(int), tp!(int), tp!(int)])],
-    ///     vec![],
-    /// );
-    /// let expr = Expression::Abstraction(
-    ///     Box::new(Expression::Application(
-    ///         Box::new(Expression::Primitive(0)),
-    ///         Box::new(Expression::Index(0)),
-    ///     ))
-    /// );
-    /// assert_eq!(dsl.stringify(&expr), "(λ (+ $0))");
-    /// // stringify round-trips with dsl.parse
-    /// assert_eq!(expr, dsl.parse("(λ (+ $0))").unwrap());
-    /// # }
-    /// ```
     ///
     /// [`stringify`]: #method.stringify
     /// [`Index`]: enum.Expression.html#variant.Index
@@ -741,10 +718,13 @@ where
 {
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
         let expr = &dsl.strip_invented(expr);
-        if examples
-            .iter()
-            .all(|&(ref inps, ref out)| dsl.check(expr, evaluator, inps, out))
-        {
+        if examples.iter().all(|&(ref inps, ref out)| {
+            if let Some(ref o) = dsl.eval(expr, evaluator, inps) {
+                o == out
+            } else {
+                false
+            }
+        }) {
             0f64
         } else {
             f64::NEG_INFINITY
