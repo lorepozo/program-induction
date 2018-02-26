@@ -3,6 +3,7 @@
 mod enumerator;
 mod eval;
 mod fragmentgrammar;
+pub use self::fragmentgrammar::Params;
 
 use std::collections::{HashMap, VecDeque};
 use std::f64;
@@ -34,38 +35,32 @@ impl ::std::error::Error for ParseError {
     }
 }
 
-/// A Language is a registry for primitive and invented expressions in a polymorphically-typed lambda
-/// calculus, as well as corresponding production probabilities.
+/// A Language is a registry for primitive and invented expressions in a polymorphically-typed
+/// lambda calculus with corresponding production log-probabilities.
 #[derive(Debug, Clone)]
 pub struct Language {
-    pub primitives: Vec<(String, Type)>,
-    pub invented: Vec<(Expression, Type)>,
+    pub primitives: Vec<(String, Type, f64)>,
+    pub invented: Vec<(Expression, Type, f64)>,
     pub variable_logprob: f64,
-    pub primitives_logprob: Vec<f64>,
-    pub invented_logprob: Vec<f64>,
 }
 impl Language {
     /// A uniform distribution over primitives and invented expressions, as well as the abstraction
     /// operation.
     pub fn uniform(primitives: Vec<(String, Type)>, invented: Vec<Expression>) -> Self {
-        let n_primitives = primitives.len();
+        let primitives = primitives.into_iter().map(|(s, t)| (s, t, 0f64)).collect();
         let mut dsl = Self {
             primitives,
             invented: vec![],
             variable_logprob: 0f64,
-            primitives_logprob: vec![0f64; n_primitives],
-            invented_logprob: vec![],
         };
         if !invented.is_empty() {
-            let n_invented = invented.len();
             dsl.invented = invented
                 .into_iter()
                 .map(|expr| {
                     let tp = dsl.infer(&expr).unwrap();
-                    (expr, tp)
+                    (expr, tp, 0f64)
                 })
                 .collect();
-            dsl.invented_logprob = vec![0f64; n_invented];
         }
         dsl
     }
@@ -257,10 +252,8 @@ impl Language {
     /// [`Expression::Primitive`]: enum.Expression.html#variant.Primitive
     pub fn primitive(&self, num: usize) -> Option<(&str, &Type, f64)> {
         self.primitives
-            .iter()
-            .zip(&self.primitives_logprob)
-            .nth(num)
-            .map(|(&(ref name, ref tp), &p)| (name.as_str(), tp, p))
+            .get(num)
+            .map(|&(ref name, ref tp, p)| (name.as_str(), tp, p))
     }
 
     /// Get details (expression, type, log-likelihood) about an invented expression according to
@@ -269,10 +262,8 @@ impl Language {
     /// [`Expression::Invented`]: enum.Expression.html#variant.Invented
     pub fn invented(&self, num: usize) -> Option<(&Expression, &Type, f64)> {
         self.invented
-            .iter()
-            .zip(&self.invented_logprob)
-            .nth(num)
-            .map(|(&(ref fragment, ref tp), &p)| (fragment, tp, p))
+            .get(num)
+            .map(|&(ref fragment, ref tp, p)| (fragment, tp, p))
     }
 
     /// Register a new invented expression. If it has a valid type, this will be `Ok(num)`.
@@ -306,8 +297,7 @@ impl Language {
         let env = VecDeque::new();
         let mut indices = HashMap::new();
         let tp = expr.infer(self, &mut ctx, &env, &mut indices)?;
-        self.invented.push((expr, tp));
-        self.invented_logprob.push(log_probability);
+        self.invented.push((expr, tp, log_probability));
         Ok(self.invented.len() - 1)
     }
 
@@ -352,14 +342,12 @@ impl Language {
         let mut cands = Vec::new();
         let prims = self.primitives
             .iter()
-            .zip(&self.primitives_logprob)
             .enumerate()
-            .map(|(i, (&(_, ref tp), &p))| (p, tp, true, Expression::Primitive(i)));
+            .map(|(i, &(_, ref tp, p))| (p, tp, true, Expression::Primitive(i)));
         let invented = self.invented
             .iter()
-            .zip(&self.invented_logprob)
             .enumerate()
-            .map(|(i, (&(_, ref tp), &p))| (p, tp, true, Expression::Invented(i)));
+            .map(|(i, &(_, ref tp, p))| (p, tp, true, Expression::Invented(i)));
         let indices = env.iter()
             .enumerate()
             .map(|(i, tp)| (self.variable_logprob, tp, false, Expression::Index(i)));
@@ -419,11 +407,17 @@ impl Representation for Language {
     }
 }
 impl EC for Language {
+    type Params = Params;
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
         self.enumerate(tp)
     }
-    fn mutate<O: Sync>(&self, tasks: &[Task<Self, O>], frontiers: &[Frontier<Self>]) -> Self {
-        fragmentgrammar::induce(self, tasks, frontiers)
+    fn mutate<O: Sync>(
+        &self,
+        params: &Self::Params,
+        tasks: &[Task<Self, O>],
+        frontiers: &[Frontier<Self>],
+    ) -> Self {
+        fragmentgrammar::induce(self, params, tasks, frontiers)
     }
 }
 
@@ -494,7 +488,7 @@ impl Expression {
             },
         }
     }
-    fn strip_invented(&self, invented: &[(Expression, Type)]) -> Expression {
+    fn strip_invented(&self, invented: &[(Expression, Type, f64)]) -> Expression {
         match *self {
             Expression::Application(ref f, ref x) => Expression::Application(
                 Box::new(f.strip_invented(invented)),
@@ -538,7 +532,7 @@ impl Expression {
             }.map(|di| {
                 if let Some(num) = dsl.primitives
                     .iter()
-                    .position(|&(ref name, _)| name == &inp[..di])
+                    .position(|&(ref name, _, _)| name == &inp[..di])
                 {
                     Ok((di, Expression::Primitive(num)))
                 } else {
@@ -633,7 +627,7 @@ impl Expression {
             }.map(|mut di| {
                 let (ndi, expr) = Expression::parse(dsl, &inp[di..], offset + di)?;
                 di += ndi;
-                if let Some(num) = dsl.invented.iter().position(|&(ref x, _)| x == &expr) {
+                if let Some(num) = dsl.invented.iter().position(|&(ref x, _, _)| x == &expr) {
                     Ok((di, Expression::Invented(num)))
                 } else {
                     Err(ParseError::new(

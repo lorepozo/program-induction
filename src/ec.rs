@@ -48,6 +48,8 @@ pub struct ECParams {
 /// [`enumerate`]: #method.enumerator
 /// [`mutate`]: #method.mutate
 pub trait EC: Representation {
+    type Params;
+
     /// Get an iterator over [`Expression`]s for a given type and corresponding log-priors.
     /// This enumeration should be best-first: the log-prior of enumerated expressions should not
     /// significantly decrease.
@@ -64,7 +66,12 @@ pub trait EC: Representation {
     ///
     /// [`Representation`]: ../trait.Representation.html
     /// [`Task`]: ../struct.Task.html
-    fn mutate<O: Sync>(&self, tasks: &[Task<Self, O>], frontiers: &[Frontier<Self>]) -> Self;
+    fn mutate<O: Sync>(
+        &self,
+        params: &Self::Params,
+        tasks: &[Task<Self, O>],
+        frontiers: &[Frontier<Self>],
+    ) -> Self;
 
     // provided methods:
 
@@ -73,7 +80,8 @@ pub trait EC: Representation {
     /// Returned solutions include the log-prior and log-likelihood of successful expressions.
     fn ec<O: Sync, R>(
         &self,
-        params: &ECParams,
+        ecparams: &ECParams,
+        params: &Self::Params,
         tasks: &[Task<Self, O>],
         recognizer: Option<R>,
     ) -> (Self, Vec<Frontier<Self>>)
@@ -81,8 +89,8 @@ pub trait EC: Representation {
         R: FnOnce(&Self, &[Task<Self, O>]) -> Vec<Self>,
     {
         let recognized = recognizer.map(|r| r(self, tasks));
-        let frontiers = self.explore(params, tasks, recognized);
-        let updated = self.mutate(tasks, &frontiers);
+        let frontiers = self.explore(ecparams, tasks, recognized);
+        let updated = self.mutate(params, tasks, &frontiers);
         (updated, frontiers)
     }
 

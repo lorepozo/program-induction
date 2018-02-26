@@ -2,13 +2,21 @@ use std::ops::Deref;
 use super::Language;
 use super::super::{Frontier, Task};
 
+pub struct Params {
+    pub smoothing: f64,
+    pub structure_penalty: f64,
+    pub aic: f64,
+    pub arity: u32,
+}
+
 pub fn induce<O: Sync>(
     dsl: &Language,
+    params: &Params,
     tasks: &[Task<Language, O>],
     frontiers: &[Frontier<Language>],
 ) -> Language {
     let grammar: FragmentGrammar = dsl.into();
-    let _ = (tasks, frontiers);
+    let _ = (params, tasks, frontiers);
     grammar.0
 }
 

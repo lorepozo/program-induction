@@ -1,5 +1,9 @@
 //! (representation) Probabilistic context-free grammar without bound variables or polymorphism.
 
+mod enumerator;
+mod parser;
+pub use self::parser::ParseError;
+
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::f64;
@@ -7,10 +11,6 @@ use std::fmt::Debug;
 use itertools::Itertools;
 use polytype::Type;
 use super::{Frontier, InferenceError, Representation, Task, EC};
-
-mod enumerator;
-mod parser;
-pub use self::parser::ParseError;
 
 /// Probabilistic context-free grammar. Currently cannot handle bound variables or polymorphism.
 ///
@@ -21,15 +21,20 @@ pub struct Grammar {
     pub rules: HashMap<Type, Vec<Rule>>,
 }
 impl Grammar {
-    /// Rules are normalized according to their associated nonterminal.
+    /// Rules are normalized according to their associated nonterminal proportional to the supplied
+    /// probabilities.
+    ///
+    /// So each rules' `logprob` is _not_ treated as log-probability in this constructor, they are
+    /// treated like un-normalized probabilities.
     pub fn new(start: Type, all_rules: Vec<Rule>) -> Self {
         let mut rules = HashMap::new();
-        for rule in all_rules {
+        for mut rule in all_rules {
             let nt = if let &Type::Arrow(ref arrow) = &rule.production {
                 arrow.returns().clone()
             } else {
                 rule.production.clone()
             };
+            rule.logprob = rule.logprob.ln();
             rules.entry(nt).or_insert_with(Vec::new).push(rule)
         }
         for rs in rules.values_mut() {
@@ -60,9 +65,9 @@ impl Grammar {
     /// let g = Grammar::new(
     ///     tp!(EXPR),
     ///     vec![
-    ///         Rule::new("0", tp!(EXPR), 0.0),
-    ///         Rule::new("1", tp!(EXPR), 0.0),
-    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 0.0),
+    ///         Rule::new("0", tp!(EXPR), 1.0),
+    ///         Rule::new("1", tp!(EXPR), 1.0),
+    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
     ///     ],
     /// );
     /// let exprs: Vec<AppliedRule> = g.enumerate()
@@ -118,9 +123,9 @@ impl Grammar {
     /// let g = Grammar::new(
     ///     tp!(EXPR),
     ///     vec![
-    ///         Rule::new("0", tp!(EXPR), 0.0),
-    ///         Rule::new("1", tp!(EXPR), 0.0),
-    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 0.0),
+    ///         Rule::new("0", tp!(EXPR), 1.0),
+    ///         Rule::new("1", tp!(EXPR), 1.0),
+    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
     ///     ],
     /// );
     ///
@@ -148,12 +153,12 @@ impl Grammar {
     /// let g = Grammar::new(
     ///     tp!(EXPR),
     ///     vec![
-    ///         Rule::new("0", tp!(EXPR), 0.0),
-    ///         Rule::new("1", tp!(EXPR), 0.0),
-    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 0.0),
-    ///         Rule::new("zero?", arrow![tp!(EXPR), tp!(BOOL)], 0.0),
-    ///         Rule::new("if", arrow![tp!(BOOL), tp!(EXPR), tp!(EXPR)], 0.0),
-    ///         Rule::new("nand", arrow![tp!(BOOL), tp!(BOOL), tp!(BOOL)], 0.0),
+    ///         Rule::new("0", tp!(EXPR), 1.0),
+    ///         Rule::new("1", tp!(EXPR), 1.0),
+    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
+    ///         Rule::new("zero?", arrow![tp!(EXPR), tp!(BOOL)], 1.0),
+    ///         Rule::new("if", arrow![tp!(BOOL), tp!(EXPR), tp!(EXPR)], 1.0),
+    ///         Rule::new("nand", arrow![tp!(BOOL), tp!(BOOL), tp!(BOOL)], 1.0),
     ///     ]
     /// );
     ///
@@ -205,11 +210,18 @@ impl Representation for Grammar {
     }
 }
 impl EC for Grammar {
+    type Params = ();
+
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Self::Expression, f64)> + 'a> {
         self.enumerate_nonterminal(tp)
     }
-    fn mutate<O: Sync>(&self, tasks: &[Task<Self, O>], frontiers: &[Frontier<Self>]) -> Self {
-        let _ = (tasks, frontiers);
+    fn mutate<O: Sync>(
+        &self,
+        params: &Self::Params,
+        tasks: &[Task<Self, O>],
+        frontiers: &[Frontier<Self>],
+    ) -> Self {
+        let _ = (params, tasks, frontiers);
         self.clone()
     }
 }
@@ -295,9 +307,9 @@ impl Eq for Rule {}
 /// let g = Grammar::new(
 ///     tp!(EXPR),
 ///     vec![
-///         Rule::new("0", tp!(EXPR), 0.0),
-///         Rule::new("1", tp!(EXPR), 0.0),
-///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 0.0),
+///         Rule::new("0", tp!(EXPR), 1.0),
+///         Rule::new("1", tp!(EXPR), 1.0),
+///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
 ///     ],
 /// );
 ///
