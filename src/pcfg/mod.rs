@@ -3,9 +3,14 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::f64;
+use std::fmt::Debug;
 use itertools::Itertools;
 use polytype::Type;
 use super::{Frontier, InferenceError, Representation, Task, EC};
+
+mod enumerator;
+mod parser;
+pub use self::parser::ParseError;
 
 /// Probabilistic context-free grammar. Currently cannot handle bound variables or polymorphism.
 ///
@@ -49,7 +54,7 @@ impl Grammar {
     /// # #[macro_use]
     /// # extern crate polytype;
     /// # extern crate programinduction;
-    /// use programinduction::pcfg::{Grammar, Rule};
+    /// use programinduction::pcfg::{Grammar, Rule, AppliedRule};
     ///
     /// # fn main() {
     /// let g = Grammar::new(
@@ -89,6 +94,16 @@ impl Grammar {
         tp: Type,
     ) -> Box<Iterator<Item = (AppliedRule, f64)> + 'a> {
         enumerator::new(self, tp)
+    }
+    /// Evaluate a sentence based on an output value.
+    pub fn check<V, F>(&self, ar: &AppliedRule, evaluator: &F, out: &V) -> bool
+    where
+        F: Fn(&str, &[V]) -> V,
+        V: Clone + PartialEq + Debug,
+    {
+        let _ = (ar, evaluator, out);
+        true
+        // TODO
     }
     /// Get the log-likelihood of an expansion for the given nonterminal.
     ///
@@ -169,6 +184,12 @@ impl EC for Grammar {
     }
 }
 
+/// Identifies a rule by its location in [`grammar.rules`].
+///
+/// [`grammar.rules`]: struct.Grammar.html#structfield.rules
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppliedRule(pub Type, pub usize, pub Vec<AppliedRule>);
+
 /// A PCFG rule specifies a production that can happen for a particular nonterminal.
 ///
 /// A rule associates a production name with a production type. Rules that are not arrows are
@@ -211,175 +232,72 @@ impl PartialEq for Rule {
 }
 impl Eq for Rule {}
 
-/// Identifies a rule by its location in [`grammar.rules`].
+/// Create a task based on evaluating a PCFG sentence and comparing its output against data.
 ///
-/// [`grammar.rules`]: struct.Grammar.html#structfield.rules
-#[derive(Debug, Clone, PartialEq)]
-pub struct AppliedRule(pub Type, pub usize, pub Vec<AppliedRule>);
-
-mod enumerator {
-    const BUDGET_INCREMENT: f64 = 2.0;
-    const MAX_DEPTH: u32 = 512;
-
-    use std::collections::VecDeque;
-    use std::iter;
-    use itertools::Itertools;
-    use polytype::Type;
-    use super::{AppliedRule, Grammar};
-
-    pub fn new<'a>(
-        g: &'a Grammar,
-        nonterminal: Type,
-    ) -> Box<Iterator<Item = (AppliedRule, f64)> + 'a> {
-        let budget = |offset: f64| (offset, offset + BUDGET_INCREMENT);
-        let depth = 0;
-        Box::new(
-            (0..5)
-                .map(|n| BUDGET_INCREMENT * f64::from(n))
-                .flat_map(move |offset| enumerate(g, nonterminal.clone(), budget(offset), depth)),
-        )
-    }
-
-    fn enumerate<'a>(
-        g: &'a Grammar,
-        tp: Type,
-        budget: (f64, f64),
-        depth: u32,
-    ) -> Box<Iterator<Item = (AppliedRule, f64)> + 'a> {
-        if budget.1 <= 0f64 || depth > MAX_DEPTH {
-            Box::new(iter::empty())
+/// Here we let all tasks be represented by an output valued in the space of type `V`. In practice,
+/// `V` will often be an enum corresponding to each nonterminal in the PCFG. All outputs and
+/// evaluated sentences must be representable by `V`.
+///
+/// An `evaluator` takes the name of a production and a vector corresponding to evaluated results
+/// of each child node of the production in a particular derivation.
+///
+/// The resulting task is "all-or-nothing": the oracle returns either `0` if all examples are
+/// correctly hit or `f64::NEG_INFINITY` otherwise.
+///
+/// # Examples
+///
+/// ```
+/// # #[macro_use]
+/// # extern crate polytype;
+/// # extern crate programinduction;
+/// use programinduction::pcfg::{Grammar, Rule, task_by_output};
+///
+/// fn evaluator(name: &str, inps: &[i32]) -> i32 {
+///     match name {
+///         "0" => 0,
+///         "1" => 1,
+///         "plus" => inps[0] + inps[1],
+///         _ => unreachable!(),
+///     }
+/// }
+///
+/// # fn main() {
+/// let g = Grammar::new(
+///     tp!(EXPR),
+///     vec![
+///         Rule::new("0", tp!(EXPR), 0.0),
+///         Rule::new("1", tp!(EXPR), 0.0),
+///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 0.0),
+///     ],
+/// );
+///
+/// let output = 4;
+/// let tp = tp!(EXPR);
+/// let task = task_by_output(&evaluator, &output, tp);
+///
+/// let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
+/// assert!((task.oracle)(&g, &expr).is_finite())
+/// # }
+/// ```
+pub fn task_by_output<'a, V, F>(
+    evaluator: &'a F,
+    output: &'a V,
+    tp: Type,
+) -> Task<'a, Grammar, &'a V>
+where
+    V: PartialEq + Clone + Sync + Debug + 'a,
+    F: Fn(&str, &[V]) -> V + Sync + 'a,
+{
+    let oracle = Box::new(move |g: &Grammar, ar: &AppliedRule| {
+        if g.check(ar, evaluator, output) {
+            0f64
         } else {
-            Box::new(
-                g.rules[&tp]
-                    .iter()
-                    .enumerate()
-                    .filter(move |&(_, r)| -r.logprob <= budget.1)
-                    .sorted()
-                    .into_iter()
-                    .flat_map(move |(i, r)| {
-                        let ar = AppliedRule(tp.clone(), i, vec![]);
-                        let arg_tps: VecDeque<Type> = if let Type::Arrow(ref arr) = r.production {
-                            arr.args().into_iter().cloned().collect()
-                        } else {
-                            VecDeque::new()
-                        };
-                        let budget = (budget.0 + r.logprob, budget.1 + r.logprob);
-                        enumerate_many(g, ar, arg_tps, budget, depth + 1)
-                            .map(move |(x, l)| (x, l + r.logprob))
-                    }),
-            )
+            f64::NEG_INFINITY
         }
-    }
-
-    fn enumerate_many<'a>(
-        g: &'a Grammar,
-        ar: AppliedRule,
-        mut arg_tps: VecDeque<Type>,
-        budget: (f64, f64),
-        depth: u32,
-    ) -> Box<Iterator<Item = (AppliedRule, f64)> + 'a> {
-        if let Some(arg_tp) = arg_tps.pop_front() {
-            Box::new(enumerate(g, arg_tp, (0f64, budget.1), depth).flat_map(
-                move |(arg, arg_ll)| {
-                    let mut ar = ar.clone();
-                    ar.2.push(arg);
-                    let budget = (budget.0 + arg_ll, budget.1 + arg_ll);
-                    enumerate_many(g, ar, arg_tps.clone(), budget, depth)
-                        .map(move |(x, l)| (x, arg_ll + l))
-                },
-            ))
-        } else if budget.0 < 0f64 && 0f64 <= budget.1 {
-            Box::new(iter::once((ar, 0f64)))
-        } else {
-            Box::new(iter::empty())
-        }
-    }
-}
-
-pub use self::parser::ParseError;
-mod parser {
-    use std::{error, fmt};
-    use polytype::Type;
-    use nom::types::CompleteStr;
-    use super::{AppliedRule, Grammar, Rule};
-
-    #[derive(Clone, Debug)]
-    pub enum ParseError {
-        InapplicableRule(Type, String),
-        NomError(String),
-    }
-    impl fmt::Display for ParseError {
-        fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-            match *self {
-                ParseError::InapplicableRule(ref nt, ref s) => {
-                    write!(f, "invalide rule {} for nonterminal {}", s, nt)
-                }
-                ParseError::NomError(ref err) => write!(f, "could not parse: {}", err),
-            }
-        }
-    }
-    impl error::Error for ParseError {
-        fn description(&self) -> &str {
-            "could not parse expression"
-        }
-    }
-
-    fn location<'a>(
-        grammar: &'a Grammar,
-        nt: &Type,
-        name: &str,
-    ) -> Result<(usize, &'a Rule), ParseError> {
-        if let Some(rules) = grammar.rules.get(nt) {
-            rules
-                .iter()
-                .enumerate()
-                .find(|&(_, r)| r.name == name)
-                .ok_or_else(|| ParseError::InapplicableRule(nt.clone(), String::from(name)))
-        } else {
-            Err(ParseError::InapplicableRule(nt.clone(), String::from(name)))
-        }
-    }
-
-    #[derive(Debug)]
-    struct Item(String, Vec<Item>);
-    impl Item {
-        fn into_applied(&self, grammar: &Grammar, nt: Type) -> Result<AppliedRule, ParseError> {
-            let (loc, r) = location(grammar, &nt, &self.0)?;
-            if let Type::Arrow(ref arr) = r.production {
-                let inner: Result<Vec<AppliedRule>, ParseError> = self.1
-                    .iter()
-                    .zip(arr.args())
-                    .map(move |(item, nt)| item.into_applied(grammar, nt.clone()))
-                    .collect();
-                Ok(AppliedRule(nt, loc, inner?))
-            } else {
-                Ok(AppliedRule(nt, loc, vec![]))
-            }
-        }
-    }
-
-    /// doesn't match parentheses or comma, but matches most ascii printable characters.
-    fn alphanumeric_ext(c: char) -> bool {
-        (c >= 0x21 as char && c <= 0x7E as char) && !(c == '(' || c == ')' || c == ',')
-    }
-
-    named!(var<CompleteStr, Item>,
-        do_parse!(
-            name: ws!( take_while!(alphanumeric_ext) ) >>
-            (Item(name.0.to_string(), vec![]))
-        ));
-    named!(func<CompleteStr, Item>,
-        do_parse!(
-            name: ws!( take_while!(alphanumeric_ext) ) >>
-            args: delimited!(tag!("("), separated_list!(tag!(","), expr), tag!(")")) >>
-            (Item(name.0.to_string(), args))
-        ));
-    named!(expr<CompleteStr, Item>, alt!(func | var));
-
-    pub fn parse(grammar: &Grammar, input: &str, nt: Type) -> Result<AppliedRule, ParseError> {
-        match expr(CompleteStr(input)) {
-            Ok((_, item)) => item.into_applied(grammar, nt),
-            Err(err) => Err(ParseError::NomError(format!("{:?}", err))),
-        }
+    });
+    Task {
+        oracle,
+        observation: output,
+        tp,
     }
 }
