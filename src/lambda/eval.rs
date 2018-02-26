@@ -12,7 +12,8 @@ pub enum ReducedExpression<'a, V: Clone + PartialEq + Debug> {
     Value(V),
     Primitive(&'a str, &'a Type),
     Application(Vec<ReducedExpression<'a, V>>),
-    Abstraction(Box<ReducedExpression<'a, V>>),
+    /// store depth (never zero) for nested abstractions.
+    Abstraction(usize, Box<ReducedExpression<'a, V>>),
     Index(usize),
 }
 impl<'a, V> ReducedExpression<'a, V>
@@ -87,23 +88,33 @@ where
                             panic!("tried to apply a primitive that wasn't a function")
                         }
                     }
-                    ReducedExpression::Abstraction(ref body) => {
+                    ReducedExpression::Abstraction(ref depth, ref body) => {
                         // when applying an abstraction, try to beta-reduce
                         if xs.is_empty() {
-                            ReducedExpression::Abstraction(body.clone())
+                            ReducedExpression::Abstraction(*depth, body.clone())
                         } else {
-                            let binding = xs.remove(0);
                             let mut env = (**env).clone();
-                            env.push_front(binding);
+                            let mut depth: usize = *depth;
+                            xs.reverse();
+                            while !xs.is_empty() && depth > 0 {
+                                let binding = xs.pop().unwrap();
+                                env.push_front(binding);
+                                depth -= 1;
+                            }
+                            xs.reverse();
                             let v = body.eval(evaluator, &Rc::new(env));
-                            if xs.is_empty() {
-                                v
-                            } else if let ReducedExpression::Application(mut v) = v {
-                                v.extend(xs);
-                                ReducedExpression::Application(v)
+                            if depth > 0 {
+                                ReducedExpression::Abstraction(depth, Box::new(v))
                             } else {
-                                xs.insert(0, v);
-                                ReducedExpression::Application(xs)
+                                if xs.is_empty() {
+                                    v
+                                } else if let ReducedExpression::Application(mut v) = v {
+                                    v.extend(xs);
+                                    ReducedExpression::Application(v)
+                                } else {
+                                    xs.insert(0, v);
+                                    ReducedExpression::Application(xs)
+                                }
                             }
                         }
                     }
@@ -163,7 +174,13 @@ where
                 ReducedExpression::Application(v)
             }
             Expression::Abstraction(ref body) => {
-                ReducedExpression::Abstraction(Box::new(Self::from_expr(dsl, body)))
+                let mut body: &Expression = body;
+                let mut depth = 1;
+                while let Expression::Abstraction(ref inner_body) = *body {
+                    depth += 1;
+                    body = inner_body;
+                }
+                ReducedExpression::Abstraction(depth, Box::new(Self::from_expr(dsl, body)))
             }
             Expression::Index(i) => ReducedExpression::Index(i),
             Expression::Invented(_) => unreachable!(/* invented was stripped */),
