@@ -60,7 +60,10 @@ impl Grammar {
     ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 0.0),
     ///     ],
     /// );
-    /// let exprs: Vec<_> = g.enumerate().take(8).map(|(ar, _)| ar).collect();
+    /// let exprs: Vec<AppliedRule> = g.enumerate()
+    ///     .take(8)
+    ///     .map(|(ar, _logprior)| ar)
+    ///     .collect();
     ///
     /// assert_eq!(
     ///     exprs,
@@ -123,34 +126,6 @@ impl Grammar {
     ///
     /// Non-terminating production rules are followed by parentheses containing comma-separated
     /// productions `plus(0, 1)`. Extraneous white space is ignored.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # fn main() {
-    /// use programinduction::pcfg::{Grammar, Rule};
-    ///
-    /// let calculator = Grammar::new(
-    ///     tp!(EXPR),
-    ///     vec![
-    ///         Rule::new("0", tp!(EXPR), 0.0),
-    ///         Rule::new("1", tp!(EXPR), 0.0),
-    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 0.0),
-    ///         Rule::new("is_zero", arrow![tp!(EXPR), tp!(BOOL)], 0.0),
-    ///         Rule::new("if", arrow![tp!(BOOL), tp!(EXPR), tp!(EXPR)], 0.0),
-    ///         Rule::new("nand", arrow![tp!(BOOL), tp!(BOOL), tp!(BOOL)], 0.0),
-    ///     ]
-    /// );
-    ///
-    /// let expr = calculator.parse("if( is_zero( plus(0, 0) ), 1, 0)").unwrap();
-    /// assert_eq!( // parse round-trips with stringify
-    ///     expr,
-    ///     calculator.parse(&calculator.stringify(&expr)).unwrap(),
-    /// );
-    /// # }
-    /// ```
     ///
     /// [`stringify`]: #method.stringify
     pub fn parse(&self, inp: &str) -> Result<AppliedRule, ParseError> {
