@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["Lucas Morales <lucas@lucasem.com>"]
 
 [dependencies]
+itertools = "0.7"
 lazy_static = "1.0"
+nom = "4.0.0-beta1"
 polytype = "1.2"
 rayon = "1.0"

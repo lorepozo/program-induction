@@ -1,4 +1,4 @@
-//! A polymorphically-typed lambda calculus representation.
+//! (representation) Polymorphically-typed lambda calculus.
 
 mod enumerator;
 mod eval;
@@ -108,8 +108,10 @@ impl Language {
         expr.infer(self, &mut ctx, &env, &mut indices)
     }
 
-    /// Enumerate expressions for a request type (including its probability and appropriately
-    /// instantiated `Type`):
+    /// Enumerate expressions for a request type (including log-probabilities and appropriately
+    /// instantiated `Type`s):
+    ///
+    /// # Examples
     ///
     /// ```
     /// # #[macro_use] extern crate polytype;

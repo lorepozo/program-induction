@@ -1,7 +1,10 @@
 //! A library for program induction and learning representations.
 
+extern crate itertools;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate nom;
 #[macro_use]
 extern crate polytype;
 extern crate rayon;
@@ -9,6 +12,7 @@ extern crate rayon;
 pub mod domains;
 mod ec;
 pub mod lambda;
+pub mod pcfg;
 pub use ec::*;
 
 use std::f64;
