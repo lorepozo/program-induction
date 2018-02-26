@@ -95,15 +95,45 @@ impl Grammar {
     ) -> Box<Iterator<Item = (AppliedRule, f64)> + 'a> {
         enumerator::new(self, tp)
     }
-    /// Evaluate a sentence based on an output value.
-    pub fn check<V, F>(&self, ar: &AppliedRule, evaluator: &F, out: &V) -> bool
+    /// Evaluate a sentence using an evaluator.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[macro_use]
+    /// # extern crate polytype;
+    /// # extern crate programinduction;
+    /// use programinduction::pcfg::{Grammar, Rule, task_by_output};
+    ///
+    /// fn evaluator(name: &str, inps: &[i32]) -> i32 {
+    ///     match name {
+    ///         "0" => 0,
+    ///         "1" => 1,
+    ///         "plus" => inps[0] + inps[1],
+    ///         _ => unreachable!(),
+    ///     }
+    /// }
+    ///
+    /// # fn main() {
+    /// let g = Grammar::new(
+    ///     tp!(EXPR),
+    ///     vec![
+    ///         Rule::new("0", tp!(EXPR), 0.0),
+    ///         Rule::new("1", tp!(EXPR), 0.0),
+    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 0.0),
+    ///     ],
+    /// );
+    ///
+    /// let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
+    /// assert_eq!(4, g.eval(&expr, &evaluator));
+    /// # }
+    /// ```
+    pub fn eval<V, F>(&self, ar: &AppliedRule, evaluator: &F) -> V
     where
         F: Fn(&str, &[V]) -> V,
-        V: Clone + PartialEq + Debug,
     {
-        let _ = (ar, evaluator, out);
-        true
-        // TODO
+        let args: Vec<V> = ar.2.iter().map(|ar| self.eval(ar, evaluator)).collect();
+        evaluator(self.rules[&ar.0][ar.1].name, &args)
     }
     /// Get the log-likelihood of an expansion for the given nonterminal.
     ///
@@ -289,7 +319,7 @@ where
     F: Fn(&str, &[V]) -> V + Sync + 'a,
 {
     let oracle = Box::new(move |g: &Grammar, ar: &AppliedRule| {
-        if g.check(ar, evaluator, output) {
+        if output == &g.eval(ar, evaluator) {
             0f64
         } else {
             f64::NEG_INFINITY
