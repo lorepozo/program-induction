@@ -12,7 +12,7 @@ use super::{Representation, Task};
 /// Stores tuples of [`Expression`], log-prior, and log-likelihood.
 ///
 /// [`Expression`]: trait.Representation.html#associatetype.Expression
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Frontier<R: Representation>(pub Vec<(R::Expression, f64, f64)>);
 impl<R: Representation> Frontier<R> {
     pub fn new() -> Self {
