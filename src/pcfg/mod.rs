@@ -289,8 +289,22 @@ impl EC for Grammar {
     }
 }
 
+/// Parameters for PCFG parameter estimation.
 pub struct Params {
     pub pseudocounts: u64,
+}
+impl Default for Params {
+    /// The default for PCFG `Params` prevents completely discarding rules by having non-zero
+    /// pseudocounts:
+    ///
+    /// ```
+    /// # use programinduction::pcfg::Params;
+    /// Params { pseudocounts: 1 }
+    /// # ;
+    /// ```
+    fn default() -> Self {
+        Params { pseudocounts: 1 }
+    }
 }
 
 /// Identifies a rule by its location in [`grammar.rules`].
