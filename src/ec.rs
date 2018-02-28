@@ -30,6 +30,20 @@ impl<R: Representation> Frontier<R> {
             .max_by(|&&(_, _, ref x), &&(_, _, ref y)| x.partial_cmp(y).unwrap())
     }
 }
+impl<'a, R: Representation> IntoIterator for &'a Frontier<R> {
+    type Item = &'a (R::Expression, f64, f64);
+    type IntoIter = ::std::slice::Iter<'a, (R::Expression, f64, f64)>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+impl<R: Representation> IntoIterator for Frontier<R> {
+    type Item = (R::Expression, f64, f64);
+    type IntoIter = ::std::vec::IntoIter<(R::Expression, f64, f64)>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
 
 /// Parameters for the EC algorithm.
 pub struct ECParams {

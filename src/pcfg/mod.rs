@@ -4,12 +4,15 @@ mod enumerator;
 mod parser;
 pub use self::parser::ParseError;
 
-use std::cmp::Ordering;
+use std::cmp;
 use std::collections::HashMap;
 use std::f64;
 use std::fmt::Debug;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use itertools::Itertools;
 use polytype::Type;
+use rayon::prelude::*;
 use super::{Frontier, InferenceError, Representation, Task, EC};
 
 /// Probabilistic context-free grammar. Currently cannot handle bound variables or polymorphism.
@@ -38,11 +41,11 @@ impl Grammar {
             rules.entry(nt).or_insert_with(Vec::new).push(rule)
         }
         for rs in rules.values_mut() {
-            let p_largest = rs.iter()
+            let lp_largest = rs.iter()
                 .fold(f64::NEG_INFINITY, |acc, r| acc.max(r.logprob));
-            let z = p_largest
+            let z = lp_largest
                 + rs.iter()
-                    .map(|r| (r.logprob - p_largest).exp())
+                    .map(|r| (r.logprob - lp_largest).exp())
                     .sum::<f64>()
                     .ln();
             for r in rs {
@@ -99,6 +102,45 @@ impl Grammar {
         tp: Type,
     ) -> Box<Iterator<Item = (AppliedRule, f64)> + 'a> {
         enumerator::new(self, tp)
+    }
+    /// Set parameters based on supplied sentences. This is performed by [`Grammar::mutate`].
+    ///
+    /// [`Grammar::mutate`]: ../trait.EC.html#method.mutate
+    pub fn update_parameters(&mut self, params: &Params, sentences: &[AppliedRule]) {
+        let mut counts: HashMap<Type, Vec<AtomicUsize>> = HashMap::new();
+        // initialize counts to pseudocounts
+        for (nt, rs) in &self.rules {
+            counts.insert(
+                nt.clone(),
+                (0..rs.len())
+                    .map(|_| AtomicUsize::new(params.pseudocounts as usize))
+                    .collect(),
+            );
+        }
+        // update counts based on occurrence
+        let counts = Arc::new(counts);
+        sentences
+            .par_iter()
+            .for_each(|ar| update_counts(ar, &counts));
+        // assign raw logprobabilities from counts
+        for (nt, cs) in Arc::try_unwrap(counts).unwrap() {
+            for (i, c) in cs.into_iter().enumerate() {
+                self.rules.get_mut(&nt).unwrap()[i].logprob = (c.into_inner() as f64).ln();
+            }
+        }
+        // normalize
+        for rs in self.rules.values_mut() {
+            let p_largest = rs.iter()
+                .fold(f64::NEG_INFINITY, |acc, r| acc.max(r.logprob));
+            let z = p_largest
+                + rs.iter()
+                    .map(|r| (r.logprob - p_largest).exp())
+                    .sum::<f64>()
+                    .ln();
+            for r in rs {
+                r.logprob = r.logprob - z;
+            }
+        }
     }
     /// Evaluate a sentence using an evaluator.
     ///
@@ -210,20 +252,64 @@ impl Representation for Grammar {
     }
 }
 impl EC for Grammar {
-    type Params = ();
+    type Params = Params;
 
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Self::Expression, f64)> + 'a> {
         self.enumerate_nonterminal(tp)
     }
+    /// This is exactly the same as [`Grammar::update_parameters`], but optimized to deal with
+    /// frontiers.
+    ///
+    /// [`Grammar::update_parameters`]: #method.update_parameters
     fn mutate<O: Sync>(
         &self,
         params: &Self::Params,
-        tasks: &[Task<Self, O>],
+        _tasks: &[Task<Self, O>],
         frontiers: &[Frontier<Self>],
     ) -> Self {
-        let _ = (params, tasks, frontiers);
-        self.clone()
+        let mut counts: HashMap<Type, Vec<AtomicUsize>> = HashMap::new();
+        // initialize counts to pseudocounts
+        for (nt, rs) in &self.rules {
+            counts.insert(
+                nt.clone(),
+                (0..rs.len())
+                    .map(|_| AtomicUsize::new(params.pseudocounts as usize))
+                    .collect(),
+            );
+        }
+        // update counts based on occurrence
+        // NOTE: these lines are the only difference with Grammar::update_parameters
+        let counts = Arc::new(counts);
+        frontiers
+            .par_iter()
+            .flat_map(|f| &f.0)
+            .for_each(|&(ref ar, _, _)| update_counts(ar, &counts));
+        let mut g = self.clone();
+        // assign raw logprobabilities from counts
+        for (nt, cs) in Arc::try_unwrap(counts).unwrap() {
+            for (i, c) in cs.into_iter().enumerate() {
+                g.rules.get_mut(&nt).unwrap()[i].logprob = (c.into_inner() as f64).ln();
+            }
+        }
+        // normalize
+        for rs in g.rules.values_mut() {
+            let p_largest = rs.iter()
+                .fold(f64::NEG_INFINITY, |acc, r| acc.max(r.logprob));
+            let z = p_largest
+                + rs.iter()
+                    .map(|r| (r.logprob - p_largest).exp())
+                    .sum::<f64>()
+                    .ln();
+            for r in rs {
+                r.logprob = r.logprob - z;
+            }
+        }
+        g
     }
+}
+
+pub struct Params {
+    pub pseudocounts: u64,
 }
 
 /// Identifies a rule by its location in [`grammar.rules`].
@@ -257,13 +343,13 @@ impl Rule {
     }
 }
 impl Ord for Rule {
-    fn cmp(&self, other: &Rule) -> Ordering {
+    fn cmp(&self, other: &Rule) -> cmp::Ordering {
         self.partial_cmp(&other)
             .expect("logprob for rule is not finite")
     }
 }
 impl PartialOrd for Rule {
-    fn partial_cmp(&self, other: &Rule) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Rule) -> Option<cmp::Ordering> {
         self.logprob.partial_cmp(&other.logprob)
     }
 }
@@ -273,6 +359,11 @@ impl PartialEq for Rule {
     }
 }
 impl Eq for Rule {}
+
+fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicUsize>>>) {
+    counts[&ar.0][ar.1].fetch_add(1, Ordering::Relaxed);
+    ar.2.iter().for_each(move |ar| update_counts(&ar, counts));
+}
 
 /// Create a task based on evaluating a PCFG sentence and comparing its output against data.
 ///
