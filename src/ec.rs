@@ -1,6 +1,7 @@
 //! The Exploration-Compression algorithm.
 
 use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex};
 use polytype::Type;
 use rayon::prelude::*;
@@ -15,14 +16,8 @@ use super::{Representation, Task};
 #[derive(Clone, Debug)]
 pub struct Frontier<R: Representation>(pub Vec<(R::Expression, f64, f64)>);
 impl<R: Representation> Frontier<R> {
-    pub fn new() -> Self {
-        Frontier(vec![])
-    }
     pub fn push(&mut self, expr: R::Expression, log_prior: f64, log_likelihood: f64) {
         self.0.push((expr, log_prior, log_likelihood))
-    }
-    pub fn len(&self) -> usize {
-        self.0.len()
     }
     pub fn best_solution(&self) -> Option<&(R::Expression, f64, f64)> {
         self.0
@@ -30,18 +25,20 @@ impl<R: Representation> Frontier<R> {
             .max_by(|&&(_, _, ref x), &&(_, _, ref y)| x.partial_cmp(y).unwrap())
     }
 }
-impl<'a, R: Representation> IntoIterator for &'a Frontier<R> {
-    type Item = &'a (R::Expression, f64, f64);
-    type IntoIter = ::std::slice::Iter<'a, (R::Expression, f64, f64)>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
+impl<R: Representation> Default for Frontier<R> {
+    fn default() -> Self {
+        Frontier(vec![])
     }
 }
-impl<R: Representation> IntoIterator for Frontier<R> {
-    type Item = (R::Expression, f64, f64);
-    type IntoIter = ::std::vec::IntoIter<(R::Expression, f64, f64)>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+impl<R: Representation> Deref for Frontier<R> {
+    type Target = Vec<(R::Expression, f64, f64)>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl<R: Representation> DerefMut for Frontier<R> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -129,7 +126,7 @@ pub trait EC: Representation {
                 .map(|(i, (t, ref repr))| {
                     repr.enumerate_solutions(params, t.tp.clone(), vec![(i, t)])
                         .remove(&i)
-                        .unwrap_or_else(Frontier::new)
+                        .unwrap_or_default()
                 })
                 .collect()
         } else {
@@ -138,7 +135,7 @@ pub trait EC: Representation {
                 tps.entry(&task.tp).or_insert_with(Vec::new).push((i, task))
             }
             let mut results: Vec<Frontier<Self>> =
-                (0..tasks.len()).map(|_| Frontier::new()).collect();
+                (0..tasks.len()).map(|_| Frontier::default()).collect();
             {
                 let mutex = Arc::new(Mutex::new(&mut results));
                 tps.into_par_iter()
@@ -174,7 +171,7 @@ pub trait EC: Representation {
             tasks.retain(|&(i, t)| {
                 let log_likelihood = (t.oracle)(self, &expr);
                 if log_likelihood.is_finite() {
-                    let f = frontiers.entry(i).or_insert_with(Frontier::new);
+                    let f = frontiers.entry(i).or_insert_with(Frontier::default);
                     f.push(expr.clone(), log_prior, log_likelihood);
                     f.len() < params.frontier_size
                 } else {

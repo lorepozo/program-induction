@@ -105,16 +105,14 @@ where
                             let v = body.eval(evaluator, &Rc::new(env));
                             if depth > 0 {
                                 ReducedExpression::Abstraction(depth, Box::new(v))
+                            } else if xs.is_empty() {
+                                v
+                            } else if let ReducedExpression::Application(mut v) = v {
+                                v.extend(xs);
+                                ReducedExpression::Application(v)
                             } else {
-                                if xs.is_empty() {
-                                    v
-                                } else if let ReducedExpression::Application(mut v) = v {
-                                    v.extend(xs);
-                                    ReducedExpression::Application(v)
-                                } else {
-                                    xs.insert(0, v);
-                                    ReducedExpression::Application(xs)
-                                }
+                                xs.insert(0, v);
+                                ReducedExpression::Application(xs)
                             }
                         }
                     }

@@ -32,7 +32,7 @@ impl Grammar {
     pub fn new(start: Type, all_rules: Vec<Rule>) -> Self {
         let mut rules = HashMap::new();
         for mut rule in all_rules {
-            let nt = if let &Type::Arrow(ref arrow) = &rule.production {
+            let nt = if let Type::Arrow(ref arrow) = rule.production {
                 arrow.returns().clone()
             } else {
                 rule.production.clone()
@@ -40,19 +40,9 @@ impl Grammar {
             rule.logprob = rule.logprob.ln();
             rules.entry(nt).or_insert_with(Vec::new).push(rule)
         }
-        for rs in rules.values_mut() {
-            let lp_largest = rs.iter()
-                .fold(f64::NEG_INFINITY, |acc, r| acc.max(r.logprob));
-            let z = lp_largest
-                + rs.iter()
-                    .map(|r| (r.logprob - lp_largest).exp())
-                    .sum::<f64>()
-                    .ln();
-            for r in rs {
-                r.logprob = r.logprob - z;
-            }
-        }
-        Grammar { start, rules }
+        let mut g = Grammar { start, rules };
+        g.normalize();
+        g
     }
     /// Enumerate statements in the PCFG, including log-probabilities.
     ///
@@ -128,19 +118,7 @@ impl Grammar {
                 self.rules.get_mut(&nt).unwrap()[i].logprob = (c.into_inner() as f64).ln();
             }
         }
-        // normalize
-        for rs in self.rules.values_mut() {
-            let p_largest = rs.iter()
-                .fold(f64::NEG_INFINITY, |acc, r| acc.max(r.logprob));
-            let z = p_largest
-                + rs.iter()
-                    .map(|r| (r.logprob - p_largest).exp())
-                    .sum::<f64>()
-                    .ln();
-            for r in rs {
-                r.logprob = r.logprob - z;
-            }
-        }
+        self.normalize();
     }
     /// Evaluate a sentence using an evaluator.
     ///
@@ -243,6 +221,21 @@ impl Grammar {
             format!("{}", r.name)
         }
     }
+
+    fn normalize(&mut self) {
+        for rs in self.rules.values_mut() {
+            let lp_largest = rs.iter()
+                .fold(f64::NEG_INFINITY, |acc, r| acc.max(r.logprob));
+            let z = lp_largest
+                + rs.iter()
+                    .map(|r| (r.logprob - lp_largest).exp())
+                    .sum::<f64>()
+                    .ln();
+            for r in rs {
+                r.logprob -= z;
+            }
+        }
+    }
 }
 impl Representation for Grammar {
     type Expression = AppliedRule;
@@ -291,19 +284,7 @@ impl EC for Grammar {
                 g.rules.get_mut(&nt).unwrap()[i].logprob = (c.into_inner() as f64).ln();
             }
         }
-        // normalize
-        for rs in g.rules.values_mut() {
-            let p_largest = rs.iter()
-                .fold(f64::NEG_INFINITY, |acc, r| acc.max(r.logprob));
-            let z = p_largest
-                + rs.iter()
-                    .map(|r| (r.logprob - p_largest).exp())
-                    .sum::<f64>()
-                    .ln();
-            for r in rs {
-                r.logprob = r.logprob - z;
-            }
-        }
+        g.normalize();
         g
     }
 }
@@ -344,7 +325,7 @@ impl Rule {
 }
 impl Ord for Rule {
     fn cmp(&self, other: &Rule) -> cmp::Ordering {
-        self.partial_cmp(&other)
+        self.partial_cmp(other)
             .expect("logprob for rule is not finite")
     }
 }
@@ -362,7 +343,7 @@ impl Eq for Rule {}
 
 fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicUsize>>>) {
     counts[&ar.0][ar.1].fetch_add(1, Ordering::Relaxed);
-    ar.2.iter().for_each(move |ar| update_counts(&ar, counts));
+    ar.2.iter().for_each(move |ar| update_counts(ar, counts));
 }
 
 /// Create a task based on evaluating a PCFG sentence and comparing its output against data.

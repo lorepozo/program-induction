@@ -43,11 +43,11 @@ fn location<'a>(
 #[derive(Debug)]
 struct Item(String, Vec<Item>);
 impl Item {
-    fn into_applied(&self, grammar: &Grammar, nt: Type) -> Result<AppliedRule, ParseError> {
+    fn into_applied(self, grammar: &Grammar, nt: Type) -> Result<AppliedRule, ParseError> {
         let (loc, r) = location(grammar, &nt, &self.0)?;
         if let Type::Arrow(ref arr) = r.production {
             let inner: Result<Vec<AppliedRule>, ParseError> = self.1
-                .iter()
+                .into_iter()
                 .zip(arr.args())
                 .map(move |(item, nt)| item.into_applied(grammar, nt.clone()))
                 .collect();

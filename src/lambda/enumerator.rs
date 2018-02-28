@@ -41,9 +41,9 @@ fn likelihood_internal<'a>(
     env: &Rc<LinkedList<Type>>,
     mut expr: &Expression,
 ) -> (f64, Context) {
-    if let &Type::Arrow(ref arrow) = request {
-        let env = LinkedList::prepend(&env, *arrow.arg.clone());
-        if let &Expression::Abstraction(ref body) = expr {
+    if let Type::Arrow(ref arrow) = *request {
+        let env = LinkedList::prepend(env, *arrow.arg.clone());
+        if let Expression::Abstraction(ref body) = *expr {
             likelihood_internal(dsl, &*arrow.ret, ctx, &env, body)
         } else {
             eprintln!("likelihood for arrow found expression that wasn't abstraction");
@@ -51,11 +51,11 @@ fn likelihood_internal<'a>(
         }
     } else {
         let mut xs: Vec<&Expression> = vec![];
-        while let &Expression::Application(ref l, ref r) = expr {
+        while let Expression::Application(ref l, ref r) = *expr {
             expr = l;
             xs.push(r);
         }
-        let candidates = dsl.candidates(&request, ctx, &env.as_vecdeque());
+        let candidates = dsl.candidates(request, ctx, &env.as_vecdeque());
         match candidates
             .into_iter()
             .find(|&(_, ref c_expr, _, _)| expr == c_expr)

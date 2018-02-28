@@ -712,13 +712,14 @@ where
 {
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
         let expr = &dsl.strip_invented(expr);
-        if examples.iter().all(|&(ref inps, ref out)| {
+        let success = examples.iter().all(|&(ref inps, ref out)| {
             if let Some(ref o) = dsl.eval(expr, evaluator, inps) {
                 o == out
             } else {
                 false
             }
-        }) {
+        });
+        if success {
             0f64
         } else {
             f64::NEG_INFINITY
