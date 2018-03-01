@@ -3,7 +3,7 @@ use std::iter;
 use std::f64;
 use std::rc::Rc;
 use polytype::{Context, Type};
-use super::{Expression, Language};
+use super::{Expression, Language, LinkedList};
 
 const BUDGET_INCREMENT: f64 = 1.0;
 const MAX_DEPTH: u32 = 256;
@@ -155,31 +155,5 @@ fn enumerate_application<'a>(
         Box::new(iter::once((0f64, ctx.clone(), f)))
     } else {
         Box::new(iter::empty())
-    }
-}
-
-#[derive(Debug, Clone)]
-struct LinkedList<T: Clone>(Option<(T, Rc<LinkedList<T>>)>);
-impl<T: Clone> LinkedList<T> {
-    fn prepend(lst: &Rc<LinkedList<T>>, v: T) -> Rc<LinkedList<T>> {
-        Rc::new(LinkedList(Some((v, lst.clone()))))
-    }
-    fn as_vecdeque(&self) -> VecDeque<T> {
-        let mut lst: &Rc<LinkedList<T>>;
-        let mut out = VecDeque::new();
-        if let Some((ref v, ref nlst)) = self.0 {
-            out.push_back(v.clone());
-            lst = nlst;
-            while let Some((ref v, ref nlst)) = lst.0 {
-                out.push_back(v.clone());
-                lst = nlst;
-            }
-        }
-        out
-    }
-}
-impl<T: Clone> Default for LinkedList<T> {
-    fn default() -> Self {
-        LinkedList(None)
     }
 }

@@ -1,6 +1,14 @@
-use std::ops::Deref;
-use super::Language;
+use std::collections::{HashMap, VecDeque};
+use std::f64;
+use std::rc::Rc;
+use itertools::Itertools;
+use polytype::{Context, Type};
+use rayon::prelude::*;
+use super::{Expression, Language, LinkedList};
 use super::super::{Frontier, Task};
+
+const BOUND_VAR_COST: f64 = 0.1;
+const FREE_VAR_COST: f64 = 0.01;
 
 /// Parameters for grammar induction.
 ///
@@ -13,7 +21,7 @@ pub struct Params {
     pub pseudocounts: u64,
     /// Rather than using every expression in the frontier for proposing fragments, only use the
     /// `topk` best expressions in each frontier.
-    pub topk: u64,
+    pub topk: usize,
     /// Structure penalty penalizes the total number of nodes in each [`Expression`] of the
     /// grammar's primitives and invented expressions.
     ///
@@ -58,20 +66,583 @@ pub fn induce<O: Sync>(
     tasks: &[Task<Language, O>],
     frontiers: &[Frontier<Language>],
 ) -> Language {
-    let grammar: FragmentGrammar = dsl.into();
-    let _ = (params, tasks, frontiers);
-    grammar.0
+    let mut g = FragmentGrammar::from(dsl);
+    let frontiers: Vec<_> = tasks
+        .iter()
+        .map(|t| &t.tp)
+        .zip(frontiers)
+        .filter(|&(_, f)| !f.is_empty())
+        .map(|(tp, fs)| {
+            let fs: Vec<_> = fs.0
+                .iter()
+                .map(|&(ref expr, lp, ll)| (expr, lp, ll))
+                .collect();
+            RescoredFrontier(tp, fs)
+        })
+        .collect();
+
+    let old_joint = g.joint_mdl(&frontiers, false);
+
+    if params.aic.is_finite() {
+        // rescore frontiers
+        let frontiers: Vec<_> = frontiers
+            .par_iter()
+            .map(|f| g.rescore_frontier(f, params.topk))
+            .collect();
+        // score grammar
+        let s = g.score(
+            &frontiers,
+            params.pseudocounts,
+            params.aic,
+            params.structure_penalty,
+        );
+        // TODO: finish this part
+        let _ = (frontiers, s);
+    }
+
+    g.inside_outside(&frontiers, params.pseudocounts);
+    let new_joint = g.joint_mdl(&frontiers, false);
+    eprintln!("old joint = {} ; new joint = {}", old_joint, new_joint);
+    g.dsl // TODO: consider also returning new frontiers
 }
 
-struct FragmentGrammar(Language);
-impl Deref for FragmentGrammar {
-    type Target = Language;
-    fn deref(&self) -> &Language {
-        &self.0
+struct RescoredFrontier<'a>(&'a Type, Vec<(&'a Expression, f64, f64)>);
+
+struct FragmentGrammar {
+    dsl: Language,
+}
+impl FragmentGrammar {
+    fn rescore_frontier<'a>(&self, f: &'a RescoredFrontier, topk: usize) -> RescoredFrontier<'a> {
+        let xs = f.1
+            .iter()
+            .map(|&(expr, _, loglikelihood)| {
+                let logprior = self.uses(f.0, expr).0;
+                (expr, logprior, loglikelihood)
+            })
+            .sorted_by(|&(_, _, ref x), &(_, _, ref y)| y.partial_cmp(x).unwrap())
+            .into_iter()
+            .take(topk)
+            .collect();
+        RescoredFrontier(f.0, xs)
+    }
+
+    fn joint_mdl(&self, frontiers: &[RescoredFrontier], recompute_prior: bool) -> f64 {
+        frontiers
+            .par_iter()
+            .map(|f| {
+                f.1
+                    .iter()
+                    .map(|s| {
+                        let loglikelihood = s.2;
+                        let logprior = if recompute_prior {
+                            self.dsl.likelihood(f.0, s.0)
+                        } else {
+                            s.1
+                        };
+                        logprior + loglikelihood
+                    })
+                    .fold(f64::NEG_INFINITY, |acc, logposterior| acc.max(logposterior))
+            })
+            .sum()
+    }
+
+    fn score(
+        &mut self,
+        frontiers: &[RescoredFrontier],
+        pseudocounts: u64,
+        aic: f64,
+        structure_penalty: f64,
+    ) -> f64 {
+        self.inside_outside(frontiers, pseudocounts);
+        let likelihood = self.joint_mdl(frontiers, true);
+        let structure = (self.dsl.primitives.len() as f64)
+            + self.dsl
+                .invented
+                .iter()
+                .map(|&(ref expr, _, _)| expression_structure(expr))
+                .sum::<f64>();
+        let nparams = self.dsl.primitives.len() + self.dsl.invented.len();
+        likelihood - aic * (nparams as f64) - structure_penalty * structure
+    }
+
+    fn inside_outside(&mut self, frontiers: &[RescoredFrontier], pseudocounts: u64) {
+        let pseudocounts = pseudocounts as f64;
+        let u = self.all_uses(frontiers);
+        self.dsl.variable_logprob =
+            ((u.actual_vars + pseudocounts) as f64).ln() - 1f64.max(u.possible_vars as f64).ln();
+        for (i, prim) in self.dsl.primitives.iter_mut().enumerate() {
+            let obs = u.actual_prims[i] + pseudocounts;
+            let pot = if u.possible_prims[i] != 0f64 {
+                u.possible_prims[i]
+            } else {
+                pseudocounts
+            };
+            prim.2 = obs.ln() - pot.ln();
+        }
+        for (i, inv) in self.dsl.invented.iter_mut().enumerate() {
+            let obs = u.actual_invented[i] + pseudocounts;
+            let pot = if u.possible_invented[i] != 0f64 {
+                u.possible_invented[i]
+            } else {
+                pseudocounts
+            };
+            inv.2 = obs.ln() - pot.ln();
+        }
+    }
+
+    fn all_uses(&self, frontiers: &[RescoredFrontier]) -> Uses {
+        let lus: Vec<_> = frontiers
+            .par_iter()
+            .map(|f| {
+                f.1
+                    .iter()
+                    .map(|&(expr, _, loglikelihood)| {
+                        let (l, u) = self.uses(f.0, expr);
+                        (l + loglikelihood, u)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let zs: Vec<_> = lus.iter()
+            .map(|lu_f| {
+                let largest = lu_f.iter()
+                    .fold(f64::NEG_INFINITY, |acc, &(l, _)| acc.max(l));
+                largest
+                    + lu_f.iter()
+                        .map(|&(l, _)| (l - largest).exp())
+                        .sum::<f64>()
+                        .ln()
+            })
+            .collect();
+        let mut u = Uses::new(&self.dsl);
+        lus.into_iter()
+            .zip(zs)
+            .flat_map(|(lu_f, z)| {
+                lu_f.into_iter().map(move |(l, mut u)| {
+                    u.scale((l - z).exp());
+                    u
+                })
+            })
+            .for_each(|ou| u.merge(ou));
+        u
+    }
+
+    /// This is similar to `enumerator::likelihood` but it does a lot more work to determine
+    /// _outside_ counts.
+    fn uses(&self, request: &Type, expr: &Expression) -> (f64, Uses) {
+        let ctx = Context::default();
+        let env = Rc::new(LinkedList::default());
+        let (l, _, u) = self.likelihood(request, expr, &ctx, &env);
+        (l, u)
+    }
+
+    /// This is similar to `enumerator::likelihood_internal` but it does a lot more work to
+    /// determine _outside_ counts.
+    fn likelihood(
+        &self,
+        request: &Type,
+        expr: &Expression,
+        ctx: &Context,
+        env: &Rc<LinkedList<Type>>,
+    ) -> (f64, Context, Uses) {
+        if let Type::Arrow(ref arrow) = *request {
+            let env = LinkedList::prepend(env, *arrow.arg.clone());
+            if let Expression::Abstraction(ref body) = *expr {
+                self.likelihood(&*arrow.ret, body, ctx, &env)
+            } else {
+                eprintln!("likelihood for arrow found expression that wasn't abstraction");
+                (f64::NEG_INFINITY, ctx.clone(), Uses::new(&self.dsl)) // invalid expression
+            }
+        } else {
+            let candidates = self.dsl.candidates(request, ctx, &env.as_vecdeque());
+            let mut ctx = ctx.clone();
+            let mut possible_vars = 0f64;
+            let mut possible_prims = vec![0f64; self.dsl.primitives.len()];
+            let mut possible_invented = vec![0f64; self.dsl.invented.len()];
+            for &(_, ref expr, _, _) in &candidates {
+                match *expr {
+                    Expression::Primitive(num) => possible_prims[num] = 1f64,
+                    Expression::Invented(num) => possible_invented[num] = 1f64,
+                    Expression::Index(_) => possible_vars += 1f64,
+                    _ => unreachable!(),
+                }
+            }
+            let mut total_likelihood = f64::NEG_INFINITY;
+            let mut weighted_uses: Vec<(f64, Uses)> = Vec::new();
+            let mut f = expr;
+            let mut xs = VecDeque::new();
+            loop {
+                // if we're dealing with an Application, we reiterate for every applicable f/xs
+                // combination.
+                for &(mut l, ref expr, ref tp, ref cctx) in &candidates {
+                    ctx = cctx.clone();
+                    let mut tp = tp.clone();
+                    let mut bindings = HashMap::new();
+                    // skip this iteration if candidate expr and f don't match:
+                    if let Expression::Index(_) = *expr {
+                        if expr != f {
+                            continue;
+                        }
+                    } else if let Some(frag_tp) =
+                        tree_match(&self.dsl, &mut ctx, expr, f, &mut bindings, xs.len())
+                    {
+                        let mut template: VecDeque<Type> =
+                            (0..xs.len()).map(|_| ctx.new_variable()).collect();
+                        template.push_back(request.clone());
+                        // unification cannot fail, so we can safely unwrap:
+                        ctx.unify(&frag_tp, &Type::from(template)).unwrap();
+                        tp = frag_tp.apply(&ctx);
+                    } else {
+                        continue;
+                    }
+
+                    let arg_tps: VecDeque<Type> = if let Type::Arrow(f_tp) = tp {
+                        f_tp.args().into_iter().cloned().collect()
+                    } else {
+                        VecDeque::new()
+                    };
+                    if xs.len() != arg_tps.len() {
+                        eprintln!(
+                            "warning: likelihood calculation xs.len() ({}) ≠ arg_tps.len() ({})",
+                            xs.len(),
+                            arg_tps.len()
+                        );
+                        continue;
+                    }
+
+                    let mut u = Uses {
+                        actual_vars: 0f64,
+                        actual_prims: vec![0f64; self.dsl.primitives.len()],
+                        actual_invented: vec![0f64; self.dsl.invented.len()],
+                        possible_vars,
+                        possible_prims: possible_prims.clone(),
+                        possible_invented: possible_invented.clone(),
+                    };
+                    match *expr {
+                        Expression::Primitive(num) => u.actual_prims[num] = 1f64,
+                        Expression::Invented(num) => u.actual_invented[num] = 1f64,
+                        Expression::Index(_) => u.actual_vars = 1f64,
+                        _ => unreachable!(),
+                    }
+
+                    for (free_tp, free_expr) in bindings
+                        .iter()
+                        .map(|(_, &(ref tp, ref expr))| (tp, expr))
+                        .chain(arg_tps.iter().zip(&xs))
+                    {
+                        let free_tp = free_tp.apply(&ctx);
+                        let n = self.likelihood(&free_tp, free_expr, &ctx, env);
+                        if n.0.is_infinite() {
+                            l = f64::NEG_INFINITY;
+                            break;
+                        }
+                        l += n.0;
+                        ctx = n.1; // ctx should become any of the new ones
+                        u.merge(n.2);
+                    }
+
+                    if l.is_infinite() {
+                        continue;
+                    }
+                    weighted_uses.push((l, u));
+                    total_likelihood = if total_likelihood > l {
+                        total_likelihood + (1f64 + (l - total_likelihood).exp()).ln()
+                    } else {
+                        l + (1f64 + (total_likelihood - l).exp()).ln()
+                    };
+                }
+
+                if let Expression::Application(ref ff, ref x) = *f {
+                    f = ff;
+                    xs.push_front(*x.clone());
+                } else {
+                    break;
+                }
+            }
+
+            let mut u = Uses::new(&self.dsl);
+            if total_likelihood.is_finite() && !weighted_uses.is_empty() {
+                u.join_from(total_likelihood, weighted_uses)
+            }
+            (total_likelihood, ctx, u)
+        }
     }
 }
 impl<'a> From<&'a Language> for FragmentGrammar {
     fn from(dsl: &'a Language) -> Self {
-        FragmentGrammar(dsl.clone())
+        let dsl = dsl.clone();
+        FragmentGrammar { dsl }
+    }
+}
+
+fn expression_structure(expr: &Expression) -> f64 {
+    let (leaves, free, bound) = expression_count_kinds(expr, 0);
+    (leaves as f64) + BOUND_VAR_COST * (bound as f64) + FREE_VAR_COST * (free as f64)
+}
+
+fn expression_count_kinds(expr: &Expression, abstraction_depth: usize) -> (u64, u64, u64) {
+    match *expr {
+        Expression::Primitive(_) | Expression::Invented(_) => (1, 0, 0),
+        Expression::Index(i) => {
+            if i < abstraction_depth {
+                (0, 0, 1)
+            } else {
+                (0, 1, 0)
+            }
+        }
+        Expression::Abstraction(ref b) => expression_count_kinds(b, abstraction_depth + 1),
+        Expression::Application(ref l, ref r) => {
+            let (l1, f1, b1) = expression_count_kinds(l, abstraction_depth);
+            let (l2, f2, b2) = expression_count_kinds(r, abstraction_depth);
+            (l1 + l2, f1 + f2, b1 + b2)
+        }
+    }
+}
+
+/// If the trees match, this appropriately updates the context and gets the new fragment type.
+/// Also gives bindings for indices. This may modify the context even upon failure.
+fn tree_match(
+    dsl: &Language,
+    ctx: &mut Context,
+    fragment: &Expression,
+    expr: &Expression,
+    bindings: &mut HashMap<usize, (Type, Expression)>,
+    n_args: usize,
+) -> Option<Type> {
+    if !tree_might_match(fragment, expr, 0) {
+        None
+    } else {
+        let env = Rc::new(LinkedList::default());
+        if let Some(tp) = {
+            let mut tm = TreeMatcher { dsl, ctx, bindings };
+            tm.do_match(fragment, expr, &env, n_args)
+        } {
+            Some(tp)
+        } else {
+            None
+        }
+    }
+}
+
+fn tree_might_match(f: &Expression, e: &Expression, depth: usize) -> bool {
+    match *f {
+        Expression::Primitive(_) | Expression::Invented(_) => f == e,
+        Expression::Index(i) => if i < depth {
+            f == e
+        } else {
+            true
+        },
+        Expression::Abstraction(ref f_body) => {
+            if let Expression::Abstraction(ref e_body) = *e {
+                tree_might_match(f_body, e_body, depth + 1)
+            } else {
+                false
+            }
+        }
+        Expression::Application(ref f_f, ref f_x) => {
+            if let Expression::Application(ref e_f, ref e_x) = *e {
+                tree_might_match(f_x, e_x, depth) && tree_might_match(f_f, e_f, depth)
+            } else {
+                false
+            }
+        }
+    }
+}
+
+struct TreeMatcher<'a> {
+    dsl: &'a Language,
+    ctx: &'a mut Context,
+    bindings: &'a mut HashMap<usize, (Type, Expression)>,
+}
+impl<'a> TreeMatcher<'a> {
+    fn do_match(
+        &mut self,
+        fragment: &Expression,
+        expr: &Expression,
+        env: &Rc<LinkedList<Type>>,
+        n_args: usize,
+    ) -> Option<Type> {
+        match (fragment, expr) {
+            (
+                &Expression::Application(ref f_f, ref f_x),
+                &Expression::Application(ref e_f, ref e_x),
+            ) => {
+                let ft = self.do_match(f_f, e_f, env, n_args)?;
+                let xt = self.do_match(f_x, e_x, env, n_args)?;
+                let ret = self.ctx.new_variable();
+                if self.ctx.unify(&ft, &arrow![xt, ret.clone()]).is_ok() {
+                    Some(ret.apply(self.ctx))
+                } else {
+                    None
+                }
+            }
+            (&Expression::Primitive(f_num), &Expression::Primitive(e_num)) => {
+                if f_num == e_num {
+                    let tp = self.dsl.primitive(f_num).unwrap().1;
+                    Some(tp.instantiate_indep(self.ctx))
+                } else {
+                    None
+                }
+            }
+            (&Expression::Invented(f_num), &Expression::Invented(e_num)) => {
+                if f_num == e_num {
+                    let tp = self.dsl.invented(f_num).unwrap().1;
+                    Some(tp.instantiate_indep(self.ctx))
+                } else {
+                    None
+                }
+            }
+            (&Expression::Abstraction(ref f_body), &Expression::Abstraction(ref e_body)) => {
+                let arg = self.ctx.new_variable();
+                let env = LinkedList::prepend(env, arg.clone());
+                let ret = self.do_match(f_body, e_body, &env, 0)?;
+                Some(arrow![arg, ret])
+            }
+            (&Expression::Index(i), _) => {
+                let abstraction_depth = env.len();
+                if i < abstraction_depth {
+                    // bound variable
+                    if fragment == expr {
+                        Some(env[i].apply(self.ctx))
+                    } else {
+                        None
+                    }
+                } else {
+                    // free variable
+                    let i = i - abstraction_depth;
+                    // make sure index bindings don't reach beyond fragment
+                    let mut expr = expr.clone();
+                    if expr.shift(-(abstraction_depth as i64)) {
+                        // wrap in abstracted applications for eta-long form
+                        if n_args > 0 {
+                            expr.shift(n_args as i64);
+                            for j in 0..n_args {
+                                expr = Expression::Application(
+                                    Box::new(expr),
+                                    Box::new(Expression::Index(j)),
+                                );
+                            }
+                            for _ in 0..n_args {
+                                expr = Expression::Abstraction(Box::new(expr));
+                            }
+                        }
+                        // update bindings
+                        if let Some(&(ref tp, ref binding)) = self.bindings.get(&i) {
+                            return if binding == &expr {
+                                Some(tp.clone())
+                            } else {
+                                None
+                            };
+                        }
+                        let tp = self.ctx.new_variable();
+                        self.bindings.insert(i, (tp.clone(), expr));
+                        Some(tp)
+                    } else {
+                        None
+                    }
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct Uses {
+    actual_vars: f64,
+    possible_vars: f64,
+    actual_prims: Vec<f64>,
+    possible_prims: Vec<f64>,
+    actual_invented: Vec<f64>,
+    possible_invented: Vec<f64>,
+}
+impl Uses {
+    fn new(dsl: &Language) -> Uses {
+        let n_primitives = dsl.primitives.len();
+        let n_invented = dsl.invented.len();
+        Uses {
+            actual_vars: 0f64,
+            possible_vars: 0f64,
+            actual_prims: vec![0f64; n_primitives],
+            possible_prims: vec![0f64; n_primitives],
+            actual_invented: vec![0f64; n_invented],
+            possible_invented: vec![0f64; n_invented],
+        }
+    }
+    fn scale(&mut self, s: f64) {
+        self.actual_vars *= s;
+        self.possible_vars *= s;
+        self.actual_prims.iter_mut().for_each(|x| *x *= s);
+        self.possible_prims.iter_mut().for_each(|x| *x *= s);
+        self.actual_invented.iter_mut().for_each(|x| *x *= s);
+        self.possible_invented.iter_mut().for_each(|x| *x *= s);
+    }
+    fn merge(&mut self, other: Uses) {
+        self.actual_vars += other.actual_vars;
+        self.possible_vars += other.possible_vars;
+        self.actual_prims
+            .iter_mut()
+            .zip(other.actual_prims)
+            .for_each(|(a, b)| *a += b);
+        self.possible_prims
+            .iter_mut()
+            .zip(other.possible_prims)
+            .for_each(|(a, b)| *a += b);
+        self.actual_invented
+            .iter_mut()
+            .zip(other.actual_invented)
+            .for_each(|(a, b)| *a += b);
+        self.possible_invented
+            .iter_mut()
+            .zip(other.possible_invented)
+            .for_each(|(a, b)| *a += b);
+    }
+    /// self must be freshly created via `Uses::new()`, `z` must be finite and `weighted_uses` must
+    /// be non-empty.
+    fn join_from(&mut self, z: f64, mut weighted_uses: Vec<(f64, Uses)>) {
+        for &mut (l, ref mut u) in &mut weighted_uses {
+            u.scale((l - z).exp());
+        }
+        self.actual_vars = weighted_uses
+            .iter()
+            .map(|&(_, ref u)| u.actual_vars)
+            .sum::<f64>();
+        self.possible_vars = weighted_uses
+            .iter()
+            .map(|&(_, ref u)| u.possible_vars)
+            .sum::<f64>();
+        self.actual_prims.iter_mut().enumerate().for_each(|(i, c)| {
+            *c = weighted_uses
+                .iter()
+                .map(|&(_, ref u)| u.actual_prims[i])
+                .sum::<f64>()
+        });
+        self.possible_prims
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, c)| {
+                *c = weighted_uses
+                    .iter()
+                    .map(|&(_, ref u)| u.possible_prims[i])
+                    .sum::<f64>()
+            });
+        self.actual_invented
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, c)| {
+                *c = weighted_uses
+                    .iter()
+                    .map(|&(_, ref u)| u.actual_invented[i])
+                    .sum::<f64>()
+            });
+        self.possible_invented
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, c)| {
+                *c = weighted_uses
+                    .iter()
+                    .map(|&(_, ref u)| u.possible_invented[i])
+                    .sum::<f64>()
+            });
     }
 }

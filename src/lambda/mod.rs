@@ -8,6 +8,7 @@ pub use self::fragmentgrammar::Params;
 use std::collections::{HashMap, VecDeque};
 use std::f64;
 use std::fmt::{self, Debug};
+use std::rc::Rc;
 use polytype::{Context, Type};
 use super::{InferenceError, Representation, Task};
 use super::ec::{Frontier, EC};
@@ -501,6 +502,31 @@ impl Expression {
             _ => self.clone(),
         }
     }
+    fn shift(&mut self, offset: i64) -> bool {
+        self.shift_internal(offset, 0)
+    }
+    fn shift_internal(&mut self, offset: i64, depth: usize) -> bool {
+        match *self {
+            Expression::Index(ref mut i) => {
+                if *i < depth {
+                    true
+                } else if offset >= 0 {
+                    *i += offset as usize;
+                    true
+                } else if let Some(ni) = i.checked_sub((-offset) as usize) {
+                    *i = ni;
+                    true
+                } else {
+                    false
+                }
+            }
+            Expression::Application(ref mut f, ref mut x) => {
+                f.shift_internal(offset, depth) && x.shift_internal(offset, depth)
+            }
+            Expression::Abstraction(ref mut body) => body.shift_internal(offset, depth + 1),
+            _ => true,
+        }
+    }
     fn show(&self, dsl: &Language, is_function: bool) -> String {
         match *self {
             Expression::Primitive(num) => dsl.primitives[num as usize].0.clone(),
@@ -729,5 +755,66 @@ where
         oracle,
         observation: examples,
         tp,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LinkedList<T: Clone>(Option<(T, Rc<LinkedList<T>>)>);
+impl<T: Clone> LinkedList<T> {
+    fn prepend(lst: &Rc<LinkedList<T>>, v: T) -> Rc<LinkedList<T>> {
+        Rc::new(LinkedList(Some((v, lst.clone()))))
+    }
+    fn as_vecdeque(&self) -> VecDeque<T> {
+        let mut lst: &Rc<LinkedList<T>>;
+        let mut out = VecDeque::new();
+        if let Some((ref v, ref nlst)) = self.0 {
+            out.push_back(v.clone());
+            lst = nlst;
+            while let Some((ref v, ref nlst)) = lst.0 {
+                out.push_back(v.clone());
+                lst = nlst;
+            }
+        }
+        out
+    }
+    fn len(&self) -> usize {
+        let mut lst: &Rc<LinkedList<T>>;
+        let mut n = 0;
+        if let Some((_, ref nlst)) = self.0 {
+            n += 1;
+            lst = nlst;
+            while let Some((_, ref nlst)) = lst.0 {
+                n += 1;
+                lst = nlst;
+            }
+        }
+        n
+    }
+}
+impl<T: Clone> Default for LinkedList<T> {
+    fn default() -> Self {
+        LinkedList(None)
+    }
+}
+impl<T: Clone> ::std::ops::Index<usize> for LinkedList<T> {
+    type Output = T;
+    fn index(&self, i: usize) -> &Self::Output {
+        let mut lst: &Rc<LinkedList<T>>;
+        let mut n = 0;
+        if let Some((ref v, ref nlst)) = self.0 {
+            if i == n {
+                return v;
+            }
+            n += 1;
+            lst = nlst;
+            while let Some((ref v, ref nlst)) = lst.0 {
+                if i == n {
+                    return v;
+                }
+                n += 1;
+                lst = nlst;
+            }
+        }
+        panic!("index out of bounds");
     }
 }
