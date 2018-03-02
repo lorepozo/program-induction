@@ -89,18 +89,34 @@ pub trait EC: Representation {
     /// The entry point for one iteration of the EC algorithm.
     ///
     /// Returned solutions include the log-prior and log-likelihood of successful expressions.
-    fn ec<O: Sync, R>(
+    fn ec<O: Sync>(
         &self,
         ecparams: &ECParams,
         params: &Self::Params,
         tasks: &[Task<Self, O>],
-        recognizer: Option<R>,
+    ) -> (Self, Vec<Frontier<Self>>) {
+        eprintln!("exploring");
+        let frontiers = self.explore(ecparams, tasks, None);
+        eprintln!("compressing");
+        let updated = self.mutate(params, tasks, &frontiers);
+        (updated, frontiers)
+    }
+
+    /// The entry point for one iteration of the EC algorithm.
+    ///
+    /// Returned solutions include the log-prior and log-likelihood of successful expressions.
+    fn ec_with_recognition<O: Sync, R>(
+        &self,
+        ecparams: &ECParams,
+        params: &Self::Params,
+        tasks: &[Task<Self, O>],
+        recognizer: R,
     ) -> (Self, Vec<Frontier<Self>>)
     where
         R: FnOnce(&Self, &[Task<Self, O>]) -> Vec<Self>,
     {
-        let recognized = recognizer.map(|r| r(self, tasks));
-        let frontiers = self.explore(ecparams, tasks, recognized);
+        let recognized = recognizer(self, tasks);
+        let frontiers = self.explore(ecparams, tasks, Some(recognized));
         let updated = self.mutate(params, tasks, &frontiers);
         (updated, frontiers)
     }

@@ -43,20 +43,20 @@ impl Default for Params {
     /// # use programinduction::lambda::Params;
     /// Params {
     ///     pseudocounts: 1,
-    ///     topk: 2,
+    ///     topk: 10,
     ///     structure_penalty: 0f64,
-    ///     aic: 1f64,
-    ///     arity: 2,
+    ///     aic: 0f64,
+    ///     arity: 3,
     /// }
     /// # ;
     /// ```
     fn default() -> Self {
         Params {
             pseudocounts: 1,
-            topk: 2,
+            topk: 10,
             structure_penalty: 0f64,
-            aic: 1f64,
-            arity: 2,
+            aic: 0f64,
+            arity: 3,
         }
     }
 }
@@ -93,6 +93,10 @@ pub fn induce<O: Sync>(
     if params.aic.is_finite() {
         loop {
             {
+                eprintln!(
+                    "grammar induction: attemping proposals against score {}",
+                    best_score
+                );
                 let rescored_frontiers: Vec<_> = frontiers
                     .par_iter()
                     .map(|f| g.rescore_frontier(f, params.topk))
@@ -100,12 +104,17 @@ pub fn induce<O: Sync>(
                 let best_proposal = propose_inventions(&rescored_frontiers, params.arity)
                     .zip(iter::repeat(g.clone()))
                     .filter_map(|(inv, mut g)| {
-                        g.dsl.invent(inv, 0f64).unwrap();
+                        g.dsl.invent(inv.clone(), 0f64).unwrap();
                         let s = g.score(
                             &rescored_frontiers,
                             params.pseudocounts,
                             params.aic,
                             params.structure_penalty,
+                        );
+                        eprintln!(
+                            "grammar induction: proposed {} with score {}",
+                            g.dsl.stringify(&inv),
+                            s
                         );
                         if s.is_finite() {
                             Some((g, s))
@@ -115,10 +124,12 @@ pub fn induce<O: Sync>(
                     })
                     .max_by(|&(_, ref x), &(_, ref y)| x.partial_cmp(y).unwrap());
                 if best_proposal.is_none() {
+                    eprintln!("grammar induction: no best proposal");
                     break;
                 }
                 let (new_grammar, new_score) = best_proposal.unwrap();
                 if new_score <= best_score {
+                    eprintln!("grammar induction: score did not improve");
                     break;
                 }
                 g = new_grammar;
@@ -642,10 +653,16 @@ impl Fragment {
     fn canonicalize(mut self) -> Expression {
         let mut c = Canonicalizer::default();
         c.canonicalize(&mut self, 0);
-        if let Fragment::Expression(expr) = self {
-            expr
-        } else {
-            unreachable!()
+        self.to_expression()
+    }
+    fn to_expression(self) -> Expression {
+        match self {
+            Fragment::Expression(expr) => expr,
+            Fragment::Application(f, x) => {
+                Expression::Application(Box::new(f.to_expression()), Box::new(x.to_expression()))
+            }
+            Fragment::Abstraction(body) => Expression::Abstraction(Box::new(body.to_expression())),
+            _ => panic!("cannot convert fragment that still has variables"),
         }
     }
 }
