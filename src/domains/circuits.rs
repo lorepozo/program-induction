@@ -9,15 +9,14 @@
 //! [`lambda::Language`]: ../../lambda/struct.Language.html
 
 use std::f64;
+use std::iter;
 use polytype::Type;
-use rand::{self, Rng};
+use rand;
 use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
 use super::super::lambda::{Expression, Language};
 use super::super::Task;
 
-/// Treat this as any other [`lambda::Language`].
-///
-/// It only defines the binary `nand` operation:
+/// The circuit representation only defines the binary `nand` operation.
 ///
 /// ```ignore
 /// "nand": arrow![tp!(bool), tp!(bool), tp!(bool)])
@@ -47,30 +46,37 @@ pub fn evaluator(primitive: &str, inp: &[bool]) -> bool {
     }
 }
 
-fn extended_evaluator(primitive: &str, inp: &[bool]) -> bool {
-    match primitive {
-        "nand" => !(inp[0] & inp[1]),
-        "not" => !inp[0],
-        "and" => inp[0] & inp[1],
-        "or" => inp[0] | inp[1],
-        "mux2" => [inp[0], inp[1]][inp[2] as usize],
-        "mux4" => [inp[0], inp[1], inp[2], inp[3]][((inp[5] as usize) << 1) + inp[4] as usize],
-        _ => unreachable!(),
+fn truth_table(dim: usize) -> Box<Iterator<Item = Vec<bool>>> {
+    match dim {
+        0 => Box::new(iter::empty()),
+        1 => Box::new(vec![vec![false], vec![true]].into_iter()),
+        _ => Box::new(truth_table(dim - 1).flat_map(|mut xs_false| {
+            let mut xs_true = xs_false.clone();
+            xs_false.push(false);
+            xs_true.push(true);
+            vec![xs_false, xs_true].into_iter()
+        })),
     }
 }
 
-pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Vec<(Vec<bool>, bool)>>> {
-    let dsl = Language {
-        primitives: vec![
-            (String::from("not"), vec![tp!(bool); 2].into(), 1f64),
-            (String::from("and"), vec![tp!(bool); 3].into(), 2f64),
-            (String::from("or"), vec![tp!(bool); 3].into(), 2f64),
-            (String::from("mux2"), vec![tp!(bool); 4].into(), 4f64),
-            (String::from("mux4"), vec![tp!(bool); 7].into(), 0f64),
-        ],
-        invented: vec![],
-        variable_logprob: 0f64,
-    };
+/// Randomly sample a number of circuits into [`Task`]s.
+///
+/// The task observations are outputs of the truth table in sequence, for example
+///
+/// ```text
+///    --- INPUTS ---      OUTPUTS
+/// false, false, false => false
+/// false, false, true  => false
+/// false, true,  false => false
+/// false, true,  true  => false
+/// true,  false, false => false
+/// true,  false, true  => false
+/// true,  true,  false => false
+/// true,  true,  true  => true
+/// ```
+///
+/// [`Task`]: ../../struct.Task.html
+pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Vec<bool>>> {
     let mut n_input_weights = vec![
         Weighted { weight: 1, item: 1 },
         Weighted { weight: 2, item: 2 },
@@ -80,35 +86,62 @@ pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Vec<(Vec<bool>, boo
         Weighted { weight: 4, item: 6 },
     ];
     let n_input_distribution = WeightedChoice::new(&mut n_input_weights);
+    let mut n_gate_weights = vec![
+        Weighted { weight: 1, item: 1 },
+        Weighted { weight: 2, item: 2 },
+        Weighted { weight: 2, item: 3 },
+    ];
+    let n_gate_distribution = WeightedChoice::new(&mut n_gate_weights);
+
+    let mut gate_weights = vec![
+        Weighted {
+            weight: 1,
+            item: Gate::Not,
+        },
+        Weighted {
+            weight: 2,
+            item: Gate::And,
+        },
+        Weighted {
+            weight: 2,
+            item: Gate::Or,
+        },
+        Weighted {
+            weight: 4,
+            item: Gate::Mux2,
+        },
+        Weighted {
+            weight: 0,
+            item: Gate::Mux4,
+        },
+    ];
+    let gate_distribution = WeightedChoice::new(&mut gate_weights);
 
     let mut rng = rand::thread_rng();
     (0..count)
         .map(move |_| {
-            // TODO: completely rewrite circuit generation
-            let n_inputs = n_input_distribution.ind_sample(&mut rng);
+            let mut n_inputs = n_input_distribution.ind_sample(&mut rng);
+            let mut n_gates = n_gate_distribution.ind_sample(&mut rng);
+            while n_inputs / n_gates >= 3 {
+                n_inputs = n_input_distribution.ind_sample(&mut rng);
+                n_gates = n_gate_distribution.ind_sample(&mut rng);
+            }
             let tp = Type::from(vec![tp!(bool); n_inputs + 1]);
-            eprintln!("enum");
-            let choice = dsl.enumerate(tp.clone())
-                .find(|_| rng.gen_weighted_bool(count / 6));
-            let expr = choice.unwrap().0;
-            eprintln!("found {}", dsl.stringify(&expr));
-            let examples: Vec<_> = truth_table(n_inputs)
-                .into_iter()
-                .map(|ins| {
-                    let out = dsl.eval(&expr, &extended_evaluator, &ins).unwrap();
-                    (ins, out)
-                })
+            let circuit = Circuit::new(&mut rng, &gate_distribution, n_inputs as u32, n_gates);
+            let outputs: Vec<_> = truth_table(n_inputs)
+                .map(|ins| circuit.eval(&ins))
                 .collect();
-            let oracle_examples = examples.clone();
-            eprintln!("added task {}", dsl.stringify(&expr));
+            let oracle_outputs = outputs.clone();
             let oracle = Box::new(move |dsl: &Language, expr: &Expression| -> f64 {
-                let success = oracle_examples.iter().all(|&(ref inps, ref out)| {
-                    if let Some(ref o) = dsl.eval(expr, &extended_evaluator, inps) {
-                        o == out
-                    } else {
-                        false
-                    }
-                });
+                let success = truth_table(n_inputs)
+                    .zip(&oracle_outputs)
+                    .all(|(inps, out)| {
+                        if let Some(o) = dsl.eval(expr, &evaluator, &inps) {
+                            o == *out
+                        } else {
+                            false
+                        }
+                    });
                 if success {
                     0f64
                 } else {
@@ -117,28 +150,108 @@ pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Vec<(Vec<bool>, boo
             });
             Task {
                 oracle,
-                observation: examples,
+                observation: outputs,
                 tp,
             }
         })
         .collect()
 }
 
-pub fn truth_table(dim: usize) -> Vec<Vec<bool>> {
-    match dim {
-        0 => vec![],
-        1 => vec![vec![true], vec![false]],
-        _ => {
-            let mut x1 = truth_table(dim - 1);
-            let mut x2 = x1.clone();
-            for mut row in x1.iter_mut() {
-                row.push(true)
+use self::gates::{Circuit, Gate};
+mod gates {
+    use rand::Rng;
+    use rand::distributions::{IndependentSample, WeightedChoice};
+
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    pub enum Gate {
+        Not,
+        And,
+        Or,
+        Mux2,
+        Mux4,
+    }
+    impl Gate {
+        fn n_inputs(&self) -> u32 {
+            match *self {
+                Gate::Not => 1,
+                Gate::And | Gate::Or => 2,
+                Gate::Mux2 => 3,
+                Gate::Mux4 => 6,
             }
-            for mut row in x2.iter_mut() {
-                row.push(false)
+        }
+        fn eval(&self, inp: &[bool]) -> bool {
+            match *self {
+                Gate::Not => !inp[0],
+                Gate::And => inp[0] & inp[1],
+                Gate::Or => inp[0] | inp[1],
+                Gate::Mux2 => [inp[0], inp[1]][inp[2] as usize],
+                Gate::Mux4 => {
+                    [inp[0], inp[1], inp[2], inp[3]][((inp[5] as usize) << 1) + inp[4] as usize]
+                }
             }
-            x1.append(&mut x2);
-            x1
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct Circuit {
+        n_inputs: u32,
+        operations: Vec<(Gate, Vec<u32>)>,
+    }
+    impl Circuit {
+        pub fn new<T: Rng>(
+            rng: &mut T,
+            gate_distribution: &WeightedChoice<Gate>,
+            n_inputs: u32,
+            n_gates: usize,
+        ) -> Self {
+            let mut circuit = Circuit {
+                n_inputs,
+                operations: Vec::new(),
+            };
+            loop {
+                while circuit.operations.len() < n_gates {
+                    let gate = gate_distribution.ind_sample(rng);
+                    match gate {
+                        Gate::Mux2 | Gate::Mux4 if n_inputs < gate.n_inputs() => continue,
+                        _ => (),
+                    }
+                    if gate.n_inputs() > n_inputs + (circuit.operations.len() as u32) {
+                        continue;
+                    }
+                    let mut valid_inputs: Vec<u32> =
+                        (0..n_inputs + (circuit.operations.len() as u32)).collect();
+                    rng.shuffle(valid_inputs.as_mut_slice());
+                    let args = valid_inputs[..(gate.n_inputs() as usize)].to_vec();
+                    circuit.operations.push((gate, args));
+                }
+                if circuit.is_connected() {
+                    break;
+                }
+                circuit.operations = Vec::new();
+            }
+            circuit
+        }
+        /// A circuit is connected if every output except for the last one is an input for some
+        /// other gate.
+        fn is_connected(&self) -> bool {
+            let mut is_used = vec![false; self.n_inputs as usize + self.operations.len()];
+            for &(_, ref args) in &self.operations {
+                for i in args {
+                    is_used[*i as usize] = true;
+                }
+            }
+            is_used.pop();
+            is_used.into_iter().all(|x| x)
+        }
+        pub fn eval(&self, inp: &[bool]) -> bool {
+            let mut outputs = vec![];
+            for &(ref gate, ref args) in &self.operations {
+                let gate_inp: Vec<bool> = args.iter()
+                    .map(|a| *inp.iter().chain(&outputs).nth(*a as usize).unwrap())
+                    .collect();
+                outputs.push(gate.eval(&gate_inp));
+            }
+            outputs.pop().unwrap()
         }
     }
 }
