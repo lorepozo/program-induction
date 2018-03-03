@@ -2,11 +2,10 @@
 
 extern crate itertools;
 #[macro_use]
-extern crate lazy_static;
-#[macro_use]
 extern crate nom;
 #[macro_use]
 extern crate polytype;
+extern crate rand;
 extern crate rayon;
 
 pub mod domains;

@@ -737,7 +737,6 @@ where
     F: Fn(&str, &[V]) -> V + Sync + 'a,
 {
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
-        let expr = &dsl.strip_invented(expr);
         let success = examples.iter().all(|&(ref inps, ref out)| {
             if let Some(ref o) = dsl.eval(expr, evaluator, inps) {
                 o == out
