@@ -7,12 +7,7 @@ use programinduction::lambda::{Expression, Language};
 
 #[test]
 fn expression_parse_primitive() {
-    let dsl = Language::uniform(
-        vec![
-            (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
-        ],
-        vec![],
-    );
+    let dsl = Language::uniform(vec![("singleton", arrow![tp!(0), tp!(list(tp!(0)))])]);
     let expr = dsl.parse("singleton").unwrap();
     assert_eq!(expr, Expression::Primitive(0));
 
@@ -22,13 +17,10 @@ fn expression_parse_primitive() {
 
 #[test]
 fn expression_parse_application() {
-    let dsl = Language::uniform(
-        vec![
-            (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
-            (String::from("thing"), arrow![tp!(int), tp!(int)]),
-        ],
-        vec![],
-    );
+    let dsl = Language::uniform(vec![
+        ("singleton", arrow![tp!(0), tp!(list(tp!(0)))]),
+        ("thing", arrow![tp!(int), tp!(int)]),
+    ]);
     assert_eq!(
         dsl.parse("(singleton singleton)").unwrap(),
         Expression::Application(
@@ -61,12 +53,7 @@ fn expression_parse_application() {
 
 #[test]
 fn expression_parse_index() {
-    let dsl = Language::uniform(
-        vec![
-            (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
-        ],
-        vec![],
-    );
+    let dsl = Language::uniform(vec![("singleton", arrow![tp!(0), tp!(list(tp!(0)))])]);
     assert_eq!(
         dsl.parse("(singleton $0)").unwrap(),
         Expression::Application(
@@ -81,18 +68,17 @@ fn expression_parse_index() {
 
 #[test]
 fn expression_parse_invented() {
-    let dsl = Language::uniform(
-        vec![
-            (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
-            (String::from("1"), tp!(int)),
-        ],
-        vec![
-            Expression::Application(
-                Box::new(Expression::Primitive(0)),
-                Box::new(Expression::Primitive(1)),
-            ),
-        ],
-    );
+    let mut dsl = Language::uniform(vec![
+        ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+        ("1", tp!(int)),
+    ]);
+    dsl.invent(
+        Expression::Application(
+            Box::new(Expression::Primitive(0)),
+            Box::new(Expression::Primitive(1)),
+        ),
+        0f64,
+    ).unwrap();
     assert_eq!(
         dsl.parse("(#(+ 1) 1)").unwrap(),
         Expression::Application(
@@ -105,27 +91,26 @@ fn expression_parse_invented() {
 
 #[test]
 fn expression_parse_abstraction() {
-    let dsl = Language::uniform(
-        vec![
-            (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
-            (String::from("1"), tp!(int)),
-        ],
-        vec![
-            Expression::Abstraction(Box::new(Expression::Application(
+    let mut dsl = Language::uniform(vec![
+        ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+        ("1", tp!(int)),
+    ]);
+    dsl.invent(
+        Expression::Abstraction(Box::new(Expression::Application(
+            Box::new(Expression::Application(
+                Box::new(Expression::Primitive(0)),
                 Box::new(Expression::Application(
-                    Box::new(Expression::Primitive(0)),
                     Box::new(Expression::Application(
-                        Box::new(Expression::Application(
-                            Box::new(Expression::Primitive(0)),
-                            Box::new(Expression::Primitive(1)),
-                        )),
+                        Box::new(Expression::Primitive(0)),
                         Box::new(Expression::Primitive(1)),
                     )),
+                    Box::new(Expression::Primitive(1)),
                 )),
-                Box::new(Expression::Index(0)),
-            ))),
-        ],
-    );
+            )),
+            Box::new(Expression::Index(0)),
+        ))),
+        0f64,
+    ).unwrap();
     let expr = dsl.parse("(λ (+ $0))").unwrap();
     assert_eq!(
         expr,
@@ -167,21 +152,20 @@ fn expression_parse_abstraction() {
 
 #[test]
 fn expression_infer() {
-    let dsl = Language::uniform(
-        vec![
-            (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
-            (String::from(">="), arrow![tp!(int), tp!(int), tp!(bool)]),
-            (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
-            (String::from("0"), tp!(int)),
-            (String::from("1"), tp!(int)),
-        ],
-        vec![
-            Expression::Application(
-                Box::new(Expression::Primitive(2)),
-                Box::new(Expression::Primitive(4)),
-            ),
-        ],
-    );
+    let mut dsl = Language::uniform(vec![
+        ("singleton", arrow![tp!(0), tp!(list(tp!(0)))]),
+        (">=", arrow![tp!(int), tp!(int), tp!(bool)]),
+        ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+        ("0", tp!(int)),
+        ("1", tp!(int)),
+    ]);
+    dsl.invent(
+        Expression::Application(
+            Box::new(Expression::Primitive(2)),
+            Box::new(Expression::Primitive(4)),
+        ),
+        0f64,
+    ).unwrap();
     let expr = Expression::Application(
         Box::new(Expression::Primitive(0)),
         Box::new(Expression::Application(

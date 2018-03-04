@@ -47,23 +47,16 @@ pub struct Language {
 impl Language {
     /// A uniform distribution over primitives and invented expressions, as well as the abstraction
     /// operation.
-    pub fn uniform(primitives: Vec<(String, Type)>, invented: Vec<Expression>) -> Self {
-        let primitives = primitives.into_iter().map(|(s, t)| (s, t, 0f64)).collect();
-        let mut dsl = Self {
+    pub fn uniform(primitives: Vec<(&str, Type)>) -> Self {
+        let primitives = primitives
+            .into_iter()
+            .map(|(s, t)| (String::from(s), t, 0f64))
+            .collect();
+        Language {
             primitives,
             invented: vec![],
             variable_logprob: 0f64,
-        };
-        if !invented.is_empty() {
-            dsl.invented = invented
-                .into_iter()
-                .map(|expr| {
-                    let tp = dsl.infer(&expr).unwrap();
-                    (expr, tp, 0f64)
-                })
-                .collect();
         }
-        dsl
     }
 
     /// As with any [`Representation`], we must be able to infer the type of an [`Expression`]:
@@ -75,20 +68,21 @@ impl Language {
     /// # extern crate programinduction;
     /// # fn main() {
     /// # use programinduction::lambda::{Language, Expression};
-    /// let dsl = Language::uniform(
+    /// let mut dsl = Language::uniform(
     ///     vec![
-    ///         (String::from("singleton"), arrow![tp!(0), tp!(list(tp!(0)))]),
-    ///         (String::from(">="), arrow![tp!(int), tp!(int), tp!(bool)]),
-    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
-    ///         (String::from("0"), tp!(int)),
-    ///         (String::from("1"), tp!(int)),
+    ///         ("singleton", arrow![tp!(0), tp!(list(tp!(0)))]),
+    ///         (">=", arrow![tp!(int), tp!(int), tp!(bool)]),
+    ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+    ///         ("0", tp!(int)),
+    ///         ("1", tp!(int)),
     ///     ],
-    ///     vec![
-    ///         Expression::Application(
-    ///             Box::new(Expression::Primitive(2)),
-    ///             Box::new(Expression::Primitive(4)),
-    ///         ),
-    ///     ],
+    /// );
+    /// dsl.invent(
+    ///     Expression::Application( // (+ 1)
+    ///         Box::new(Expression::Primitive(2)),
+    ///         Box::new(Expression::Primitive(4)),
+    ///     ),
+    ///     0f64,
     /// );
     /// let expr = dsl.parse("(singleton ((λ (>= $0 1)) (#(+ 1) 0)))").unwrap();
     /// assert_eq!(dsl.infer(&expr).unwrap(), tp!(list(tp!(bool))));
@@ -117,12 +111,11 @@ impl Language {
     ///
     /// let dsl = Language::uniform(
     ///     vec![
-    ///         (String::from("0"), tp!(int)),
-    ///         (String::from("1"), tp!(int)),
-    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
-    ///         (String::from(">"), arrow![tp!(int), tp!(int), tp!(bool)]),
+    ///         ("0", tp!(int)),
+    ///         ("1", tp!(int)),
+    ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+    ///         (">", arrow![tp!(int), tp!(int), tp!(bool)]),
     ///     ],
-    ///     vec![],
     /// );
     /// let exprs: Vec<Expression> = dsl.enumerate(tp!(int))
     ///     .take(8)
@@ -176,11 +169,10 @@ impl Language {
     /// # fn main() {
     /// let dsl = Language::uniform(
     ///     vec![
-    ///         (String::from("0"), tp!(int)),
-    ///         (String::from("1"), tp!(int)),
-    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+    ///         ("0", tp!(int)),
+    ///         ("1", tp!(int)),
+    ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
     ///     ],
-    ///     vec![],
     /// );
     /// let expr = dsl.parse("(λ (λ (+ (+ 1 $0) $1)))").unwrap();
     /// let inps = vec![2, 5];
@@ -209,11 +201,10 @@ impl Language {
     /// # fn main() {
     /// let dsl = Language::uniform(
     ///     vec![
-    ///         (String::from("0"), tp!(int)),
-    ///         (String::from("1"), tp!(int)),
-    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+    ///         ("0", tp!(int)),
+    ///         ("1", tp!(int)),
+    ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
     ///     ],
-    ///     vec![],
     /// );
     /// let req = arrow![tp!(int), tp!(int), tp!(int)];
     ///
@@ -240,11 +231,10 @@ impl Language {
     /// # use programinduction::lambda::{Language, Expression};
     /// let dsl = Language::uniform(
     ///     vec![
-    ///         (String::from("0"), tp!(int)),
-    ///         (String::from("1"), tp!(int)),
-    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+    ///         ("0", tp!(int)),
+    ///         ("1", tp!(int)),
+    ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
     ///     ],
-    ///     vec![],
     /// );
     /// assert_eq!(dsl.primitive(0), Some(("0", &tp!(int), 0.)));
     /// # }
@@ -278,11 +268,10 @@ impl Language {
     /// # use programinduction::lambda::{Language, Expression};
     /// let mut dsl = Language::uniform(
     ///     vec![
-    ///         (String::from("0"), tp!(int)),
-    ///         (String::from("1"), tp!(int)),
-    ///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+    ///         ("0", tp!(int)),
+    ///         ("1", tp!(int)),
+    ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
     ///     ],
-    ///     vec![]
     /// );
     /// let expr = dsl.parse("(+ 1)").unwrap();
     /// dsl.invent(expr.clone(), -0.5).unwrap();
@@ -717,11 +706,10 @@ impl Expression {
 ///
 /// let dsl = Language::uniform(
 ///     vec![
-///         (String::from("0"), tp!(int)),
-///         (String::from("1"), tp!(int)),
-///         (String::from("+"), arrow![tp!(int), tp!(int), tp!(int)]),
+///         ("0", tp!(int)),
+///         ("1", tp!(int)),
+///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
 ///     ],
-///     vec![],
 /// );
 /// let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
 /// assert!((task.oracle)(&dsl, &expr).is_finite())

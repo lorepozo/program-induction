@@ -25,15 +25,7 @@ use super::super::Task;
 ///
 /// [`lambda::Language`]: ../../lambda/struct.Language.html
 pub fn repr() -> Language {
-    Language::uniform(
-        vec![
-            (
-                String::from("nand"),
-                arrow![tp!(bool), tp!(bool), tp!(bool)],
-            ),
-        ],
-        vec![],
-    )
+    Language::uniform(vec![("nand", arrow![tp!(bool), tp!(bool), tp!(bool)])])
 }
 
 /// Evaluate an expression in this domain in accordance with the argument of
