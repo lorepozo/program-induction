@@ -3,7 +3,9 @@
 mod enumerator;
 mod eval;
 mod fragmentgrammar;
+mod lisp;
 pub use self::fragmentgrammar::Params;
+pub use self::lisp::LispEvaluator;
 
 use std::collections::{HashMap, VecDeque};
 use std::f64;
@@ -323,6 +325,11 @@ impl Language {
         expr.show(self, false)
     }
 
+    /// Like stringify, but in a format ready for lisp interpretation.
+    pub fn lispify(&self, expr: &Expression, conversions: &HashMap<String, String>) -> String {
+        expr.as_lisp(self, false, conversions, 0)
+    }
+
     fn candidates(
         &self,
         request: &Type,
@@ -514,6 +521,46 @@ impl Expression {
             }
             Expression::Abstraction(ref mut body) => body.shift_internal(offset, depth + 1),
             _ => true,
+        }
+    }
+    fn as_lisp(
+        &self,
+        dsl: &Language,
+        is_function: bool,
+        conversions: &HashMap<String, String>,
+        depth: usize,
+    ) -> String {
+        match *self {
+            Expression::Primitive(num) => {
+                let name = &dsl.primitives[num as usize].0;
+                conversions.get(name).unwrap_or(name).to_string()
+            }
+            Expression::Application(ref f, ref x) => {
+                let f_lisp = f.as_lisp(dsl, true, conversions, depth);
+                let x_lisp = x.as_lisp(dsl, false, conversions, depth);
+                if is_function {
+                    format!("{} {}", f_lisp, x_lisp)
+                } else {
+                    format!("({} {})", f_lisp, x_lisp)
+                }
+            }
+            Expression::Abstraction(ref body) => {
+                let var = (97 + depth as u8) as char;
+                format!(
+                    "(λ ({}) {})",
+                    var,
+                    body.as_lisp(dsl, false, conversions, depth + 1)
+                )
+            }
+            Expression::Index(i) => {
+                let var = (96 + (depth - i) as u8) as char;
+                format!("{}", var)
+            }
+            Expression::Invented(num) => {
+                dsl.invented[num as usize]
+                    .0
+                    .as_lisp(dsl, false, conversions, depth)
+            }
         }
     }
     fn show(&self, dsl: &Language, is_function: bool) -> String {

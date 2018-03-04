@@ -7,6 +7,7 @@ extern crate nom;
 extern crate polytype;
 extern crate rand;
 extern crate rayon;
+extern crate workerpool;
 
 pub mod domains;
 mod ec;
