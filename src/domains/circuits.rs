@@ -10,6 +10,7 @@
 
 use std::f64;
 use std::iter;
+use itertools::Itertools;
 use polytype::Type;
 use rand;
 use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
@@ -47,16 +48,11 @@ pub fn evaluator(primitive: &str, inp: &[bool]) -> bool {
 }
 
 fn truth_table(dim: usize) -> Box<Iterator<Item = Vec<bool>>> {
-    match dim {
-        0 => Box::new(iter::empty()),
-        1 => Box::new(vec![vec![false], vec![true]].into_iter()),
-        _ => Box::new(truth_table(dim - 1).flat_map(|mut xs_false| {
-            let mut xs_true = xs_false.clone();
-            xs_false.push(false);
-            xs_true.push(true);
-            vec![xs_false, xs_true].into_iter()
-        })),
-    }
+    Box::new(
+        iter::repeat(vec![false, true])
+            .take(dim)
+            .multi_cartesian_product(),
+    )
 }
 
 /// Randomly sample a number of circuits into [`Task`]s.

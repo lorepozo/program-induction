@@ -42,21 +42,21 @@ impl Default for Params {
     /// ```
     /// # use programinduction::lambda::Params;
     /// Params {
-    ///     pseudocounts: 1,
-    ///     topk: 10,
-    ///     structure_penalty: 0f64,
-    ///     aic: 0f64,
-    ///     arity: 3,
+    ///     pseudocounts: 5,
+    ///     topk: 2,
+    ///     structure_penalty: 1f64,
+    ///     aic: 1f64,
+    ///     arity: 2,
     /// }
     /// # ;
     /// ```
     fn default() -> Self {
         Params {
-            pseudocounts: 1,
-            topk: 10,
-            structure_penalty: 0f64,
-            aic: 0f64,
-            arity: 3,
+            pseudocounts: 5,
+            topk: 2,
+            structure_penalty: 1f64,
+            aic: 1f64,
+            arity: 2,
         }
     }
 }
@@ -97,24 +97,21 @@ pub fn induce<O: Sync>(
                     "grammar induction: attemping proposals against score {}",
                     best_score
                 );
+                // propose using topk frontiers
                 let rescored_frontiers: Vec<_> = frontiers
                     .par_iter()
                     .map(|f| g.rescore_frontier(f, params.topk))
                     .collect();
-                let best_proposal = propose_inventions(&rescored_frontiers, params.arity)
+                let best_proposal = g.propose_inventions(&rescored_frontiers, params.arity)
                     .zip(iter::repeat(g.clone()))
                     .filter_map(|(inv, mut g)| {
+                        eprintln!("grammar induction: proposing {}", g.dsl.stringify(&inv),);
                         g.dsl.invent(inv.clone(), 0f64).unwrap();
                         let s = g.score(
                             &rescored_frontiers,
                             params.pseudocounts,
                             params.aic,
                             params.structure_penalty,
-                        );
-                        eprintln!(
-                            "grammar induction: proposed {} with score {}",
-                            g.dsl.stringify(&inv),
-                            s
                         );
                         if s.is_finite() {
                             Some((g, s))
@@ -152,8 +149,7 @@ pub fn induce<O: Sync>(
         }
     }
 
-    g.inside_outside(&frontiers, params.pseudocounts);
-    let new_joint = g.joint_mdl(&frontiers, false);
+    let new_joint = g.joint_mdl(&frontiers, true);
     eprintln!(
         "grammar induction: old joint = {} ; new joint = {}",
         old_joint, new_joint
@@ -161,6 +157,7 @@ pub fn induce<O: Sync>(
     g.dsl // TODO: consider also returning new frontiers
 }
 
+#[derive(Clone)]
 struct RescoredFrontier<'a>(&'a Type, Vec<(Expression, f64, f64)>);
 
 #[derive(Debug, Clone)]
@@ -192,7 +189,7 @@ impl FragmentGrammar {
                     .map(|s| {
                         let loglikelihood = s.2;
                         let logprior = if recompute_prior {
-                            self.dsl.likelihood(f.0, &s.0)
+                            self.uses(f.0, &s.0).0
                         } else {
                             s.1
                         };
@@ -219,7 +216,15 @@ impl FragmentGrammar {
                 .map(|&(ref expr, _, _)| expression_structure(expr))
                 .sum::<f64>();
         let nparams = self.dsl.primitives.len() + self.dsl.invented.len();
-        likelihood - aic * (nparams as f64) - structure_penalty * structure
+        let s = likelihood - aic * (nparams as f64) - structure_penalty * structure;
+        eprintln!(
+            "grammar induction: proposal had score {} with likelihood {}, aic term {}, structure term {}",
+            s,
+            likelihood,
+            aic * (nparams as f64),
+            structure_penalty * structure,
+        );
+        s
     }
 
     fn inside_outside(&mut self, frontiers: &[RescoredFrontier], pseudocounts: u64) {
@@ -307,7 +312,6 @@ impl FragmentGrammar {
             if let Expression::Abstraction(ref body) = *expr {
                 self.likelihood(&*arrow.ret, body, ctx, &env)
             } else {
-                eprintln!("likelihood for arrow found expression that wasn't abstraction");
                 (f64::NEG_INFINITY, ctx.clone(), Uses::new(&self.dsl)) // invalid expression
             }
         } else {
@@ -426,20 +430,29 @@ impl FragmentGrammar {
     }
 
     fn rewrite_frontier_with_latest_invention(&self, f: &mut RescoredFrontier) {
-        let inv = &self.dsl.invented.last().unwrap().0;
-        f.1
-            .iter_mut()
-            .for_each(|x| self.rewrite_expression(&mut x.0, inv, 0));
+        if let Some(invention) = self.dsl.invented.last() {
+            let inv = &invention.0;
+            let inv_n = self.dsl.invented.len() - 1;
+            f.1
+                .iter_mut()
+                .for_each(|x| self.rewrite_expression(&mut x.0, inv_n, inv, 0));
+        }
     }
-    fn rewrite_expression(&self, expr: &mut Expression, inv: &Expression, n_args: usize) {
+    fn rewrite_expression(
+        &self,
+        expr: &mut Expression,
+        inv_n: usize,
+        inv: &Expression,
+        n_args: usize,
+    ) {
         let do_rewrite = match *expr {
             Expression::Application(ref mut f, ref mut x) => {
-                self.rewrite_expression(f, inv, n_args + 1);
-                self.rewrite_expression(x, inv, 0);
+                self.rewrite_expression(f, inv_n, inv, n_args + 1);
+                self.rewrite_expression(x, inv_n, inv, 0);
                 true
             }
             Expression::Abstraction(ref mut body) => {
-                self.rewrite_expression(body, inv, 0);
+                self.rewrite_expression(body, inv_n, inv, 0);
                 true
             }
             _ => false,
@@ -450,17 +463,44 @@ impl FragmentGrammar {
             let matches =
                 tree_match(&self.dsl, &mut ctx, inv, expr, &mut bindings, n_args).is_some();
             if matches {
-                assert_eq!(
-                    bindings.keys().cloned().collect::<Vec<_>>(),
-                    (0..bindings.len()).collect::<Vec<_>>(),
-                    "fragment must not have been in canonical form"
-                );
+                let mut new_expr = Expression::Invented(inv_n);
                 for j in (0..bindings.len()).rev() {
                     let &(_, ref b) = &bindings[&j];
-                    *expr = Expression::Application(Box::new(expr.clone()), Box::new(b.clone()));
+                    let inner = Box::new(new_expr);
+                    new_expr = Expression::Application(inner, Box::new(b.clone()));
                 }
+                *expr = new_expr;
             }
         }
+    }
+
+    fn propose_inventions<'a>(
+        &'a self,
+        frontiers: &[RescoredFrontier],
+        arity: u32,
+    ) -> Box<Iterator<Item = Expression> + 'a> {
+        let mut findings = HashMap::new();
+        frontiers
+        .iter() // TODO figure out how to properly parallelize
+        .flat_map(|f| {
+            f.1.iter().flat_map(|&(ref expr, _, _)| {
+                propose_from_expression(expr, arity)
+                    .flat_map(propose_inventions_from_proposal)
+            })
+        })
+        .for_each(|inv| {
+            let count = findings
+                .entry(inv)
+                .or_insert(0u64);
+            *count += 1;
+        });
+        Box::new(findings.into_iter().filter_map(move |(expr, count)| {
+            if count >= 2 && self.dsl.infer(&expr).is_ok() {
+                Some(expr)
+            } else {
+                None
+            }
+        }))
     }
 }
 impl<'a> From<&'a Language> for FragmentGrammar {
@@ -475,6 +515,7 @@ fn expression_structure(expr: &Expression) -> f64 {
     (leaves as f64) + BOUND_VAR_COST * (bound as f64) + FREE_VAR_COST * (free as f64)
 }
 
+/// get counts of prims, free, bound
 fn expression_count_kinds(expr: &Expression, abstraction_depth: usize) -> (u64, u64, u64) {
     match *expr {
         Expression::Primitive(_) | Expression::Invented(_) => (1, 0, 0),
@@ -506,16 +547,13 @@ fn tree_match(
 ) -> Option<Type> {
     if !tree_might_match(fragment, expr, 0) {
         None
+    } else if let Some(tp) = {
+        let mut tm = TreeMatcher { dsl, ctx, bindings };
+        tm.do_match(fragment, expr, &Rc::new(LinkedList::default()), n_args)
+    } {
+        Some(tp)
     } else {
-        let env = Rc::new(LinkedList::default());
-        if let Some(tp) = {
-            let mut tm = TreeMatcher { dsl, ctx, bindings };
-            tm.do_match(fragment, expr, &env, n_args)
-        } {
-            Some(tp)
-        } else {
-            None
-        }
+        None
     }
 }
 
@@ -653,15 +691,24 @@ impl Fragment {
     fn canonicalize(mut self) -> Expression {
         let mut c = Canonicalizer::default();
         c.canonicalize(&mut self, 0);
-        self.to_expression()
+        let mut expr = self.into_expression();
+        let reach = free_reach(&expr, 0);
+        for _ in 0..reach {
+            let body = Box::new(expr);
+            expr = Expression::Abstraction(body);
+        }
+        expr
     }
-    fn to_expression(self) -> Expression {
+    fn into_expression(self) -> Expression {
         match self {
             Fragment::Expression(expr) => expr,
-            Fragment::Application(f, x) => {
-                Expression::Application(Box::new(f.to_expression()), Box::new(x.to_expression()))
+            Fragment::Application(f, x) => Expression::Application(
+                Box::new(f.into_expression()),
+                Box::new(x.into_expression()),
+            ),
+            Fragment::Abstraction(body) => {
+                Expression::Abstraction(Box::new(body.into_expression()))
             }
-            Fragment::Abstraction(body) => Expression::Abstraction(Box::new(body.to_expression())),
             _ => panic!("cannot convert fragment that still has variables"),
         }
     }
@@ -713,35 +760,6 @@ impl Canonicalizer {
     }
 }
 
-fn propose_inventions(
-    frontiers: &[RescoredFrontier],
-    arity: u32,
-) -> Box<Iterator<Item = Expression>> {
-    let mut findings = HashMap::new();
-    frontiers
-        .iter() // TODO figure out how to properly parallelize
-        .flat_map(|f| {
-            f.1.iter().flat_map(|&(ref expr, _, _)| {
-                propose_from_expression(expr, arity)
-                    .flat_map(propose_inventions_from_proposal)
-            })
-        })
-        .for_each(|inv| {
-            let count = findings
-                .entry(inv)
-                .or_insert(0u64);
-            *count += 1;
-        });
-    Box::new(findings.into_iter().filter_map(
-        |(expr, count)| {
-            if count >= 2 {
-                Some(expr)
-            } else {
-                None
-            }
-        },
-    ))
-}
 fn propose_from_expression<'a>(
     expr: &'a Expression,
     arity: u32,
@@ -749,7 +767,12 @@ fn propose_from_expression<'a>(
     Box::new(
         (0..arity + 1)
             .flat_map(move |b| propose_fragments_from_subexpression(expr, b))
-            .map(Fragment::canonicalize),
+            .map(Fragment::canonicalize)
+            .filter(|expr| {
+                // determine if nontrivial
+                let (n_prims, n_free, n_bound) = expression_count_kinds(expr, 0);
+                n_prims >= 1 && ((n_prims as f64) + 0.5 * ((n_free + n_bound) as f64) > 1.5)
+            }),
     )
 }
 fn propose_fragments_from_subexpression<'a>(
@@ -807,18 +830,21 @@ fn propose_inventions_from_proposal(expr: Expression) -> Box<Iterator<Item = Exp
         .filter(|&(ref expr, _)| is_closed(expr))
         .map(move |(subtree, _)| {
             let mut expr = expr.clone();
-            substitute(&mut expr, &subtree, &Expression::Index(reach + 1));
+            substitute(&mut expr, &subtree, &Expression::Index(reach));
             expr
         });
     Box::new(fst.chain(rst))
 }
 
 /// How far out does the furthest reaching index go, excluding internal abstractions?
+///
+/// For examples, the free reach of `(+ $0 (λ + 1 $0))` is 1, because there need to be one
+/// abstraction around the expression for it to make sense.
 fn free_reach(expr: &Expression, depth: usize) -> usize {
     match *expr {
         Expression::Application(ref f, ref x) => free_reach(f, depth).max(free_reach(x, depth)),
         Expression::Abstraction(ref body) => free_reach(body, depth + 1),
-        Expression::Index(i) if i >= depth => i.checked_sub(depth).unwrap(),
+        Expression::Index(i) if i >= depth => 1 + i.checked_sub(depth).unwrap(),
         _ => 0,
     }
 }
