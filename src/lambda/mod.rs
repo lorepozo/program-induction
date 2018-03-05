@@ -735,7 +735,7 @@ impl Expression {
 /// # #[macro_use]
 /// # extern crate polytype;
 /// # extern crate programinduction;
-/// use programinduction::lambda::{Language, task_by_example};
+/// use programinduction::lambda::{Language, task_by_simple_evaluation};
 ///
 /// fn evaluator(name: &str, inps: &[i32]) -> i32 {
 ///     match name {
@@ -749,7 +749,7 @@ impl Expression {
 /// # fn main() {
 /// let examples = vec![(vec![2, 5], 8), (vec![1, 2], 4)];
 /// let tp = arrow![tp!(int), tp!(int), tp!(int)];
-/// let task = task_by_example(&evaluator, &examples, tp);
+/// let task = task_by_simple_evaluation(&evaluator, tp, &examples);
 ///
 /// let dsl = Language::uniform(
 ///     vec![
@@ -762,10 +762,10 @@ impl Expression {
 /// assert!((task.oracle)(&dsl, &expr).is_finite())
 /// # }
 /// ```
-pub fn task_by_example<'a, V, F>(
-    evaluator: &'a F,
-    examples: &'a [(Vec<V>, V)],
+pub fn task_by_simple_evaluation<'a, V, F>(
+    simple_evaluator: &'a F,
     tp: Type,
+    examples: &'a [(Vec<V>, V)],
 ) -> Task<'a, Language, &'a [(Vec<V>, V)]>
 where
     V: PartialEq + Clone + Sync + Debug + 'a,
@@ -773,7 +773,7 @@ where
 {
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
         let success = examples.iter().all(|&(ref inps, ref out)| {
-            if let Some(ref o) = dsl.eval(expr, evaluator, inps) {
+            if let Some(ref o) = dsl.eval(expr, simple_evaluator, inps) {
                 o == out
             } else {
                 false

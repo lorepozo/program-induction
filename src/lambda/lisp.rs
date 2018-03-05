@@ -32,12 +32,15 @@ use super::{Expression, Language};
 ///     ("*2", "(λ (x) (* x 2))"),
 /// ]);
 ///
-/// let task = lisp.task_by_example(vec![
-///     // create a task using whichever lisp syntax.
-///     // these are evaluated along with the expression.
-///     (Some("(list 1 2 3)"), "(list 2 4 6)"),
-///     (Some("'(3 5)"), "'(6 10)"),
-/// ], arrow![tp!(list(tp!(int))), tp!(list(tp!(int)))]);
+/// let task = lisp.make_task(
+///     arrow![tp!(list(tp!(int))), tp!(list(tp!(int)))],
+///     vec![
+///         // create a task using whichever lisp syntax.
+///         // these are evaluated along with the expression.
+///         (Some("(list 1 2 3)"), "(list 2 4 6)"),
+///         (Some("'(3 5)"), "'(6 10)"),
+///     ],
+/// );
 ///
 /// // this expression fails the task
 /// let expr = dsl.parse("(λ (map (λ (+ 1 $0)) $0))").expect("parse");
@@ -127,7 +130,7 @@ impl LispEvaluator {
             format!("(equal? {} {})", cmd, output)
         };
         let (tx, rx) = channel();
-        self.pool.execute_to(tx, op);
+        self.pool.execute_to(tx, op.clone());
         let response = rx.recv().expect("receive")?;
         match &*response {
             "#t\n" => Ok(true),
@@ -139,10 +142,10 @@ impl LispEvaluator {
     ///
     /// The resulting task is "all-or-nothing": the oracle returns either 0 if all examples are
     /// correctly hit or `f64::NEG_INFINITY` otherwise.
-    pub fn task_by_example<'a>(
+    pub fn make_task<'a>(
         &'a self,
-        examples: Vec<(Option<&str>, &str)>,
         tp: Type,
+        examples: Vec<(Option<&str>, &str)>,
     ) -> Task<'a, Language, Vec<(Option<String>, String)>> {
         let examples: Vec<_> = examples
             .into_iter()
@@ -177,7 +180,13 @@ impl Default for Racket {
     fn default() -> Self {
         let child = Command::new("racket")
             .arg("-e")
-            .arg("(let lp () (display (eval (read))) (newline) (flush-output) (lp))")
+            .arg(
+                "(let lp ()
+                    (with-handlers ([exn:fail? (λ (exn) (displayln \"ERROR\"))])
+                        (displayln (eval (read))))
+                    (flush-output)
+                    (lp))",
+            )
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

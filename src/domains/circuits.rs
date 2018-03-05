@@ -1,12 +1,23 @@
 //! The classic circuit domain as in the paper "Bootstrap Learning for Modular Concept Discovery"
 //! (2013).
 //!
-//! The [`Representation`] for circuits, [`repr()`], is just the `nand` operation in lambda
-//! calculus ([`lambda::Language`]).
+//! # Examples
 //!
-//! [`repr()`]: fn.repr.html
-//! [`Representation`]: ../../trait.Representation.html
-//! [`lambda::Language`]: ../../lambda/struct.Language.html
+//! ```
+//! use programinduction::{ECParams, EC};
+//! use programinduction::domains::circuits;
+//!
+//! let dsl = circuits::repr();
+//! let tasks = circuits::make_tasks(250);
+//! let ec_params = ECParams {
+//!     frontier_size: 100,
+//!     search_limit: 1000,
+//! };
+//!
+//! let frontiers = dsl.explore(&ec_params, &tasks, None);
+//! let hits = frontiers.iter().filter_map(|f| f.best_solution()).count();
+//! assert!(70 < hits && hits < 100);
+//! ```
 
 use std::f64;
 use std::iter;
@@ -17,22 +28,23 @@ use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
 use super::super::lambda::{Expression, Language};
 use super::super::Task;
 
-/// The circuit representation only defines the binary `nand` operation.
+/// The circuit [`Representation`] only defines the binary `nand` operation.
 ///
 /// ```ignore
-/// "nand": arrow![tp!(bool), tp!(bool), tp!(bool)])
+/// "nand": arrow![tp!(bool), tp!(bool), tp!(bool)]
 /// ```
 ///
+/// [`Representation`]: ../../trait.Representation.html
 /// [`lambda::Language`]: ../../lambda/struct.Language.html
 pub fn repr() -> Language {
     Language::uniform(vec![("nand", arrow![tp!(bool), tp!(bool), tp!(bool)])])
 }
 
 /// Evaluate an expression in this domain in accordance with the argument of
-/// [`lambda::task_by_examples`].
+/// [`lambda::task_by_simple_evaluation`].
 ///
-/// [`lambda::task_by_examples`]: ../../lambda/fn.task_by_example.html
-pub fn evaluator(primitive: &str, inp: &[bool]) -> bool {
+/// [`lambda::task_by_simple_evaluation`]: ../../lambda/fn.task_by_simple_evaluation.html
+pub fn simple_evaluator(primitive: &str, inp: &[bool]) -> bool {
     match primitive {
         "nand" => !(inp[0] & inp[1]),
         _ => unreachable!(),
@@ -124,7 +136,7 @@ pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Vec<bool>>> {
                 let success = truth_table(n_inputs)
                     .zip(&oracle_outputs)
                     .all(|(inps, out)| {
-                        if let Some(o) = dsl.eval(expr, &evaluator, &inps) {
+                        if let Some(o) = dsl.eval(expr, &simple_evaluator, &inps) {
                             o == *out
                         } else {
                             false

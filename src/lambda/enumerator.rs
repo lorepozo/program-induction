@@ -46,7 +46,6 @@ fn likelihood_internal<'a>(
         if let Expression::Abstraction(ref body) = *expr {
             likelihood_internal(dsl, &*arrow.ret, ctx, &env, body)
         } else {
-            eprintln!("likelihood for arrow found expression that wasn't abstraction");
             (f64::NEG_INFINITY, ctx.clone()) // invalid expression
         }
     } else {
@@ -55,8 +54,8 @@ fn likelihood_internal<'a>(
             expr = l;
             xs.push(r);
         }
-        let candidates = dsl.candidates(request, ctx, &env.as_vecdeque());
-        match candidates
+        xs.reverse();
+        match dsl.candidates(request, ctx, &env.as_vecdeque())
             .into_iter()
             .find(|&(_, ref c_expr, _, _)| expr == c_expr)
         {
