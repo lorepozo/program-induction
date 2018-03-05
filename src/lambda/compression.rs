@@ -241,38 +241,26 @@ impl Language {
     }
 
     fn all_uses(&self, frontiers: &[RescoredFrontier]) -> Uses {
-        let lus: Vec<_> = frontiers
+        frontiers
             .par_iter()
-            .map(|f| {
-                f.1
+            .flat_map(|f| {
+                let lu = f.1
                     .iter()
                     .map(|&(ref expr, _logprior, loglikelihood)| {
                         let (logprior, u) = self.uses(f.0, expr);
                         (logprior + loglikelihood, u)
                     })
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        let zs: Vec<_> = lus.par_iter()
-            .map(|lu_f| {
-                let largest = lu_f.iter()
-                    .fold(f64::NEG_INFINITY, |acc, &(l, _)| acc.max(l));
-                largest
-                    + lu_f.iter()
+                    .collect::<Vec<_>>();
+                let largest = lu.iter().fold(f64::NEG_INFINITY, |acc, &(l, _)| acc.max(l));
+                let z = largest
+                    + lu.iter()
                         .map(|&(l, _)| (l - largest).exp())
                         .sum::<f64>()
-                        .ln()
-            })
-            .collect();
-        lus.into_par_iter()
-            .zip(zs)
-            .flat_map(|(lu_f, z)| {
-                lu_f.into_iter()
-                    .map(move |(l, mut u)| {
-                        u.scale((l - z).exp());
-                        u
-                    })
-                    .collect::<Vec<_>>()
+                        .ln();
+                lu.into_par_iter().map(move |(l, mut u)| {
+                    u.scale((l - z).exp());
+                    u
+                })
             })
             .reduce(
                 || Uses::new(self),
