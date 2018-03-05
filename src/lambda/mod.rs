@@ -345,12 +345,12 @@ impl Language {
     pub fn strip_invented(&self, expr: &Expression) -> Expression {
         expr.strip_invented(&self.invented)
     }
-    /// The inverse of [`stringify`].
+    /// The inverse of [`display`].
     ///
     /// Lambda expressions take the form `(lambda BODY)` or `(λ BODY)`, where BODY is an expression
     /// that may use a corresponding De Bruijn [`Index`].
     ///
-    /// [`stringify`]: #method.stringify
+    /// [`display`]: #method.display
     /// [`Index`]: enum.Expression.html#variant.Index
     pub fn parse(&self, inp: &str) -> Result<Expression, ParseError> {
         let s = inp.trim_left();
@@ -369,11 +369,11 @@ impl Language {
     /// The inverse of [`parse`].
     ///
     /// [`parse`]: #method.parse
-    pub fn stringify(&self, expr: &Expression) -> String {
+    pub fn display(&self, expr: &Expression) -> String {
         expr.show(self, false)
     }
 
-    /// Like stringify, but in a format ready for lisp interpretation.
+    /// Like `display`, but in a format ready for lisp interpretation.
     pub fn lispify(&self, expr: &Expression, conversions: &HashMap<String, String>) -> String {
         expr.as_lisp(self, false, conversions, 0)
     }
@@ -449,6 +449,9 @@ impl Representation for Language {
     type Expression = Expression;
     fn infer(&self, expr: &Self::Expression) -> Result<Type, InferenceError> {
         self.infer(expr)
+    }
+    fn display(&self, expr: &Self::Expression) -> String {
+        self.display(expr)
     }
 }
 impl EC for Language {

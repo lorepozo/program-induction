@@ -6,7 +6,7 @@
 //! # #[macro_use]
 //! # extern crate polytype;
 //! # extern crate programinduction;
-//! use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluator};
+//! use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluation};
 //!
 //! fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
 //!     match name {
@@ -28,7 +28,7 @@
 //! );
 //!
 //! // task: the number 4
-//! let task = task_by_simple_evaluator(&simple_evaluator, &4, tp!(EXPR));
+//! let task = task_by_simple_evaluation(&simple_evaluator, &4, tp!(EXPR));
 //!
 //! // solution:
 //! let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
@@ -156,7 +156,7 @@ impl Grammar {
         }
         self.normalize();
     }
-    /// Evaluate a sentence using an evaluator.
+    /// Evaluate a sentence using a simple evaluator.
     ///
     /// # Examples
     ///
@@ -164,9 +164,9 @@ impl Grammar {
     /// # #[macro_use]
     /// # extern crate polytype;
     /// # extern crate programinduction;
-    /// use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluator};
+    /// use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluation};
     ///
-    /// fn evaluator(name: &str, inps: &[i32]) -> i32 {
+    /// fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
     ///     match name {
     ///         "0" => 0,
     ///         "1" => 1,
@@ -186,15 +186,18 @@ impl Grammar {
     /// );
     ///
     /// let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
-    /// assert_eq!(4, g.eval(&expr, &evaluator));
+    /// assert_eq!(4, g.eval(&expr, &simple_evaluator));
     /// # }
     /// ```
-    pub fn eval<V, F>(&self, ar: &AppliedRule, evaluator: &F) -> V
+    pub fn eval<V, F>(&self, ar: &AppliedRule, simple_evaluator: &F) -> V
     where
         F: Fn(&str, &[V]) -> V,
     {
-        let args: Vec<V> = ar.2.iter().map(|ar| self.eval(ar, evaluator)).collect();
-        evaluator(self.rules[&ar.0][ar.1].name, &args)
+        let args: Vec<V> = ar.2
+            .iter()
+            .map(|ar| self.eval(ar, simple_evaluator))
+            .collect();
+        simple_evaluator(self.rules[&ar.0][ar.1].name, &args)
     }
     /// Get the log-likelihood of an expansion for the given nonterminal.
     ///
@@ -228,12 +231,12 @@ impl Grammar {
     pub fn likelihood(&self, ar: &AppliedRule) -> f64 {
         self.rules[&ar.0][ar.1].logprob + ar.2.iter().map(|ar| self.likelihood(ar)).sum::<f64>()
     }
-    /// Parse a valid sentence in the Grammar. The inverse of [`stringify`].
+    /// Parse a valid sentence in the Grammar. The inverse of [`display`].
     ///
     /// Non-terminating production rules are followed by parentheses containing comma-separated
     /// productions `plus(0, 1)`. Extraneous white space is ignored.
     ///
-    /// [`stringify`]: #method.stringify
+    /// [`display`]: #method.display
     pub fn parse(&self, inp: &str) -> Result<AppliedRule, ParseError> {
         self.parse_nonterminal(inp, self.start.clone())
     }
@@ -248,10 +251,10 @@ impl Grammar {
     /// The inverse of [`parse`].
     ///
     /// [`parse`]: #method.parse
-    pub fn stringify(&self, ar: &AppliedRule) -> String {
+    pub fn display(&self, ar: &AppliedRule) -> String {
         let r = &self.rules[&ar.0][ar.1];
         if let Type::Arrow(_) = r.production {
-            let args = ar.2.iter().map(|ar| self.stringify(ar)).join(",");
+            let args = ar.2.iter().map(|ar| self.display(ar)).join(",");
             format!("{}({})", r.name, args)
         } else {
             format!("{}", r.name)
@@ -278,6 +281,9 @@ impl Representation for Grammar {
 
     fn infer(&self, expr: &Self::Expression) -> Result<Type, InferenceError> {
         Ok(expr.0.clone())
+    }
+    fn display(&self, expr: &Self::Expression) -> String {
+        self.display(expr)
     }
 }
 impl EC for Grammar {
@@ -402,7 +408,7 @@ fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicU
 /// `V` will often be an enum corresponding to each nonterminal in the PCFG. All outputs and
 /// evaluated sentences must be representable by `V`.
 ///
-/// An `evaluator` takes the name of a production and a vector corresponding to evaluated results
+/// A `simple_evaluator` takes the name of a production and a vector corresponding to evaluated results
 /// of each child node of the production in a particular derivation.
 ///
 /// The resulting task is "all-or-nothing": the oracle returns either `0` if all examples are
@@ -414,9 +420,9 @@ fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicU
 /// # #[macro_use]
 /// # extern crate polytype;
 /// # extern crate programinduction;
-/// use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluator};
+/// use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluation};
 ///
-/// fn evaluator(name: &str, inps: &[i32]) -> i32 {
+/// fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
 ///     match name {
 ///         "0" => 0,
 ///         "1" => 1,
@@ -437,14 +443,14 @@ fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicU
 ///
 /// let output = 4;
 /// let tp = tp!(EXPR);
-/// let task = task_by_simple_evaluator(&evaluator, &output, tp);
+/// let task = task_by_simple_evaluation(&simple_evaluator, &output, tp);
 ///
 /// let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
 /// assert!((task.oracle)(&g, &expr).is_finite())
 /// # }
 /// ```
-pub fn task_by_simple_evaluator<'a, V, F>(
-    evaluator: &'a F,
+pub fn task_by_simple_evaluation<'a, V, F>(
+    simple_evaluator: &'a F,
     output: &'a V,
     tp: Type,
 ) -> Task<'a, Grammar, &'a V>
@@ -453,7 +459,7 @@ where
     F: Fn(&str, &[V]) -> V + Sync + 'a,
 {
     let oracle = Box::new(move |g: &Grammar, ar: &AppliedRule| {
-        if output == &g.eval(ar, evaluator) {
+        if output == &g.eval(ar, simple_evaluator) {
             0f64
         } else {
             f64::NEG_INFINITY

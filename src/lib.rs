@@ -44,6 +44,11 @@ pub trait Representation: Send + Sync + Sized {
     type Expression: Clone + Send;
 
     fn infer(&self, expr: &Self::Expression) -> Result<Type, InferenceError>;
+
+    fn display(&self, expr: &Self::Expression) -> String {
+        let _ = expr;
+        "<Expression>".to_owned()
+    }
 }
 
 #[derive(Debug, Clone)]

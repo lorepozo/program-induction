@@ -29,7 +29,7 @@
 //! let solution = &frontiers[0].best_solution().unwrap().0;
 //! assert_eq!(
 //!     "(λ (join (char->str /) (split > $0)))",
-//!     dsl.stringify(solution)
+//!     dsl.display(solution)
 //! );
 //! # }
 //! ```

@@ -119,7 +119,7 @@ fn expression_parse_abstraction() {
             Box::new(Expression::Index(0)),
         )))
     );
-    assert_eq!(dsl.stringify(&expr), "(λ (+ $0))");
+    assert_eq!(dsl.display(&expr), "(λ (+ $0))");
     let expr = dsl.parse("(#(lambda (+ (+ 1 1) $0)) ((lambda (+ $0 1)) 1))")
         .unwrap();
     assert_eq!(
@@ -139,7 +139,7 @@ fn expression_parse_abstraction() {
         ),
     );
     assert_eq!(
-        dsl.stringify(&expr),
+        dsl.display(&expr),
         "(#(λ (+ (+ 1 1) $0)) ((λ (+ $0 1)) 1))"
     );
     let expr = dsl.parse("(lambda $0)").unwrap();
@@ -147,7 +147,7 @@ fn expression_parse_abstraction() {
         expr,
         Expression::Abstraction(Box::new(Expression::Index(0)))
     );
-    assert_eq!(dsl.stringify(&expr), "(λ $0)");
+    assert_eq!(dsl.display(&expr), "(λ $0)");
 }
 
 #[test]
@@ -184,7 +184,7 @@ fn expression_infer() {
     );
     assert_eq!(dsl.infer(&expr).unwrap(), tp!(list(tp!(bool))));
     assert_eq!(
-        dsl.stringify(&expr),
+        dsl.display(&expr),
         "(singleton ((λ (>= $0 1)) (#(+ 1) 0)))"
     );
 }

@@ -75,7 +75,7 @@ fn likelihood_internal<'a>(
                 }
             }
             None => {
-                let s = dsl.stringify(expr);
+                let s = dsl.display(expr);
                 panic!(
                     "expression {} (with type {}) is not in candidates for request type {}",
                     s,

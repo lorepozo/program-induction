@@ -109,7 +109,7 @@ pub fn induce<O: Sync>(
                 let best_proposal = dsl.propose_inventions(&rescored_frontiers, params.arity)
                     .zip(iter::repeat(dsl.clone()))
                     .filter_map(|(inv, mut dsl)| {
-                        eprintln!("grammar induction: proposing {}", dsl.stringify(&inv),);
+                        eprintln!("grammar induction: proposing {}", dsl.display(&inv),);
                         dsl.invent(inv.clone(), 0f64).unwrap();
                         let s = dsl.score(
                             &rescored_frontiers,
@@ -140,7 +140,7 @@ pub fn induce<O: Sync>(
                     "grammar induction: invented with tp {} and improved score to {}: {}",
                     tp,
                     best_score,
-                    dsl.stringify(inv)
+                    dsl.display(inv)
                 );
             }
             frontiers = frontiers
