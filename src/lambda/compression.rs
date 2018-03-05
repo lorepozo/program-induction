@@ -208,12 +208,12 @@ impl Language {
         self.reset_uniform();
         self.inside_outside(frontiers, pseudocounts);
         let likelihood = self.joint_mdl(frontiers, true);
+        let nparams = self.primitives.len() + self.invented.len();
         let structure = (self.primitives.len() as f64)
             + self.invented
                 .iter()
                 .map(|&(ref expr, _, _)| expression_structure(expr))
                 .sum::<f64>();
-        let nparams = self.primitives.len() + self.invented.len();
         let s = likelihood - aic * (nparams as f64) - structure_penalty * structure;
         eprintln!(
             "grammar induction: proposal had score {} with likelihood {}, aic term {}, structure term {}",
@@ -422,13 +422,18 @@ impl Language {
         }
     }
 
-    fn rewrite_frontier_with_latest_invention(&self, f: &mut RescoredFrontier) {
+    /// returns whether the frontier was rewritten
+    fn rewrite_frontier_with_latest_invention(&self, f: &mut RescoredFrontier) -> bool {
         if let Some(invention) = self.invented.last() {
             let inv = &invention.0;
             let inv_n = self.invented.len() - 1;
-            f.1
+            let results: Vec<_> = f.1
                 .iter_mut()
-                .for_each(|x| self.rewrite_expression(&mut x.0, inv_n, inv, 0));
+                .map(|x| self.rewrite_expression(&mut x.0, inv_n, inv, 0))
+                .collect();
+            results.iter().any(|&x| x)
+        } else {
+            false
         }
     }
     fn rewrite_expression(
@@ -437,15 +442,16 @@ impl Language {
         inv_n: usize,
         inv: &Expression,
         n_args: usize,
-    ) {
+    ) -> bool {
+        let mut ret = false;
         let do_rewrite = match *expr {
             Expression::Application(ref mut f, ref mut x) => {
-                self.rewrite_expression(f, inv_n, inv, n_args + 1);
-                self.rewrite_expression(x, inv_n, inv, 0);
+                ret |= self.rewrite_expression(f, inv_n, inv, n_args + 1);
+                ret |= self.rewrite_expression(x, inv_n, inv, 0);
                 true
             }
             Expression::Abstraction(ref mut body) => {
-                self.rewrite_expression(body, inv_n, inv, 0);
+                ret |= self.rewrite_expression(body, inv_n, inv, 0);
                 true
             }
             _ => false,
@@ -463,8 +469,10 @@ impl Language {
                     new_expr = Expression::Application(inner, Box::new(b.clone()));
                 }
                 *expr = new_expr;
+                ret = true
             }
         }
+        ret
     }
 
     fn propose_inventions<'a>(

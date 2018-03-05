@@ -384,7 +384,6 @@ impl Language {
         ctx: &Context,
         env: &VecDeque<Type>,
     ) -> Vec<(f64, Expression, Type, Context)> {
-        let mut cands = Vec::new();
         let prims = self.primitives
             .iter()
             .enumerate()
@@ -396,36 +395,41 @@ impl Language {
         let indices = env.iter()
             .enumerate()
             .map(|(i, tp)| (self.variable_logprob, tp, false, Expression::Index(i)));
-        for (p, tp, instantiate, expr) in prims.chain(invented).chain(indices) {
-            let mut ctx = ctx.clone();
-            let itp;
-            let tp = if instantiate {
-                itp = tp.instantiate_indep(&mut ctx);
-                &itp
-            } else {
-                tp
-            };
-            let ret = if let Type::Arrow(ref arrow) = *tp {
-                arrow.returns()
-            } else {
-                &tp
-            };
-            if ctx.unify(ret, request).is_ok() {
-                let tp = tp.apply(&ctx);
-                cands.push((p, expr, tp, ctx))
-            }
-        }
+        let mut cands: Vec<_> = prims
+            .chain(invented)
+            .chain(indices)
+            .filter_map(|(p, tp, instantiate, expr)| {
+                let mut ctx = ctx.clone();
+                let itp;
+                let tp = if instantiate {
+                    itp = tp.instantiate_indep(&mut ctx);
+                    &itp
+                } else {
+                    tp
+                };
+                let ret = if let Type::Arrow(ref arrow) = *tp {
+                    arrow.returns()
+                } else {
+                    &tp
+                };
+                ctx.unify(ret, request).ok().map(|_| {
+                    let tp = tp.apply(&ctx);
+                    (p, expr, tp, ctx)
+                })
+            })
+            .collect();
         // update probabilities for variables (indices)
-        let n_indexed = cands
+        let log_n_indexed = (cands
             .iter()
             .filter(|&&(_, ref expr, _, _)| match *expr {
                 Expression::Index(_) => true,
                 _ => false,
             })
-            .count() as f64;
+            .count() as f64)
+            .ln();
         for mut c in &mut cands {
             if let Expression::Index(_) = c.1 {
-                c.0 -= n_indexed.ln()
+                c.0 -= log_n_indexed
             }
         }
         // normalize
