@@ -44,10 +44,11 @@ impl<R: Representation> DerefMut for Frontier<R> {
 
 /// Parameters for the EC algorithm.
 pub struct ECParams {
-    /// frontier size is the number of task solutions to be hit before enumeration is stopped.
-    pub frontier_size: usize,
+    /// The maximum frontier size; the number of task solutions to be hit before enumeration is
+    /// stopped for a particular task.
+    pub frontier_limit: usize,
     /// search limit is a hard limit of the number of expressions that are enumerated for a task.
-    /// If this is reached, there may be fewer than `frontier_size` many solutions.
+    /// If this is reached, there may be fewer than `frontier_limit` many solutions.
     pub search_limit: usize,
 }
 
@@ -127,8 +128,8 @@ pub trait EC: Representation {
     /// Considers a "solution" to be any expression with finite log-probability according to a
     /// task's oracle.
     ///
-    /// Each task will be associated with at most `params.frontier_size` many such expressions, and
-    /// enumeration is stopped when `params.search_limit` valid expressions have been checked.
+    /// Each task will be associated with at most `params.frontier_limit` many such expressions,
+    /// and enumeration is stopped when `params.search_limit` valid expressions have been checked.
     fn explore<O: Sync>(
         &self,
         params: &ECParams,
@@ -172,8 +173,8 @@ pub trait EC: Representation {
     /// Considers a "solution" to be any expression with finite log-probability according to a
     /// task's oracle.
     ///
-    /// Each task will be associated with at most `params.frontier_size` many such expressions, and
-    /// enumeration is stopped when `params.search_limit` valid expressions have been checked.
+    /// Each task will be associated with at most `params.frontier_limit` many such expressions,
+    /// and enumeration is stopped when `params.search_limit` valid expressions have been checked.
     fn enumerate_solutions<O: Sync>(
         &self,
         params: &ECParams,
@@ -190,7 +191,7 @@ pub trait EC: Representation {
                 if log_likelihood.is_finite() {
                     let f = frontiers.entry(i).or_insert_with(Frontier::default);
                     f.push(expr.clone(), log_prior, log_likelihood);
-                    f.len() < params.frontier_size
+                    f.len() < params.frontier_limit
                 } else {
                     true
                 }

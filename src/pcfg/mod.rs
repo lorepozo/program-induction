@@ -1,4 +1,40 @@
 //! (representation) Probabilistic context-free grammar without bound variables or polymorphism.
+//!
+//! # Examples
+//!
+//! ```
+//! # #[macro_use]
+//! # extern crate polytype;
+//! # extern crate programinduction;
+//! use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluator};
+//!
+//! fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
+//!     match name {
+//!         "0" => 0,
+//!         "1" => 1,
+//!         "plus" => inps[0] + inps[1],
+//!         _ => unreachable!(),
+//!     }
+//! }
+//!
+//! # fn main() {
+//! let g = Grammar::new(
+//!     tp!(EXPR),
+//!     vec![
+//!         Rule::new("0", tp!(EXPR), 1.0),
+//!         Rule::new("1", tp!(EXPR), 1.0),
+//!         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
+//!     ],
+//! );
+//!
+//! // task: the number 4
+//! let task = task_by_simple_evaluator(&simple_evaluator, &4, tp!(EXPR));
+//!
+//! // solution:
+//! let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
+//! assert!((task.oracle)(&g, &expr).is_finite())
+//! # }
+//! ```
 
 mod enumerator;
 mod parser;
@@ -128,7 +164,7 @@ impl Grammar {
     /// # #[macro_use]
     /// # extern crate polytype;
     /// # extern crate programinduction;
-    /// use programinduction::pcfg::{Grammar, Rule, task_by_output};
+    /// use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluator};
     ///
     /// fn evaluator(name: &str, inps: &[i32]) -> i32 {
     ///     match name {
@@ -378,7 +414,7 @@ fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicU
 /// # #[macro_use]
 /// # extern crate polytype;
 /// # extern crate programinduction;
-/// use programinduction::pcfg::{Grammar, Rule, task_by_output};
+/// use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluator};
 ///
 /// fn evaluator(name: &str, inps: &[i32]) -> i32 {
 ///     match name {
@@ -401,13 +437,13 @@ fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicU
 ///
 /// let output = 4;
 /// let tp = tp!(EXPR);
-/// let task = task_by_output(&evaluator, &output, tp);
+/// let task = task_by_simple_evaluator(&evaluator, &output, tp);
 ///
 /// let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
 /// assert!((task.oracle)(&g, &expr).is_finite())
 /// # }
 /// ```
-pub fn task_by_output<'a, V, F>(
+pub fn task_by_simple_evaluator<'a, V, F>(
     evaluator: &'a F,
     output: &'a V,
     tp: Type,

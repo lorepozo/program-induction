@@ -1,10 +1,46 @@
 //! (representation) Polymorphically-typed lambda calculus.
+//!
+//! # Examples
+//!
+//! ```
+//! # #[macro_use] extern crate polytype;
+//! # extern crate programinduction;
+//! use programinduction::lambda::{Language, task_by_simple_evaluation};
+//!
+//! fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
+//!     match name {
+//!         "0" => 0,
+//!         "1" => 1,
+//!         "+" => inps[0] + inps[1],
+//!         _ => unreachable!(),
+//!     }
+//! }
+//!
+//! # fn main() {
+//! let dsl = Language::uniform(
+//!     vec![
+//!         ("0", tp!(int)),
+//!         ("1", tp!(int)),
+//!         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+//!     ],
+//! );
+//!
+//! // task: sum 1 with two numbers
+//! let tp = arrow![tp!(int), tp!(int), tp!(int)];
+//! let examples = vec![(vec![2, 5], 8), (vec![1, 2], 4)];
+//! let task = task_by_simple_evaluation(&simple_evaluator, tp, &examples);
+//!
+//! // solution:
+//! let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
+//! assert!((task.oracle)(&dsl, &expr).is_finite())
+//! # }
+//! ```
 
 mod enumerator;
 mod eval;
-mod fragmentgrammar;
+mod compression;
 mod lisp;
-pub use self::fragmentgrammar::Params;
+pub use self::compression::Params;
 pub use self::lisp::LispEvaluator;
 
 use std::collections::{HashMap, VecDeque};
@@ -141,6 +177,18 @@ impl Language {
     /// ```
     pub fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
         enumerator::new(self, tp)
+    }
+
+    /// Update production probabilities and induce new primitives, with the guarantee that any
+    /// changes to the language yield net lower prior probability for expressions in the frontier.
+    // TODO: add example
+    pub fn compress<O: Sync>(
+        &self,
+        params: &Params,
+        tasks: &[Task<Self, O>],
+        frontiers: &[Frontier<Self>],
+    ) -> Self {
+        compression::induce(self, params, tasks, frontiers)
     }
 
     /// Evaluate an expressions based on an input/output pair.
@@ -414,7 +462,7 @@ impl EC for Language {
         tasks: &[Task<Self, O>],
         frontiers: &[Frontier<Self>],
     ) -> Self {
-        fragmentgrammar::induce(self, params, tasks, frontiers)
+        self.compress(params, tasks, frontiers)
     }
 }
 

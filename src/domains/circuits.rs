@@ -10,13 +10,13 @@
 //! let dsl = circuits::repr();
 //! let tasks = circuits::make_tasks(250);
 //! let ec_params = ECParams {
-//!     frontier_size: 100,
+//!     frontier_limit: 100,
 //!     search_limit: 1000,
 //! };
 //!
 //! let frontiers = dsl.explore(&ec_params, &tasks, None);
 //! let hits = frontiers.iter().filter_map(|f| f.best_solution()).count();
-//! assert!(70 < hits && hits < 100);
+//! assert!(50 < hits && hits < 150, "hits = {}", hits);
 //! ```
 
 use std::f64;

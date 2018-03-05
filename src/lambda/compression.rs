@@ -61,29 +61,33 @@ impl Default for Params {
     }
 }
 
+/// A convenient frontier representation.
+#[derive(Debug, Clone)]
+struct RescoredFrontier<'a>(&'a Type, Vec<(Expression, f64, f64)>);
+
 pub fn induce<O: Sync>(
     dsl: &Language,
     params: &Params,
     tasks: &[Task<Language, O>],
     frontiers: &[Frontier<Language>],
 ) -> Language {
-    let mut g = FragmentGrammar::from(dsl);
+    let mut dsl = dsl.clone();
     let mut frontiers: Vec<_> = tasks
         .iter()
         .map(|t| &t.tp)
         .zip(frontiers)
         .filter(|&(_, f)| !f.is_empty())
-        .map(|(tp, fs)| {
-            let fs: Vec<_> = fs.0
+        .map(|(tp, f)| {
+            let xs: Vec<_> = f.0
                 .iter()
                 .map(|&(ref expr, lp, ll)| (expr.clone(), lp, ll))
                 .collect();
-            RescoredFrontier(tp, fs)
+            RescoredFrontier(tp, xs)
         })
         .collect();
 
-    let old_joint = g.joint_mdl(&frontiers, false);
-    let mut best_score = g.score(
+    let old_joint = dsl.joint_mdl(&frontiers, false);
+    let mut best_score = dsl.score(
         &frontiers,
         params.pseudocounts,
         params.aic,
@@ -100,21 +104,21 @@ pub fn induce<O: Sync>(
                 // propose using topk frontiers
                 let rescored_frontiers: Vec<_> = frontiers
                     .par_iter()
-                    .map(|f| g.rescore_frontier(f, params.topk))
+                    .map(|f| dsl.rescore_frontier(f, params.topk))
                     .collect();
-                let best_proposal = g.propose_inventions(&rescored_frontiers, params.arity)
-                    .zip(iter::repeat(g.clone()))
-                    .filter_map(|(inv, mut g)| {
-                        eprintln!("grammar induction: proposing {}", g.dsl.stringify(&inv),);
-                        g.dsl.invent(inv.clone(), 0f64).unwrap();
-                        let s = g.score(
+                let best_proposal = dsl.propose_inventions(&rescored_frontiers, params.arity)
+                    .zip(iter::repeat(dsl.clone()))
+                    .filter_map(|(inv, mut dsl)| {
+                        eprintln!("grammar induction: proposing {}", dsl.stringify(&inv),);
+                        dsl.invent(inv.clone(), 0f64).unwrap();
+                        let s = dsl.score(
                             &rescored_frontiers,
                             params.pseudocounts,
                             params.aic,
                             params.structure_penalty,
                         );
                         if s.is_finite() {
-                            Some((g, s))
+                            Some((dsl, s))
                         } else {
                             None
                         }
@@ -124,14 +128,14 @@ pub fn induce<O: Sync>(
                     eprintln!("grammar induction: no best proposal");
                     break;
                 }
-                let (new_grammar, new_score) = best_proposal.unwrap();
+                let (new_dsl, new_score) = best_proposal.unwrap();
                 if new_score <= best_score {
                     eprintln!("grammar induction: score did not improve");
                     break;
                 }
-                g = new_grammar;
+                dsl = new_dsl;
                 best_score = new_score;
-                let &(ref inv, ref tp, _) = g.dsl.invented.last().unwrap();
+                let &(ref inv, ref tp, _) = dsl.invented.last().unwrap();
                 eprintln!(
                     "grammar induction: invented with tp {} and improved score to {}: {}",
                     tp,
@@ -142,29 +146,23 @@ pub fn induce<O: Sync>(
             frontiers = frontiers
                 .into_par_iter()
                 .map(|mut f| {
-                    g.rewrite_frontier_with_latest_invention(&mut f);
+                    dsl.rewrite_frontier_with_latest_invention(&mut f);
                     f
                 })
                 .collect();
         }
     }
 
-    let new_joint = g.joint_mdl(&frontiers, true);
+    let new_joint = dsl.joint_mdl(&frontiers, true);
     eprintln!(
         "grammar induction: old joint = {} ; new joint = {}",
         old_joint, new_joint
     );
-    g.dsl // TODO: consider also returning new frontiers
+    dsl // TODO: consider also returning new frontiers
 }
 
-#[derive(Clone)]
-struct RescoredFrontier<'a>(&'a Type, Vec<(Expression, f64, f64)>);
-
-#[derive(Debug, Clone)]
-struct FragmentGrammar {
-    dsl: Language,
-}
-impl FragmentGrammar {
+/// Extend the Language in our scope so we can do useful compression things.
+impl Language {
     fn rescore_frontier<'a>(&self, f: &'a RescoredFrontier, topk: usize) -> RescoredFrontier<'a> {
         let xs = f.1
             .iter()
@@ -209,13 +207,12 @@ impl FragmentGrammar {
     ) -> f64 {
         self.inside_outside(frontiers, pseudocounts);
         let likelihood = self.joint_mdl(frontiers, true);
-        let structure = (self.dsl.primitives.len() as f64)
-            + self.dsl
-                .invented
+        let structure = (self.primitives.len() as f64)
+            + self.invented
                 .iter()
                 .map(|&(ref expr, _, _)| expression_structure(expr))
                 .sum::<f64>();
-        let nparams = self.dsl.primitives.len() + self.dsl.invented.len();
+        let nparams = self.primitives.len() + self.invented.len();
         let s = likelihood - aic * (nparams as f64) - structure_penalty * structure;
         eprintln!(
             "grammar induction: proposal had score {} with likelihood {}, aic term {}, structure term {}",
@@ -230,9 +227,9 @@ impl FragmentGrammar {
     fn inside_outside(&mut self, frontiers: &[RescoredFrontier], pseudocounts: u64) {
         let pseudocounts = pseudocounts as f64;
         let u = self.all_uses(frontiers);
-        self.dsl.variable_logprob =
+        self.variable_logprob =
             ((u.actual_vars + pseudocounts) as f64).ln() - 1f64.max(u.possible_vars as f64).ln();
-        for (i, prim) in self.dsl.primitives.iter_mut().enumerate() {
+        for (i, prim) in self.primitives.iter_mut().enumerate() {
             let obs = u.actual_prims[i] + pseudocounts;
             let pot = if u.possible_prims[i] != 0f64 {
                 u.possible_prims[i]
@@ -241,7 +238,7 @@ impl FragmentGrammar {
             };
             prim.2 = obs.ln() - pot.ln();
         }
-        for (i, inv) in self.dsl.invented.iter_mut().enumerate() {
+        for (i, inv) in self.invented.iter_mut().enumerate() {
             let obs = u.actual_invented[i] + pseudocounts;
             let pot = if u.possible_invented[i] != 0f64 {
                 u.possible_invented[i]
@@ -276,7 +273,7 @@ impl FragmentGrammar {
                         .ln()
             })
             .collect();
-        let mut u = Uses::new(&self.dsl);
+        let mut u = Uses::new(self);
         lus.into_iter()
             .zip(zs)
             .flat_map(|(lu_f, z)| {
@@ -294,13 +291,13 @@ impl FragmentGrammar {
     fn uses(&self, request: &Type, expr: &Expression) -> (f64, Uses) {
         let ctx = Context::default();
         let env = Rc::new(LinkedList::default());
-        let (l, _, u) = self.likelihood(request, expr, &ctx, &env);
+        let (l, _, u) = self.likelihood_uses(request, expr, &ctx, &env);
         (l, u)
     }
 
     /// This is similar to `enumerator::likelihood_internal` but it does a lot more work to
     /// determine _outside_ counts.
-    fn likelihood(
+    fn likelihood_uses(
         &self,
         request: &Type,
         expr: &Expression,
@@ -310,16 +307,16 @@ impl FragmentGrammar {
         if let Type::Arrow(ref arrow) = *request {
             let env = LinkedList::prepend(env, *arrow.arg.clone());
             if let Expression::Abstraction(ref body) = *expr {
-                self.likelihood(&*arrow.ret, body, ctx, &env)
+                self.likelihood_uses(&*arrow.ret, body, ctx, &env)
             } else {
-                (f64::NEG_INFINITY, ctx.clone(), Uses::new(&self.dsl)) // invalid expression
+                (f64::NEG_INFINITY, ctx.clone(), Uses::new(self)) // invalid expression
             }
         } else {
-            let candidates = self.dsl.candidates(request, ctx, &env.as_vecdeque());
+            let candidates = self.candidates(request, ctx, &env.as_vecdeque());
             let mut ctx = ctx.clone();
             let mut possible_vars = 0f64;
-            let mut possible_prims = vec![0f64; self.dsl.primitives.len()];
-            let mut possible_invented = vec![0f64; self.dsl.invented.len()];
+            let mut possible_prims = vec![0f64; self.primitives.len()];
+            let mut possible_invented = vec![0f64; self.invented.len()];
             for &(_, ref expr, _, _) in &candidates {
                 match *expr {
                     Expression::Primitive(num) => possible_prims[num] = 1f64,
@@ -345,7 +342,7 @@ impl FragmentGrammar {
                             continue;
                         }
                     } else if let Some(frag_tp) =
-                        tree_match(&self.dsl, &mut ctx, expr, f, &mut bindings, xs.len())
+                        TreeMatcher::do_match(self, &mut ctx, expr, f, &mut bindings, xs.len())
                     {
                         let mut template: VecDeque<Type> =
                             (0..xs.len()).map(|_| ctx.new_variable()).collect();
@@ -373,8 +370,8 @@ impl FragmentGrammar {
 
                     let mut u = Uses {
                         actual_vars: 0f64,
-                        actual_prims: vec![0f64; self.dsl.primitives.len()],
-                        actual_invented: vec![0f64; self.dsl.invented.len()],
+                        actual_prims: vec![0f64; self.primitives.len()],
+                        actual_invented: vec![0f64; self.invented.len()],
                         possible_vars,
                         possible_prims: possible_prims.clone(),
                         possible_invented: possible_invented.clone(),
@@ -392,7 +389,7 @@ impl FragmentGrammar {
                         .chain(arg_tps.iter().zip(&xs))
                     {
                         let free_tp = free_tp.apply(&ctx);
-                        let n = self.likelihood(&free_tp, free_expr, &ctx, env);
+                        let n = self.likelihood_uses(&free_tp, free_expr, &ctx, env);
                         if n.0.is_infinite() {
                             l = f64::NEG_INFINITY;
                             break;
@@ -421,7 +418,7 @@ impl FragmentGrammar {
                 }
             }
 
-            let mut u = Uses::new(&self.dsl);
+            let mut u = Uses::new(self);
             if total_likelihood.is_finite() && !weighted_uses.is_empty() {
                 u.join_from(total_likelihood, weighted_uses)
             }
@@ -430,9 +427,9 @@ impl FragmentGrammar {
     }
 
     fn rewrite_frontier_with_latest_invention(&self, f: &mut RescoredFrontier) {
-        if let Some(invention) = self.dsl.invented.last() {
+        if let Some(invention) = self.invented.last() {
             let inv = &invention.0;
-            let inv_n = self.dsl.invented.len() - 1;
+            let inv_n = self.invented.len() - 1;
             f.1
                 .iter_mut()
                 .for_each(|x| self.rewrite_expression(&mut x.0, inv_n, inv, 0));
@@ -461,7 +458,7 @@ impl FragmentGrammar {
             let mut bindings = HashMap::new();
             let mut ctx = Context::default();
             let matches =
-                tree_match(&self.dsl, &mut ctx, inv, expr, &mut bindings, n_args).is_some();
+                TreeMatcher::do_match(self, &mut ctx, inv, expr, &mut bindings, n_args).is_some();
             if matches {
                 let mut new_expr = Expression::Invented(inv_n);
                 for j in (0..bindings.len()).rev() {
@@ -484,8 +481,8 @@ impl FragmentGrammar {
         .iter() // TODO figure out how to properly parallelize
         .flat_map(|f| {
             f.1.iter().flat_map(|&(ref expr, _, _)| {
-                propose_from_expression(expr, arity)
-                    .flat_map(propose_inventions_from_proposal)
+                proposals::from_expression(expr, arity)
+                    .flat_map(proposals::to_inventions)
             })
         })
         .for_each(|inv| {
@@ -495,90 +492,12 @@ impl FragmentGrammar {
             *count += 1;
         });
         Box::new(findings.into_iter().filter_map(move |(expr, count)| {
-            if count >= 2 && self.dsl.infer(&expr).is_ok() {
+            if count >= 2 && self.infer(&expr).is_ok() {
                 Some(expr)
             } else {
                 None
             }
         }))
-    }
-}
-impl<'a> From<&'a Language> for FragmentGrammar {
-    fn from(dsl: &'a Language) -> Self {
-        let dsl = dsl.clone();
-        FragmentGrammar { dsl }
-    }
-}
-
-fn expression_structure(expr: &Expression) -> f64 {
-    let (leaves, free, bound) = expression_count_kinds(expr, 0);
-    (leaves as f64) + BOUND_VAR_COST * (bound as f64) + FREE_VAR_COST * (free as f64)
-}
-
-/// get counts of prims, free, bound
-fn expression_count_kinds(expr: &Expression, abstraction_depth: usize) -> (u64, u64, u64) {
-    match *expr {
-        Expression::Primitive(_) | Expression::Invented(_) => (1, 0, 0),
-        Expression::Index(i) => {
-            if i < abstraction_depth {
-                (0, 0, 1)
-            } else {
-                (0, 1, 0)
-            }
-        }
-        Expression::Abstraction(ref b) => expression_count_kinds(b, abstraction_depth + 1),
-        Expression::Application(ref l, ref r) => {
-            let (l1, f1, b1) = expression_count_kinds(l, abstraction_depth);
-            let (l2, f2, b2) = expression_count_kinds(r, abstraction_depth);
-            (l1 + l2, f1 + f2, b1 + b2)
-        }
-    }
-}
-
-/// If the trees match, this appropriately updates the context and gets the new fragment type.
-/// Also gives bindings for indices. This may modify the context even upon failure.
-fn tree_match(
-    dsl: &Language,
-    ctx: &mut Context,
-    fragment: &Expression,
-    expr: &Expression,
-    bindings: &mut HashMap<usize, (Type, Expression)>,
-    n_args: usize,
-) -> Option<Type> {
-    if !tree_might_match(fragment, expr, 0) {
-        None
-    } else if let Some(tp) = {
-        let mut tm = TreeMatcher { dsl, ctx, bindings };
-        tm.do_match(fragment, expr, &Rc::new(LinkedList::default()), n_args)
-    } {
-        Some(tp)
-    } else {
-        None
-    }
-}
-
-fn tree_might_match(f: &Expression, e: &Expression, depth: usize) -> bool {
-    match *f {
-        Expression::Primitive(_) | Expression::Invented(_) => f == e,
-        Expression::Index(i) => if i < depth {
-            f == e
-        } else {
-            true
-        },
-        Expression::Abstraction(ref f_body) => {
-            if let Expression::Abstraction(ref e_body) = *e {
-                tree_might_match(f_body, e_body, depth + 1)
-            } else {
-                false
-            }
-        }
-        Expression::Application(ref f_f, ref f_x) => {
-            if let Expression::Application(ref e_f, ref e_x) = *e {
-                tree_might_match(f_x, e_x, depth) && tree_might_match(f_f, e_f, depth)
-            } else {
-                false
-            }
-        }
     }
 }
 
@@ -588,20 +507,65 @@ struct TreeMatcher<'a> {
     bindings: &'a mut HashMap<usize, (Type, Expression)>,
 }
 impl<'a> TreeMatcher<'a> {
+    /// If the trees (`fragment` against `concrete`) match, this appropriately updates the context
+    /// and gets the type for `fragment`.  Also gives bindings for indices. This may modify the
+    /// context even upon failure.
     fn do_match(
+        dsl: &Language,
+        ctx: &mut Context,
+        fragment: &Expression,
+        concrete: &Expression,
+        bindings: &mut HashMap<usize, (Type, Expression)>,
+        n_args: usize,
+    ) -> Option<Type> {
+        if !Self::might_match(fragment, concrete, 0) {
+            None
+        } else if let Some(tp) = {
+            let mut tm = TreeMatcher { dsl, ctx, bindings };
+            tm.execute(fragment, concrete, &Rc::new(LinkedList::default()), n_args)
+        } {
+            Some(tp)
+        } else {
+            None
+        }
+    }
+
+    /// Small tree comparison that doesn't update any bindings.
+    fn might_match(fragment: &Expression, concrete: &Expression, depth: usize) -> bool {
+        match *fragment {
+            Expression::Index(i) if i >= depth => true,
+            Expression::Abstraction(ref f_body) => {
+                if let Expression::Abstraction(ref e_body) = *concrete {
+                    Self::might_match(f_body, e_body, depth + 1)
+                } else {
+                    false
+                }
+            }
+            Expression::Application(ref f_f, ref f_x) => {
+                if let Expression::Application(ref c_f, ref c_x) = *concrete {
+                    Self::might_match(f_x, c_x, depth) && Self::might_match(f_f, c_f, depth)
+                } else {
+                    false
+                }
+            }
+            _ => fragment == concrete,
+        }
+    }
+
+    fn execute(
         &mut self,
         fragment: &Expression,
-        expr: &Expression,
+        concrete: &Expression,
         env: &Rc<LinkedList<Type>>,
         n_args: usize,
     ) -> Option<Type> {
-        match (fragment, expr) {
+        match (fragment, concrete) {
             (
                 &Expression::Application(ref f_f, ref f_x),
-                &Expression::Application(ref e_f, ref e_x),
+                &Expression::Application(ref c_f, ref c_x),
             ) => {
-                let ft = self.do_match(f_f, e_f, env, n_args)?;
-                let xt = self.do_match(f_x, e_x, env, n_args)?;
+                let ft = self.execute(f_f, c_f, env, n_args)?;
+                let xt = self.execute(f_x, c_x, env, n_args)?;
                 let ret = self.ctx.new_variable();
                 if self.ctx.unify(&ft, &arrow![xt, ret.clone()]).is_ok() {
                     Some(ret.apply(self.ctx))
@@ -609,282 +573,63 @@ impl<'a> TreeMatcher<'a> {
                     None
                 }
             }
-            (&Expression::Primitive(f_num), &Expression::Primitive(e_num)) => {
-                if f_num == e_num {
-                    let tp = self.dsl.primitive(f_num).unwrap().1;
-                    Some(tp.instantiate_indep(self.ctx))
-                } else {
-                    None
-                }
+            (&Expression::Primitive(f_num), &Expression::Primitive(c_num)) if f_num == c_num => {
+                let tp = self.dsl.primitive(f_num).unwrap().1;
+                Some(tp.instantiate_indep(self.ctx))
             }
-            (&Expression::Invented(f_num), &Expression::Invented(e_num)) => {
-                if f_num == e_num {
-                    let tp = self.dsl.invented(f_num).unwrap().1;
-                    Some(tp.instantiate_indep(self.ctx))
-                } else {
-                    None
-                }
+            (&Expression::Invented(f_num), &Expression::Invented(c_num)) if f_num == c_num => {
+                let tp = self.dsl.invented(f_num).unwrap().1;
+                Some(tp.instantiate_indep(self.ctx))
             }
-            (&Expression::Abstraction(ref f_body), &Expression::Abstraction(ref e_body)) => {
+            (&Expression::Abstraction(ref f_body), &Expression::Abstraction(ref c_body)) => {
                 let arg = self.ctx.new_variable();
                 let env = LinkedList::prepend(env, arg.clone());
-                let ret = self.do_match(f_body, e_body, &env, 0)?;
+                let ret = self.execute(f_body, c_body, &env, 0)?;
                 Some(arrow![arg, ret])
             }
-            (&Expression::Index(i), _) => {
-                let abstraction_depth = env.len();
-                if i < abstraction_depth {
-                    // bound variable
-                    if fragment == expr {
-                        Some(env[i].apply(self.ctx))
-                    } else {
-                        None
-                    }
+            (&Expression::Index(i), _) if i < env.len() => {
+                // bound variable
+                if fragment == concrete {
+                    Some(env[i].apply(self.ctx))
                 } else {
-                    // free variable
-                    let i = i - abstraction_depth;
-                    // make sure index bindings don't reach beyond fragment
-                    let mut expr = expr.clone();
-                    if expr.shift(-(abstraction_depth as i64)) {
-                        // wrap in abstracted applications for eta-long form
-                        if n_args > 0 {
-                            expr.shift(n_args as i64);
-                            for j in 0..n_args {
-                                expr = Expression::Application(
-                                    Box::new(expr),
-                                    Box::new(Expression::Index(j)),
-                                );
-                            }
-                            for _ in 0..n_args {
-                                expr = Expression::Abstraction(Box::new(expr));
-                            }
+                    None
+                }
+            }
+            (&Expression::Index(i), _) => {
+                // free variable
+                let i = i - env.len();
+                // make sure index bindings don't reach beyond fragment
+                let mut concrete = concrete.clone();
+                if concrete.shift(-(env.len() as i64)) {
+                    // wrap in abstracted applications for eta-long form
+                    if n_args > 0 {
+                        concrete.shift(n_args as i64);
+                        for j in 0..n_args {
+                            concrete = Expression::Application(
+                                Box::new(concrete),
+                                Box::new(Expression::Index(j)),
+                            );
                         }
-                        // update bindings
-                        if let Some(&(ref tp, ref binding)) = self.bindings.get(&i) {
-                            return if binding == &expr {
-                                Some(tp.clone())
-                            } else {
-                                None
-                            };
+                        for _ in 0..n_args {
+                            concrete = Expression::Abstraction(Box::new(concrete));
                         }
-                        let tp = self.ctx.new_variable();
-                        self.bindings.insert(i, (tp.clone(), expr));
-                        Some(tp)
-                    } else {
-                        None
                     }
+                    // update bindings
+                    if let Some(&(ref tp, ref binding)) = self.bindings.get(&i) {
+                        return if binding == &concrete {
+                            Some(tp.clone())
+                        } else {
+                            None
+                        };
+                    }
+                    let tp = self.ctx.new_variable();
+                    self.bindings.insert(i, (tp.clone(), concrete));
+                    Some(tp)
+                } else {
+                    None
                 }
             }
             _ => None,
-        }
-    }
-}
-
-#[derive(Debug)]
-enum Fragment {
-    Variable,
-    Application(Box<Fragment>, Box<Fragment>),
-    Abstraction(Box<Fragment>),
-    Expression(Expression),
-}
-impl Fragment {
-    fn canonicalize(mut self) -> Expression {
-        let mut c = Canonicalizer::default();
-        c.canonicalize(&mut self, 0);
-        let mut expr = self.into_expression();
-        let reach = free_reach(&expr, 0);
-        for _ in 0..reach {
-            let body = Box::new(expr);
-            expr = Expression::Abstraction(body);
-        }
-        expr
-    }
-    fn into_expression(self) -> Expression {
-        match self {
-            Fragment::Expression(expr) => expr,
-            Fragment::Application(f, x) => Expression::Application(
-                Box::new(f.into_expression()),
-                Box::new(x.into_expression()),
-            ),
-            Fragment::Abstraction(body) => {
-                Expression::Abstraction(Box::new(body.into_expression()))
-            }
-            _ => panic!("cannot convert fragment that still has variables"),
-        }
-    }
-}
-
-#[derive(Default)]
-struct Canonicalizer {
-    n_abstractions: usize,
-    mapping: HashMap<usize, usize>,
-}
-impl Canonicalizer {
-    fn canonicalize(&mut self, fr: &mut Fragment, depth: usize) {
-        match *fr {
-            Fragment::Expression(ref mut expr) => self.canonicalize_expr(expr, depth),
-            Fragment::Application(ref mut f, ref mut x) => {
-                self.canonicalize(f, depth);
-                self.canonicalize(x, depth);
-            }
-            Fragment::Abstraction(ref mut body) => {
-                self.canonicalize(body, depth + 1);
-            }
-            Fragment::Variable => {
-                *fr = Fragment::Expression(Expression::Index(self.n_abstractions + depth));
-                self.n_abstractions += 1;
-            }
-        }
-    }
-    fn canonicalize_expr(&mut self, expr: &mut Expression, depth: usize) {
-        match *expr {
-            Expression::Application(ref mut f, ref mut x) => {
-                self.canonicalize_expr(f, depth);
-                self.canonicalize_expr(x, depth);
-            }
-            Expression::Abstraction(ref mut body) => {
-                self.canonicalize_expr(body, depth + 1);
-            }
-            Expression::Index(ref mut i) if *i >= depth => {
-                let j = i.checked_sub(depth).unwrap();
-                if let Some(k) = self.mapping.get(&j) {
-                    *i = k + depth;
-                    return;
-                }
-                self.mapping.insert(j, self.n_abstractions);
-                *i = self.n_abstractions + depth;
-                self.n_abstractions += 1;
-            }
-            _ => (),
-        }
-    }
-}
-
-fn propose_from_expression<'a>(
-    expr: &'a Expression,
-    arity: u32,
-) -> Box<Iterator<Item = Expression> + 'a> {
-    Box::new(
-        (0..arity + 1)
-            .flat_map(move |b| propose_fragments_from_subexpression(expr, b))
-            .map(Fragment::canonicalize)
-            .filter(|expr| {
-                // determine if nontrivial
-                let (n_prims, n_free, n_bound) = expression_count_kinds(expr, 0);
-                n_prims >= 1 && ((n_prims as f64) + 0.5 * ((n_free + n_bound) as f64) > 1.5)
-            }),
-    )
-}
-fn propose_fragments_from_subexpression<'a>(
-    expr: &'a Expression,
-    arity: u32,
-) -> Box<Iterator<Item = Fragment> + 'a> {
-    let rst: Box<Iterator<Item = Fragment>> = match *expr {
-        Expression::Application(ref f, ref x) => Box::new(
-            propose_fragments_from_subexpression(f, arity)
-                .chain(propose_fragments_from_subexpression(x, arity)),
-        ),
-        Expression::Abstraction(ref body) => {
-            Box::new(propose_fragments_from_subexpression(body, arity))
-        }
-        _ => Box::new(iter::empty()),
-    };
-    Box::new(propose_fragments_from_particular(expr, arity).chain(rst))
-}
-fn propose_fragments_from_particular<'a>(
-    expr: &'a Expression,
-    arity: u32,
-) -> Box<Iterator<Item = Fragment> + 'a> {
-    if arity == 0 {
-        return Box::new(iter::once(Fragment::Expression(expr.clone())));
-    }
-    let rst: Box<Iterator<Item = Fragment> + 'a> = match *expr {
-        Expression::Application(ref f, ref x) => Box::new((0..arity + 1).flat_map(move |fa| {
-            let fs = propose_fragments_from_particular(f, fa);
-            let xs = propose_fragments_from_particular(x, (arity as i32 - fa as i32) as u32);
-            fs.zip(xs)
-                .map(|(f, x)| Fragment::Application(Box::new(f), Box::new(x)))
-        })),
-        Expression::Abstraction(ref body) => Box::new(
-            propose_fragments_from_particular(body, arity)
-                .map(|e| Fragment::Abstraction(Box::new(e))),
-        ),
-        _ => Box::new(iter::empty()),
-    };
-    if arity == 1 {
-        Box::new(iter::once(Fragment::Variable).chain(rst))
-    } else {
-        rst
-    }
-}
-fn propose_inventions_from_proposal(expr: Expression) -> Box<Iterator<Item = Expression>> {
-    // for any common subtree within the expression, replace with new index.
-    let reach = free_reach(&expr, 0);
-    let mut counts = HashMap::new();
-    subtrees(expr.clone(), &mut counts);
-    counts.remove(&expr);
-    let fst = iter::once(expr.clone());
-    let rst = counts
-        .into_iter()
-        .filter(|&(_, count)| count >= 2)
-        .filter(|&(ref expr, _)| is_closed(expr))
-        .map(move |(subtree, _)| {
-            let mut expr = expr.clone();
-            substitute(&mut expr, &subtree, &Expression::Index(reach));
-            expr
-        });
-    Box::new(fst.chain(rst))
-}
-
-/// How far out does the furthest reaching index go, excluding internal abstractions?
-///
-/// For examples, the free reach of `(+ $0 (λ + 1 $0))` is 1, because there need to be one
-/// abstraction around the expression for it to make sense.
-fn free_reach(expr: &Expression, depth: usize) -> usize {
-    match *expr {
-        Expression::Application(ref f, ref x) => free_reach(f, depth).max(free_reach(x, depth)),
-        Expression::Abstraction(ref body) => free_reach(body, depth + 1),
-        Expression::Index(i) if i >= depth => 1 + i.checked_sub(depth).unwrap(),
-        _ => 0,
-    }
-}
-
-fn subtrees(expr: Expression, counts: &mut HashMap<Expression, usize>) {
-    match expr.clone() {
-        Expression::Application(f, x) => {
-            subtrees(*f, counts);
-            subtrees(*x, counts);
-            counts.entry(expr).or_insert(0);
-        }
-        Expression::Abstraction(body) => {
-            subtrees(*body, counts);
-            counts.entry(expr).or_insert(0);
-        }
-        Expression::Index(_) => (),
-        Expression::Primitive(num) => {
-            counts.entry(Expression::Primitive(num)).or_insert(0);
-        }
-        Expression::Invented(num) => {
-            counts.entry(Expression::Invented(num)).or_insert(0);
-        }
-    }
-}
-
-fn is_closed(expr: &Expression) -> bool {
-    free_reach(expr, 0) == 0
-}
-
-fn substitute(expr: &mut Expression, subtree: &Expression, replacement: &Expression) {
-    if expr == subtree {
-        *expr = replacement.clone()
-    } else {
-        match *expr {
-            Expression::Application(ref mut f, ref mut x) => {
-                substitute(f, subtree, replacement);
-                substitute(x, subtree, replacement);
-            }
-            Expression::Abstraction(ref mut body) => substitute(body, subtree, replacement),
-            _ => (),
         }
     }
 }
@@ -986,5 +731,246 @@ impl Uses {
                     .map(|&(_, ref u)| u.possible_invented[i])
                     .sum::<f64>()
             });
+    }
+}
+
+mod proposals {
+    use std::collections::HashMap;
+    use std::iter;
+    use super::super::Expression;
+    use super::expression_count_kinds;
+
+    #[derive(Debug)]
+    enum Fragment {
+        Variable,
+        Application(Box<Fragment>, Box<Fragment>),
+        Abstraction(Box<Fragment>),
+        Expression(Expression),
+    }
+    impl Fragment {
+        fn canonicalize(mut self) -> Expression {
+            let mut c = Canonicalizer::default();
+            c.canonicalize(&mut self, 0);
+            let mut expr = self.into_expression();
+            let reach = free_reach(&expr, 0);
+            for _ in 0..reach {
+                let body = Box::new(expr);
+                expr = Expression::Abstraction(body);
+            }
+            expr
+        }
+        fn into_expression(self) -> Expression {
+            match self {
+                Fragment::Expression(expr) => expr,
+                Fragment::Application(f, x) => Expression::Application(
+                    Box::new(f.into_expression()),
+                    Box::new(x.into_expression()),
+                ),
+                Fragment::Abstraction(body) => {
+                    Expression::Abstraction(Box::new(body.into_expression()))
+                }
+                _ => panic!("cannot convert fragment that still has variables"),
+            }
+        }
+    }
+
+    #[derive(Default)]
+    struct Canonicalizer {
+        n_abstractions: usize,
+        mapping: HashMap<usize, usize>,
+    }
+    impl Canonicalizer {
+        fn canonicalize(&mut self, fr: &mut Fragment, depth: usize) {
+            match *fr {
+                Fragment::Expression(ref mut expr) => self.canonicalize_expr(expr, depth),
+                Fragment::Application(ref mut f, ref mut x) => {
+                    self.canonicalize(f, depth);
+                    self.canonicalize(x, depth);
+                }
+                Fragment::Abstraction(ref mut body) => {
+                    self.canonicalize(body, depth + 1);
+                }
+                Fragment::Variable => {
+                    *fr = Fragment::Expression(Expression::Index(self.n_abstractions + depth));
+                    self.n_abstractions += 1;
+                }
+            }
+        }
+        fn canonicalize_expr(&mut self, expr: &mut Expression, depth: usize) {
+            match *expr {
+                Expression::Application(ref mut f, ref mut x) => {
+                    self.canonicalize_expr(f, depth);
+                    self.canonicalize_expr(x, depth);
+                }
+                Expression::Abstraction(ref mut body) => {
+                    self.canonicalize_expr(body, depth + 1);
+                }
+                Expression::Index(ref mut i) if *i >= depth => {
+                    let j = i.checked_sub(depth).unwrap();
+                    if let Some(k) = self.mapping.get(&j) {
+                        *i = k + depth;
+                        return;
+                    }
+                    self.mapping.insert(j, self.n_abstractions);
+                    *i = self.n_abstractions + depth;
+                    self.n_abstractions += 1;
+                }
+                _ => (),
+            }
+        }
+    }
+
+    pub fn from_expression<'a>(
+        expr: &'a Expression,
+        arity: u32,
+    ) -> Box<Iterator<Item = Expression> + 'a> {
+        Box::new(
+            (0..arity + 1)
+                .flat_map(move |b| from_subexpression(expr, b))
+                .map(Fragment::canonicalize)
+                .filter(|expr| {
+                    // determine if nontrivial
+                    let (n_prims, n_free, n_bound) = expression_count_kinds(expr, 0);
+                    n_prims >= 1 && ((n_prims as f64) + 0.5 * ((n_free + n_bound) as f64) > 1.5)
+                }),
+        )
+    }
+    fn from_subexpression<'a>(
+        expr: &'a Expression,
+        arity: u32,
+    ) -> Box<Iterator<Item = Fragment> + 'a> {
+        let rst: Box<Iterator<Item = Fragment>> = match *expr {
+            Expression::Application(ref f, ref x) => {
+                Box::new(from_subexpression(f, arity).chain(from_subexpression(x, arity)))
+            }
+            Expression::Abstraction(ref body) => Box::new(from_subexpression(body, arity)),
+            _ => Box::new(iter::empty()),
+        };
+        Box::new(from_particular(expr, arity).chain(rst))
+    }
+    fn from_particular<'a>(
+        expr: &'a Expression,
+        arity: u32,
+    ) -> Box<Iterator<Item = Fragment> + 'a> {
+        if arity == 0 {
+            return Box::new(iter::once(Fragment::Expression(expr.clone())));
+        }
+        let rst: Box<Iterator<Item = Fragment> + 'a> = match *expr {
+            Expression::Application(ref f, ref x) => Box::new((0..arity + 1).flat_map(move |fa| {
+                let fs = from_particular(f, fa);
+                let xs = from_particular(x, (arity as i32 - fa as i32) as u32);
+                fs.zip(xs)
+                    .map(|(f, x)| Fragment::Application(Box::new(f), Box::new(x)))
+            })),
+            Expression::Abstraction(ref body) => {
+                Box::new(from_particular(body, arity).map(|e| Fragment::Abstraction(Box::new(e))))
+            }
+            _ => Box::new(iter::empty()),
+        };
+        if arity == 1 {
+            Box::new(iter::once(Fragment::Variable).chain(rst))
+        } else {
+            rst
+        }
+    }
+    pub fn to_inventions(expr: Expression) -> Box<Iterator<Item = Expression>> {
+        // for any common subtree within the expression, replace with new index.
+        let reach = free_reach(&expr, 0);
+        let mut counts = HashMap::new();
+        subtrees(expr.clone(), &mut counts);
+        counts.remove(&expr);
+        let fst = iter::once(expr.clone());
+        let rst = counts
+            .into_iter()
+            .filter(|&(_, count)| count >= 2)
+            .filter(|&(ref expr, _)| is_closed(expr))
+            .map(move |(subtree, _)| {
+                let mut expr = expr.clone();
+                substitute(&mut expr, &subtree, &Expression::Index(reach));
+                expr
+            });
+        Box::new(fst.chain(rst))
+    }
+
+    /// How far out does the furthest reaching index go, excluding internal abstractions?
+    ///
+    /// For examples, the free reach of `(+ $0 (λ + 1 $0))` is 1, because there need to be one
+    /// abstraction around the expression for it to make sense.
+    fn free_reach(expr: &Expression, depth: usize) -> usize {
+        match *expr {
+            Expression::Application(ref f, ref x) => free_reach(f, depth).max(free_reach(x, depth)),
+            Expression::Abstraction(ref body) => free_reach(body, depth + 1),
+            Expression::Index(i) if i >= depth => 1 + i.checked_sub(depth).unwrap(),
+            _ => 0,
+        }
+    }
+
+    /// Counts occurrences for every subtree of expr.
+    fn subtrees(expr: Expression, counts: &mut HashMap<Expression, usize>) {
+        match expr.clone() {
+            Expression::Application(f, x) => {
+                subtrees(*f, counts);
+                subtrees(*x, counts);
+                counts.entry(expr).or_insert(0);
+            }
+            Expression::Abstraction(body) => {
+                subtrees(*body, counts);
+                counts.entry(expr).or_insert(0);
+            }
+            Expression::Index(_) => (),
+            Expression::Primitive(num) => {
+                counts.entry(Expression::Primitive(num)).or_insert(0);
+            }
+            Expression::Invented(num) => {
+                counts.entry(Expression::Invented(num)).or_insert(0);
+            }
+        }
+    }
+
+    /// Whether every `Expression::Index` is bound within expr.
+    fn is_closed(expr: &Expression) -> bool {
+        free_reach(expr, 0) == 0
+    }
+
+    /// Replace all occurrences of subtree in expr with replacement.
+    fn substitute(expr: &mut Expression, subtree: &Expression, replacement: &Expression) {
+        if expr == subtree {
+            *expr = replacement.clone()
+        } else {
+            match *expr {
+                Expression::Application(ref mut f, ref mut x) => {
+                    substitute(f, subtree, replacement);
+                    substitute(x, subtree, replacement);
+                }
+                Expression::Abstraction(ref mut body) => substitute(body, subtree, replacement),
+                _ => (),
+            }
+        }
+    }
+}
+
+/// The structure penalty applies to the sum of this procedure for each invented expression.
+fn expression_structure(expr: &Expression) -> f64 {
+    let (leaves, free, bound) = expression_count_kinds(expr, 0);
+    (leaves as f64) + BOUND_VAR_COST * (bound as f64) + FREE_VAR_COST * (free as f64)
+}
+
+/// Counts of prims, free, bound
+fn expression_count_kinds(expr: &Expression, abstraction_depth: usize) -> (u64, u64, u64) {
+    match *expr {
+        Expression::Primitive(_) | Expression::Invented(_) => (1, 0, 0),
+        Expression::Index(i) => {
+            if i < abstraction_depth {
+                (0, 0, 1)
+            } else {
+                (0, 1, 0)
+            }
+        }
+        Expression::Abstraction(ref b) => expression_count_kinds(b, abstraction_depth + 1),
+        Expression::Application(ref l, ref r) => {
+            let (l1, f1, b1) = expression_count_kinds(l, abstraction_depth);
+            let (l2, f2, b2) = expression_count_kinds(r, abstraction_depth);
+            (l1 + l2, f1 + f2, b1 + b2)
+        }
     }
 }
