@@ -432,7 +432,7 @@ impl Language {
         let p_largest = cands
             .iter()
             .map(|&(p, _, _, _)| p)
-            .fold(f64::NEG_INFINITY, |acc, p| acc.max(p));
+            .fold(f64::NEG_INFINITY, f64::max);
         let z = p_largest
             + cands
                 .iter()

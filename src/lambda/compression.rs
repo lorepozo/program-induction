@@ -193,7 +193,7 @@ impl Language {
                         };
                         logprior + loglikelihood
                     })
-                    .fold(f64::NEG_INFINITY, |acc, logposterior| acc.max(logposterior))
+                    .fold(f64::NEG_INFINITY, f64::max)
             })
             .sum()
     }
@@ -227,24 +227,15 @@ impl Language {
     fn inside_outside(&mut self, frontiers: &[RescoredFrontier], pseudocounts: u64) {
         let pseudocounts = pseudocounts as f64;
         let u = self.all_uses(frontiers);
-        self.variable_logprob =
-            ((u.actual_vars + pseudocounts) as f64).ln() - 1f64.max(u.possible_vars as f64).ln();
+        self.variable_logprob = (u.actual_vars + pseudocounts).ln() - u.possible_vars.ln();
         for (i, prim) in self.primitives.iter_mut().enumerate() {
             let obs = u.actual_prims[i] + pseudocounts;
-            let pot = if u.possible_prims[i] != 0f64 {
-                u.possible_prims[i]
-            } else {
-                pseudocounts
-            };
+            let pot = u.possible_prims[i];
             prim.2 = obs.ln() - pot.ln();
         }
         for (i, inv) in self.invented.iter_mut().enumerate() {
             let obs = u.actual_invented[i] + pseudocounts;
-            let pot = if u.possible_invented[i] != 0f64 {
-                u.possible_invented[i]
-            } else {
-                pseudocounts
-            };
+            let pot = u.possible_invented[i];
             inv.2 = obs.ln() - pot.ln();
         }
     }
@@ -255,9 +246,9 @@ impl Language {
             .map(|f| {
                 f.1
                     .iter()
-                    .map(|&(ref expr, _, loglikelihood)| {
-                        let (l, u) = self.uses(f.0, expr);
-                        (l + loglikelihood, u)
+                    .map(|&(ref expr, _logprior, loglikelihood)| {
+                        let (logprior, u) = self.uses(f.0, expr);
+                        (logprior + loglikelihood, u)
                     })
                     .collect::<Vec<_>>()
             })
@@ -273,17 +264,23 @@ impl Language {
                         .ln()
             })
             .collect();
-        let mut u = Uses::new(self);
-        lus.into_iter()
+        lus.into_par_iter()
             .zip(zs)
             .flat_map(|(lu_f, z)| {
-                lu_f.into_iter().map(move |(l, mut u)| {
-                    u.scale((l - z).exp());
-                    u
-                })
+                lu_f.into_iter()
+                    .map(move |(l, mut u)| {
+                        u.scale((l - z).exp());
+                        u
+                    })
+                    .collect::<Vec<_>>()
             })
-            .for_each(|ou| u.merge(ou));
-        u
+            .reduce(
+                || Uses::new(self),
+                |mut u, nu| {
+                    u.merge(nu);
+                    u
+                },
+            )
     }
 
     /// This is similar to `enumerator::likelihood` but it does a lot more work to determine
@@ -321,7 +318,7 @@ impl Language {
                 match *expr {
                     Expression::Primitive(num) => possible_prims[num] = 1f64,
                     Expression::Invented(num) => possible_invented[num] = 1f64,
-                    Expression::Index(_) => possible_vars += 1f64,
+                    Expression::Index(_) => possible_vars = 1f64,
                     _ => unreachable!(),
                 }
             }
@@ -632,7 +629,7 @@ impl<'a> TreeMatcher<'a> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct Uses {
     actual_vars: f64,
     possible_vars: f64,
