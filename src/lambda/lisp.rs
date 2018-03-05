@@ -23,22 +23,28 @@ use super::{Expression, Language};
 /// # fn main() {
 /// let dsl = Language::uniform(vec![
 ///     ("map", arrow![arrow![tp!(0), tp!(1)], tp!(list(tp!(0))), tp!(list(tp!(1)))]),
-///     ("list", arrow![tp!(int), tp!(int), tp!(list(tp!(int)))]),
 ///     ("*2", arrow![tp!(int), tp!(int)]),
 ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
 ///     ("1", tp!(int)),
-///     ("2", tp!(int)),
 /// ]);
 /// let lisp = LispEvaluator::new(vec![
 ///     // only one primitive in our DSL doesn't match what's provided by racket:
 ///     ("*2", "(λ (x) (* x 2))"),
 /// ]);
 ///
-/// let expr = dsl.parse("(λ (map (λ (+ (*2 1) $0)) $0))").expect("parse");
-/// assert!(
-///     lisp.check(&dsl, &expr, Some("(list 1 2)"), "(list 3 4)")
-///         .expect("evaluation should not fail")
-/// );
+/// let task = lisp.task_by_example(vec![
+///     // create a task using whichever lisp syntax.
+///     // these are evaluated along with the expression.
+///     (Some("(list 1 2 3)"), "(list 2 4 6)"),
+///     (Some("'(3 5)"), "'(6 10)"),
+/// ], arrow![tp!(list(tp!(int))), tp!(list(tp!(int)))]);
+///
+/// // this expression fails the task
+/// let expr = dsl.parse("(λ (map (λ (+ 1 $0)) $0))").expect("parse");
+/// assert!((task.oracle)(&dsl, &expr).is_infinite());
+/// // this expression succeeds
+/// let expr = dsl.parse("(λ (map *2 $0))").expect("parse");
+/// assert!((task.oracle)(&dsl, &expr).is_finite());
 /// # }
 /// ```
 pub struct LispEvaluator {
@@ -77,6 +83,36 @@ impl LispEvaluator {
     /// If input is `None`, the expression is treated as a constant and compared to the output.
     /// Otherwise, the expression is treated as a unary procedure and is applied to the input
     /// before comparison to the output.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #[macro_use]
+    /// extern crate polytype;
+    /// extern crate programinduction;
+    /// use programinduction::lambda::{Language, LispEvaluator};
+    ///
+    /// # fn main() {
+    /// let dsl = Language::uniform(vec![
+    ///     ("map", arrow![arrow![tp!(0), tp!(1)], tp!(list(tp!(0))), tp!(list(tp!(1)))]),
+    ///     ("list", arrow![tp!(int), tp!(int), tp!(list(tp!(int)))]),
+    ///     ("*2", arrow![tp!(int), tp!(int)]),
+    ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+    ///     ("1", tp!(int)),
+    ///     ("2", tp!(int)),
+    /// ]);
+    /// let lisp = LispEvaluator::new(vec![
+    ///     // only one primitive in our DSL doesn't match what's provided by racket:
+    ///     ("*2", "(λ (x) (* x 2))"),
+    /// ]);
+    ///
+    /// let expr = dsl.parse("(λ (map (λ (+ (*2 1) $0)) $0))").expect("parse");
+    /// assert!(
+    ///     lisp.check(&dsl, &expr, Some("(list 1 2)"), "(list 3 4)")
+    ///         .expect("evaluation should not fail")
+    /// );
+    /// # }
+    /// ```
     pub fn check(
         &self,
         dsl: &Language,
@@ -99,6 +135,10 @@ impl LispEvaluator {
             _ => Err(io::Error::new(io::ErrorKind::Other, response)),
         }
     }
+    /// Create a task based on evaluating a lisp expressions against test input/output pairs.
+    ///
+    /// The resulting task is "all-or-nothing": the oracle returns either 0 if all examples are
+    /// correctly hit or `f64::NEG_INFINITY` otherwise.
     pub fn task_by_example<'a>(
         &'a self,
         examples: Vec<(Option<&str>, &str)>,
