@@ -73,7 +73,7 @@ pub fn induce<O: Sync>(
 ) -> Language {
     let mut dsl = dsl.clone();
     let mut frontiers: Vec<_> = tasks
-        .iter()
+        .par_iter()
         .map(|t| &t.tp)
         .zip(frontiers)
         .filter(|&(_, f)| !f.is_empty())
@@ -262,7 +262,7 @@ impl Language {
                     .collect::<Vec<_>>()
             })
             .collect();
-        let zs: Vec<_> = lus.iter()
+        let zs: Vec<_> = lus.par_iter()
             .map(|lu_f| {
                 let largest = lu_f.iter()
                     .fold(f64::NEG_INFINITY, |acc, &(l, _)| acc.max(l));
@@ -477,20 +477,18 @@ impl Language {
         arity: u32,
     ) -> Box<Iterator<Item = Expression> + 'a> {
         let mut findings = HashMap::new();
+        // TODO figure out how to properly parallelize
         frontiers
-        .iter() // TODO figure out how to properly parallelize
-        .flat_map(|f| {
-            f.1.iter().flat_map(|&(ref expr, _, _)| {
-                proposals::from_expression(expr, arity)
-                    .flat_map(proposals::to_inventions)
+            .iter()
+            .flat_map(|f| {
+                f.1.iter().flat_map(|&(ref expr, _, _)| {
+                    proposals::from_expression(expr, arity).flat_map(proposals::to_inventions)
+                })
             })
-        })
-        .for_each(|inv| {
-            let count = findings
-                .entry(inv)
-                .or_insert(0u64);
-            *count += 1;
-        });
+            .for_each(|inv| {
+                let count = findings.entry(inv).or_insert(0u64);
+                *count += 1;
+            });
         Box::new(findings.into_iter().filter_map(move |(expr, count)| {
             if count >= 2 && self.infer(&expr).is_ok() {
                 Some(expr)
