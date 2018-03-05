@@ -129,9 +129,9 @@ impl Grammar {
     ) -> Box<Iterator<Item = (AppliedRule, f64)> + 'a> {
         enumerator::new(self, tp)
     }
-    /// Set parameters based on supplied sentences. This is performed by [`Grammar::mutate`].
+    /// Set parameters based on supplied sentences. This is performed by [`Grammar::compress`].
     ///
-    /// [`Grammar::mutate`]: ../trait.EC.html#method.mutate
+    /// [`Grammar::compress`]: ../trait.EC.html#method.compress
     pub fn update_parameters(&mut self, params: &Params, sentences: &[AppliedRule]) {
         let mut counts: HashMap<Type, Vec<AtomicUsize>> = HashMap::new();
         // initialize counts to pseudocounts
@@ -296,7 +296,7 @@ impl EC for Grammar {
     /// frontiers.
     ///
     /// [`Grammar::update_parameters`]: #method.update_parameters
-    fn mutate<O: Sync>(
+    fn compress<O: Sync>(
         &self,
         params: &Self::Params,
         _tasks: &[Task<Self, O>],

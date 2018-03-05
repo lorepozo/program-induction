@@ -463,7 +463,7 @@ impl EC for Language {
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
         self.enumerate(tp)
     }
-    fn mutate<O: Sync>(
+    fn compress<O: Sync>(
         &self,
         params: &Self::Params,
         tasks: &[Task<Self, O>],

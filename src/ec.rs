@@ -1,4 +1,4 @@
-//! The Exploration-Compression algorithm.
+//! Representations capable of Exploration-Compression.
 
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
@@ -52,13 +52,15 @@ pub struct ECParams {
     pub search_limit: usize,
 }
 
-/// A kind of [`Representation`] suitable for EC, and default methods for exploration-compression.
+/// A kind of [`Representation`] suitable for **exploration-compression**.
 ///
-/// Implementors of `EC` need only provide an [`enumerate`] and [`mutate`] methods.
+/// Implementors of `EC` need only provide an [`enumerate`] and [`compress`] methods. By doing so,
+/// we provide the useful [`explore`] method for finding solutions to tasks.
 ///
 /// [`Representation`]: trait.Representation.html
 /// [`enumerate`]: #method.enumerator
-/// [`mutate`]: #method.mutate
+/// [`compress`]: #method.compress
+/// [`explore`]: #method.explore
 pub trait EC: Representation {
     type Params;
 
@@ -78,7 +80,7 @@ pub trait EC: Representation {
     ///
     /// [`Representation`]: ../trait.Representation.html
     /// [`Task`]: ../struct.Task.html
-    fn mutate<O: Sync>(
+    fn compress<O: Sync>(
         &self,
         params: &Self::Params,
         tasks: &[Task<Self, O>],
@@ -97,7 +99,7 @@ pub trait EC: Representation {
         tasks: &[Task<Self, O>],
     ) -> (Self, Vec<Frontier<Self>>) {
         let frontiers = self.explore(ecparams, tasks, None);
-        let updated = self.mutate(params, tasks, &frontiers);
+        let updated = self.compress(params, tasks, &frontiers);
         (updated, frontiers)
     }
 
@@ -119,7 +121,7 @@ pub trait EC: Representation {
     {
         let recognized = recognizer(self, tasks);
         let frontiers = self.explore(ecparams, tasks, Some(recognized));
-        let updated = self.mutate(params, tasks, &frontiers);
+        let updated = self.compress(params, tasks, &frontiers);
         (updated, frontiers)
     }
 
