@@ -205,6 +205,7 @@ impl Language {
         aic: f64,
         structure_penalty: f64,
     ) -> f64 {
+        self.reset_uniform();
         self.inside_outside(frontiers, pseudocounts);
         let likelihood = self.joint_mdl(frontiers, true);
         let structure = (self.primitives.len() as f64)
@@ -222,6 +223,16 @@ impl Language {
             structure_penalty * structure,
         );
         s
+    }
+
+    fn reset_uniform(&mut self) {
+        for x in &mut self.primitives {
+            x.2 = 0f64;
+        }
+        for x in &mut self.invented {
+            x.2 = 0f64;
+        }
+        self.variable_logprob = 0f64;
     }
 
     fn inside_outside(&mut self, frontiers: &[RescoredFrontier], pseudocounts: u64) {
