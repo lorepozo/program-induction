@@ -6,7 +6,7 @@ use itertools::Itertools;
 use polytype::{Context, Type};
 use rayon::prelude::*;
 use super::{Expression, Language, LinkedList};
-use super::super::{Frontier, Task};
+use super::super::{ECFrontier, Task};
 
 const BOUND_VAR_COST: f64 = 0.1;
 const FREE_VAR_COST: f64 = 0.01;
@@ -69,7 +69,7 @@ pub fn induce<O: Sync>(
     dsl: &Language,
     params: &Params,
     tasks: &[Task<Language, O>],
-    frontiers: &[Frontier<Language>],
+    frontiers: &[ECFrontier<Language>],
 ) -> Language {
     let mut dsl = dsl.clone();
     let mut frontiers: Vec<_> = tasks

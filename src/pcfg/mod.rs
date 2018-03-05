@@ -49,7 +49,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use itertools::Itertools;
 use polytype::Type;
 use rayon::prelude::*;
-use super::{Frontier, InferenceError, Representation, Task, EC};
+use super::{ECFrontier, InferenceError, Representation, Task, EC};
 
 /// Probabilistic context-free grammar. Currently cannot handle bound variables or polymorphism.
 ///
@@ -300,7 +300,7 @@ impl EC for Grammar {
         &self,
         params: &Self::Params,
         _tasks: &[Task<Self, O>],
-        frontiers: &[Frontier<Self>],
+        frontiers: &[ECFrontier<Self>],
     ) -> Self {
         let mut counts: HashMap<Type, Vec<AtomicUsize>> = HashMap::new();
         // initialize counts to pseudocounts

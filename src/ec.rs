@@ -14,8 +14,8 @@ use super::{Representation, Task};
 ///
 /// [`Expression`]: trait.Representation.html#associatetype.Expression
 #[derive(Clone, Debug)]
-pub struct Frontier<R: Representation>(pub Vec<(R::Expression, f64, f64)>);
-impl<R: Representation> Frontier<R> {
+pub struct ECFrontier<R: Representation>(pub Vec<(R::Expression, f64, f64)>);
+impl<R: Representation> ECFrontier<R> {
     pub fn push(&mut self, expr: R::Expression, log_prior: f64, log_likelihood: f64) {
         self.0.push((expr, log_prior, log_likelihood))
     }
@@ -25,18 +25,18 @@ impl<R: Representation> Frontier<R> {
             .max_by(|&&(_, _, ref x), &&(_, _, ref y)| x.partial_cmp(y).unwrap())
     }
 }
-impl<R: Representation> Default for Frontier<R> {
+impl<R: Representation> Default for ECFrontier<R> {
     fn default() -> Self {
-        Frontier(vec![])
+        ECFrontier(vec![])
     }
 }
-impl<R: Representation> Deref for Frontier<R> {
+impl<R: Representation> Deref for ECFrontier<R> {
     type Target = Vec<(R::Expression, f64, f64)>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
-impl<R: Representation> DerefMut for Frontier<R> {
+impl<R: Representation> DerefMut for ECFrontier<R> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -84,7 +84,7 @@ pub trait EC: Representation {
         &self,
         params: &Self::Params,
         tasks: &[Task<Self, O>],
-        frontiers: &[Frontier<Self>],
+        frontiers: &[ECFrontier<Self>],
     ) -> Self;
 
     // provided methods:
@@ -97,7 +97,7 @@ pub trait EC: Representation {
         ecparams: &ECParams,
         params: &Self::Params,
         tasks: &[Task<Self, O>],
-    ) -> (Self, Vec<Frontier<Self>>) {
+    ) -> (Self, Vec<ECFrontier<Self>>) {
         let frontiers = self.explore(ecparams, tasks, None);
         let updated = self.compress(params, tasks, &frontiers);
         (updated, frontiers)
@@ -115,7 +115,7 @@ pub trait EC: Representation {
         params: &Self::Params,
         tasks: &[Task<Self, O>],
         recognizer: R,
-    ) -> (Self, Vec<Frontier<Self>>)
+    ) -> (Self, Vec<ECFrontier<Self>>)
     where
         R: FnOnce(&Self, &[Task<Self, O>]) -> Vec<Self>,
     {
@@ -137,7 +137,7 @@ pub trait EC: Representation {
         params: &ECParams,
         tasks: &[Task<Self, O>],
         recognized: Option<Vec<Self>>,
-    ) -> Vec<Frontier<Self>> {
+    ) -> Vec<ECFrontier<Self>> {
         if let Some(representations) = recognized {
             tasks
                 .par_iter()
@@ -154,8 +154,8 @@ pub trait EC: Representation {
             for (i, task) in tasks.into_iter().enumerate() {
                 tps.entry(&task.tp).or_insert_with(Vec::new).push((i, task))
             }
-            let mut results: Vec<Frontier<Self>> =
-                (0..tasks.len()).map(|_| Frontier::default()).collect();
+            let mut results: Vec<ECFrontier<Self>> =
+                (0..tasks.len()).map(|_| ECFrontier::default()).collect();
             {
                 let mutex = Arc::new(Mutex::new(&mut results));
                 tps.into_par_iter()
@@ -182,7 +182,7 @@ pub trait EC: Representation {
         params: &ECParams,
         tp: Type,
         mut tasks: Vec<(usize, &Task<Self, O>)>,
-    ) -> HashMap<usize, Frontier<Self>> {
+    ) -> HashMap<usize, ECFrontier<Self>> {
         let mut frontiers = HashMap::new();
         let mut searched = 0;
         let mut update = |frontiers: &mut HashMap<_, _>,
@@ -191,7 +191,7 @@ pub trait EC: Representation {
             tasks.retain(|&(i, t)| {
                 let log_likelihood = (t.oracle)(self, &expr);
                 if log_likelihood.is_finite() {
-                    let f = frontiers.entry(i).or_insert_with(Frontier::default);
+                    let f = frontiers.entry(i).or_insert_with(ECFrontier::default);
                     f.push(expr.clone(), log_prior, log_likelihood);
                     f.len() < params.frontier_limit
                 } else {

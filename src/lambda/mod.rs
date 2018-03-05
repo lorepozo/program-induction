@@ -49,7 +49,7 @@ use std::fmt::{self, Debug};
 use std::rc::Rc;
 use polytype::{Context, Type};
 use super::{InferenceError, Representation, Task};
-use super::ec::{Frontier, EC};
+use super::ec::{ECFrontier, EC};
 
 #[derive(Debug, Clone)]
 pub struct ParseError {
@@ -186,7 +186,7 @@ impl Language {
         &self,
         params: &Params,
         tasks: &[Task<Self, O>],
-        frontiers: &[Frontier<Self>],
+        frontiers: &[ECFrontier<Self>],
     ) -> Self {
         compression::induce(self, params, tasks, frontiers)
     }
@@ -467,7 +467,7 @@ impl EC for Language {
         &self,
         params: &Self::Params,
         tasks: &[Task<Self, O>],
-        frontiers: &[Frontier<Self>],
+        frontiers: &[ECFrontier<Self>],
     ) -> Self {
         self.compress(params, tasks, frontiers)
     }
