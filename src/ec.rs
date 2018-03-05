@@ -8,40 +8,6 @@ use rayon::prelude::*;
 
 use super::{Representation, Task};
 
-/// A set of expressions which solve a task.
-///
-/// Stores tuples of [`Expression`], log-prior, and log-likelihood.
-///
-/// [`Expression`]: trait.Representation.html#associatetype.Expression
-#[derive(Clone, Debug)]
-pub struct ECFrontier<R: Representation>(pub Vec<(R::Expression, f64, f64)>);
-impl<R: Representation> ECFrontier<R> {
-    pub fn push(&mut self, expr: R::Expression, log_prior: f64, log_likelihood: f64) {
-        self.0.push((expr, log_prior, log_likelihood))
-    }
-    pub fn best_solution(&self) -> Option<&(R::Expression, f64, f64)> {
-        self.0
-            .iter()
-            .max_by(|&&(_, _, ref x), &&(_, _, ref y)| x.partial_cmp(y).unwrap())
-    }
-}
-impl<R: Representation> Default for ECFrontier<R> {
-    fn default() -> Self {
-        ECFrontier(vec![])
-    }
-}
-impl<R: Representation> Deref for ECFrontier<R> {
-    type Target = Vec<(R::Expression, f64, f64)>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl<R: Representation> DerefMut for ECFrontier<R> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
 /// Parameters for the EC algorithm.
 pub struct ECParams {
     /// The maximum frontier size; the number of task solutions to be hit before enumeration is
@@ -211,5 +177,39 @@ pub trait EC: Representation {
             }
         }
         frontiers
+    }
+}
+
+/// A set of expressions which solve a task.
+///
+/// Stores tuples of [`Expression`], log-prior, and log-likelihood.
+///
+/// [`Expression`]: trait.Representation.html#associatetype.Expression
+#[derive(Clone, Debug)]
+pub struct ECFrontier<R: Representation>(pub Vec<(R::Expression, f64, f64)>);
+impl<R: Representation> ECFrontier<R> {
+    pub fn push(&mut self, expr: R::Expression, log_prior: f64, log_likelihood: f64) {
+        self.0.push((expr, log_prior, log_likelihood))
+    }
+    pub fn best_solution(&self) -> Option<&(R::Expression, f64, f64)> {
+        self.0
+            .iter()
+            .max_by(|&&(_, _, ref x), &&(_, _, ref y)| x.partial_cmp(y).unwrap())
+    }
+}
+impl<R: Representation> Default for ECFrontier<R> {
+    fn default() -> Self {
+        ECFrontier(vec![])
+    }
+}
+impl<R: Representation> Deref for ECFrontier<R> {
+    type Target = Vec<(R::Expression, f64, f64)>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl<R: Representation> DerefMut for ECFrontier<R> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
