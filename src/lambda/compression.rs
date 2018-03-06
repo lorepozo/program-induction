@@ -739,6 +739,7 @@ impl Uses {
 mod proposals {
     use std::collections::HashMap;
     use std::iter;
+    use itertools::Itertools;
     use super::super::Expression;
     use super::expression_count_kinds;
 
@@ -750,7 +751,11 @@ mod proposals {
         Expression(Expression),
     }
     impl Fragment {
-        fn canonicalize(mut self) -> Expression {
+        fn canonicalize(&mut self) {
+            let mut c = Canonicalizer::default();
+            c.canonicalize(self, 0);
+        }
+        fn defragment(mut self) -> Expression {
             let mut c = Canonicalizer::default();
             c.canonicalize(&mut self, 0);
             let mut expr = self.into_expression();
@@ -772,6 +777,19 @@ mod proposals {
                     Expression::Abstraction(Box::new(body.into_expression()))
                 }
                 _ => panic!("cannot convert fragment that still has variables"),
+            }
+        }
+        /// Counts of prims, free, bound
+        fn count_kinds(&self, abstraction_depth: usize) -> (u64, u64, u64) {
+            match *self {
+                Fragment::Variable => (0, 1, 0),
+                Fragment::Expression(ref e) => expression_count_kinds(e, abstraction_depth),
+                Fragment::Abstraction(ref b) => b.count_kinds(abstraction_depth + 1),
+                Fragment::Application(ref l, ref r) => {
+                    let (l1, f1, b1) = l.count_kinds(abstraction_depth);
+                    let (l2, f2, b2) = r.count_kinds(abstraction_depth);
+                    (l1 + l2, f1 + f2, b1 + b2)
+                }
             }
         }
     }
@@ -829,12 +847,13 @@ mod proposals {
         Box::new(
             (0..arity + 1)
                 .flat_map(move |b| from_subexpression(expr, b))
-                .map(Fragment::canonicalize)
-                .filter(|expr| {
+                .update(Fragment::canonicalize)
+                .filter(|fragment| {
                     // determine if nontrivial
-                    let (n_prims, n_free, n_bound) = expression_count_kinds(expr, 0);
+                    let (n_prims, n_free, n_bound) = fragment.count_kinds(0);
                     n_prims >= 1 && ((n_prims as f64) + 0.5 * ((n_free + n_bound) as f64) > 1.5)
-                }),
+                })
+                .map(Fragment::defragment),
         )
     }
     fn from_subexpression<'a>(
