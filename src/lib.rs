@@ -1,4 +1,6 @@
 //! A library for program induction and learning representations.
+//!
+//! Implements Bayesian program learning and genetic programming.
 
 extern crate itertools;
 #[macro_use]
@@ -11,9 +13,11 @@ extern crate workerpool;
 
 pub mod domains;
 mod ec;
+mod gp;
 pub mod lambda;
 pub mod pcfg;
 pub use ec::*;
+pub use gp::*;
 
 use std::f64;
 use std::fmt;
