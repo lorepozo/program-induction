@@ -96,7 +96,7 @@ pub fn induce<O: Sync>(
 
     if params.aic.is_finite() {
         loop {
-            {
+            let fragment_expr = {
                 eprintln!(
                     "grammar induction: attemping proposals against score {}",
                     best_score
@@ -108,9 +108,13 @@ pub fn induce<O: Sync>(
                     .collect();
                 let best_proposal = dsl.propose_inventions(&rescored_frontiers, params.arity)
                     .zip(iter::repeat(dsl.clone()))
-                    .filter_map(|(inv, mut dsl)| {
-                        eprintln!("grammar induction: proposing {}", dsl.display(&inv),);
-                        dsl.invent(inv.clone(), 0f64).unwrap();
+                    .filter_map(|(fragment_expr, mut dsl)| {
+                        eprintln!(
+                            "grammar induction: proposing {} with type {}",
+                            dsl.display(&fragment_expr),
+                            dsl.infer(&fragment_expr).unwrap(),
+                        );
+                        dsl.invent(fragment_expr.clone(), 0f64).unwrap();
                         let s = dsl.score(
                             &rescored_frontiers,
                             params.pseudocounts,
@@ -134,7 +138,11 @@ pub fn induce<O: Sync>(
                     break;
                 }
                 dsl = new_dsl;
+                let (fragment_expr, tp, log_prior) = dsl.invented.pop().unwrap();
+                let inv = proposals::defragment(fragment_expr.clone());
+                dsl.invented.push((inv, tp, log_prior));
                 best_score = new_score;
+
                 let &(ref inv, ref tp, _) = dsl.invented.last().unwrap();
                 eprintln!(
                     "grammar induction: invented with tp {} and improved score to {}: {}",
@@ -142,11 +150,13 @@ pub fn induce<O: Sync>(
                     best_score,
                     dsl.display(inv)
                 );
-            }
+                fragment_expr
+            };
+            let i = dsl.invented.len() - 1;
             frontiers = frontiers
                 .into_par_iter()
                 .map(|mut f| {
-                    dsl.rewrite_frontier_with_latest_invention(&mut f);
+                    dsl.rewrite_frontier_with_fragment_expression(&mut f, i, &fragment_expr);
                     f
                 })
                 .collect();
@@ -423,18 +433,17 @@ impl Language {
     }
 
     /// returns whether the frontier was rewritten
-    fn rewrite_frontier_with_latest_invention(&self, f: &mut RescoredFrontier) -> bool {
-        if let Some(invention) = self.invented.last() {
-            let inv = &invention.0;
-            let inv_n = self.invented.len() - 1;
-            let results: Vec<_> = f.1
-                .iter_mut()
-                .map(|x| self.rewrite_expression(&mut x.0, inv_n, inv, 0))
-                .collect();
-            results.iter().any(|&x| x)
-        } else {
-            false
-        }
+    fn rewrite_frontier_with_fragment_expression(
+        &self,
+        f: &mut RescoredFrontier,
+        i: usize,
+        expr: &Expression,
+    ) -> bool {
+        let results: Vec<_> = f.1
+            .iter_mut()
+            .map(|x| self.rewrite_expression(&mut x.0, i, expr, 0))
+            .collect();
+        results.iter().any(|&x| x)
     }
     fn rewrite_expression(
         &self,
@@ -475,6 +484,7 @@ impl Language {
         ret
     }
 
+    /// Yields expressions that may have free variables.
     fn propose_inventions<'a>(
         &'a self,
         frontiers: &[RescoredFrontier],
@@ -485,21 +495,32 @@ impl Language {
         frontiers
             .iter()
             .flat_map(|f| {
-                f.1.iter().flat_map(|&(ref expr, _, _)| {
-                    proposals::from_expression(expr, arity).flat_map(proposals::to_inventions)
-                })
+                f.1
+                    .iter()
+                    .flat_map(|&(ref expr, _, _)| proposals::from_expression(expr, arity))
             })
-            .for_each(|inv| {
-                let count = findings.entry(inv).or_insert(0u64);
+            .filter(|fragment_expr| {
+                let expr = proposals::defragment(fragment_expr.clone());
+                self.invented
+                    .iter()
+                    .find(|&&(ref x, _, _)| x == &expr)
+                    .is_none()
+            })
+            .for_each(|fragment_expr| {
+                let count = findings.entry(fragment_expr).or_insert(0u64);
                 *count += 1;
             });
-        Box::new(findings.into_iter().filter_map(move |(expr, count)| {
-            if count >= 2 && self.infer(&expr).is_ok() {
-                Some(expr)
-            } else {
-                None
-            }
-        }))
+        Box::new(
+            findings
+                .into_iter()
+                .filter_map(move |(fragment_expr, count)| {
+                    if count >= 2 && self.infer(&fragment_expr).is_ok() {
+                        Some(fragment_expr)
+                    } else {
+                        None
+                    }
+                }),
+        )
     }
 }
 
@@ -520,6 +541,11 @@ impl<'a> TreeMatcher<'a> {
         bindings: &mut HashMap<usize, (Type, Expression)>,
         n_args: usize,
     ) -> Option<Type> {
+        let fragment = if let Expression::Invented(num) = *fragment {
+            &dsl.invented[num].0
+        } else {
+            fragment
+        };
         if !Self::might_match(fragment, concrete, 0) {
             None
         } else if let Some(tp) = {
@@ -576,11 +602,11 @@ impl<'a> TreeMatcher<'a> {
                 }
             }
             (&Expression::Primitive(f_num), &Expression::Primitive(c_num)) if f_num == c_num => {
-                let tp = self.dsl.primitive(f_num).unwrap().1;
+                let tp = &self.dsl.primitives[f_num].1;
                 Some(tp.instantiate_indep(self.ctx))
             }
             (&Expression::Invented(f_num), &Expression::Invented(c_num)) if f_num == c_num => {
-                let tp = self.dsl.invented(f_num).unwrap().1;
+                let tp = &self.dsl.primitives[f_num].1;
                 Some(tp.instantiate_indep(self.ctx))
             }
             (&Expression::Abstraction(ref f_body), &Expression::Abstraction(ref c_body)) => {
@@ -737,9 +763,11 @@ impl Uses {
 }
 
 mod proposals {
+    //! Proposals, or "fragment expressions" (written `fragment_expr` where applicable) are
+    //! expressions with free variables.
+
     use std::collections::HashMap;
     use std::iter;
-    use itertools::Itertools;
     use super::super::Expression;
     use super::expression_count_kinds;
 
@@ -751,20 +779,10 @@ mod proposals {
         Expression(Expression),
     }
     impl Fragment {
-        fn canonicalize(&mut self) {
-            let mut c = Canonicalizer::default();
-            c.canonicalize(self, 0);
-        }
-        fn defragment(mut self) -> Expression {
+        fn canonicalize(mut self) -> Expression {
             let mut c = Canonicalizer::default();
             c.canonicalize(&mut self, 0);
-            let mut expr = self.into_expression();
-            let reach = free_reach(&expr, 0);
-            for _ in 0..reach {
-                let body = Box::new(expr);
-                expr = Expression::Abstraction(body);
-            }
-            expr
+            self.into_expression()
         }
         fn into_expression(self) -> Expression {
             match self {
@@ -779,19 +797,15 @@ mod proposals {
                 _ => panic!("cannot convert fragment that still has variables"),
             }
         }
-        /// Counts of prims, free, bound
-        fn count_kinds(&self, abstraction_depth: usize) -> (u64, u64, u64) {
-            match *self {
-                Fragment::Variable => (0, 1, 0),
-                Fragment::Expression(ref e) => expression_count_kinds(e, abstraction_depth),
-                Fragment::Abstraction(ref b) => b.count_kinds(abstraction_depth + 1),
-                Fragment::Application(ref l, ref r) => {
-                    let (l1, f1, b1) = l.count_kinds(abstraction_depth);
-                    let (l2, f2, b2) = r.count_kinds(abstraction_depth);
-                    (l1 + l2, f1 + f2, b1 + b2)
-                }
-            }
+    }
+    /// remove free variables from an expression by introducing abstractions.
+    pub fn defragment(mut fragment_expr: Expression) -> Expression {
+        let reach = free_reach(&fragment_expr, 0);
+        for _ in 0..reach {
+            let body = Box::new(fragment_expr);
+            fragment_expr = Expression::Abstraction(body);
         }
+        fragment_expr
     }
 
     #[derive(Default)]
@@ -840,6 +854,7 @@ mod proposals {
         }
     }
 
+    /// main entry point for proposals
     pub fn from_expression<'a>(
         expr: &'a Expression,
         arity: u32,
@@ -847,13 +862,13 @@ mod proposals {
         Box::new(
             (0..arity + 1)
                 .flat_map(move |b| from_subexpression(expr, b))
-                .update(Fragment::canonicalize)
-                .filter(|fragment| {
+                .map(Fragment::canonicalize)
+                .filter(|fragment_expr| {
                     // determine if nontrivial
-                    let (n_prims, n_free, n_bound) = fragment.count_kinds(0);
+                    let (n_prims, n_free, n_bound) = expression_count_kinds(fragment_expr, 0);
                     n_prims >= 1 && ((n_prims as f64) + 0.5 * ((n_free + n_bound) as f64) > 1.5)
                 })
-                .map(Fragment::defragment),
+                .flat_map(to_inventions),
         )
     }
     fn from_subexpression<'a>(
@@ -894,7 +909,7 @@ mod proposals {
             rst
         }
     }
-    pub fn to_inventions(expr: Expression) -> Box<Iterator<Item = Expression>> {
+    fn to_inventions(expr: Expression) -> Box<Iterator<Item = Expression>> {
         // for any common subtree within the expression, replace with new index.
         let reach = free_reach(&expr, 0);
         let mut counts = HashMap::new();

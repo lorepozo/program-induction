@@ -269,44 +269,6 @@ impl Language {
         enumerator::likelihood(self, request, expr)
     }
 
-    /// Get details (name, type, log-likelihood) about a primitive according to its
-    /// identifier (which is used in [`Expression::Primitive`]).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # fn main() {
-    /// # use programinduction::lambda::{Language, Expression};
-    /// let dsl = Language::uniform(
-    ///     vec![
-    ///         ("0", tp!(int)),
-    ///         ("1", tp!(int)),
-    ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-    ///     ],
-    /// );
-    /// assert_eq!(dsl.primitive(0), Some(("0", &tp!(int), 0.)));
-    /// # }
-    /// ```
-    ///
-    /// [`Expression::Primitive`]: enum.Expression.html#variant.Primitive
-    pub fn primitive(&self, num: usize) -> Option<(&str, &Type, f64)> {
-        self.primitives
-            .get(num)
-            .map(|&(ref name, ref tp, p)| (name.as_str(), tp, p))
-    }
-
-    /// Get details (expression, type, log-likelihood) about an invented expression according to
-    /// its identifier (which is used in [`Expression::Invented`]).
-    ///
-    /// [`Expression::Invented`]: enum.Expression.html#variant.Invented
-    pub fn invented(&self, num: usize) -> Option<(&Expression, &Type, f64)> {
-        self.invented
-            .get(num)
-            .map(|&(ref fragment, ref tp, p)| (fragment, tp, p))
-    }
-
     /// Register a new invented expression. If it has a valid type, this will be `Ok(num)`.
     ///
     /// # Examples
@@ -333,10 +295,7 @@ impl Language {
         expr: Expression,
         log_probability: f64,
     ) -> Result<usize, InferenceError> {
-        let mut ctx = Context::default();
-        let env = VecDeque::new();
-        let mut indices = HashMap::new();
-        let tp = expr.infer(self, &mut ctx, &env, &mut indices)?;
+        let tp = self.infer(&expr)?;
         self.invented.push((expr, tp, log_probability));
         Ok(self.invented.len() - 1)
     }
