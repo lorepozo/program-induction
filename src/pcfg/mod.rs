@@ -6,7 +6,7 @@
 //! # #[macro_use]
 //! # extern crate polytype;
 //! # extern crate programinduction;
-//! use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluation};
+//! use programinduction::pcfg::{task_by_simple_evaluation, Grammar, Rule};
 //!
 //! fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
 //!     match name {
@@ -49,9 +49,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use itertools::Itertools;
 use polytype::Type;
 use rayon::prelude::*;
-use super::{ECFrontier, InferenceError, Representation, Task, EC};
+use super::{ECFrontier, Task, EC};
 
-/// Probabilistic context-free grammar. Currently cannot handle bound variables or polymorphism.
+/// (representation) Probabilistic context-free grammar. Currently cannot handle bound variables or
+/// polymorphism.
 ///
 /// Each nonterminal corresponds to a non-polymorphic `Type`.
 #[derive(Debug, Clone)]
@@ -276,17 +277,8 @@ impl Grammar {
         }
     }
 }
-impl Representation for Grammar {
-    type Expression = AppliedRule;
-
-    fn infer(&self, expr: &Self::Expression) -> Result<Type, InferenceError> {
-        Ok(expr.0.clone())
-    }
-    fn display(&self, expr: &Self::Expression) -> String {
-        self.display(expr)
-    }
-}
 impl EC for Grammar {
+    type Expression = AppliedRule;
     type Params = Params;
 
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Self::Expression, f64)> + 'a> {
@@ -299,7 +291,7 @@ impl EC for Grammar {
     fn compress<O: Sync>(
         &self,
         params: &Self::Params,
-        _tasks: &[Task<Self, O>],
+        _tasks: &[Task<Self, Self::Expression, O>],
         frontiers: Vec<ECFrontier<Self>>,
     ) -> (Self, Vec<ECFrontier<Self>>) {
         let mut counts: HashMap<Type, Vec<AtomicUsize>> = HashMap::new();
@@ -453,7 +445,7 @@ pub fn task_by_simple_evaluation<'a, V, F>(
     simple_evaluator: &'a F,
     output: &'a V,
     tp: Type,
-) -> Task<'a, Grammar, &'a V>
+) -> Task<'a, Grammar, AppliedRule, &'a V>
 where
     V: PartialEq + Clone + Sync + Debug + 'a,
     F: Fn(&str, &[V]) -> V + Sync + 'a,

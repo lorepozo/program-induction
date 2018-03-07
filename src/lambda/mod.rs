@@ -5,7 +5,7 @@
 //! ```
 //! # #[macro_use] extern crate polytype;
 //! # extern crate programinduction;
-//! use programinduction::lambda::{Language, task_by_simple_evaluation};
+//! use programinduction::lambda::{task_by_simple_evaluation, Language};
 //!
 //! fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
 //!     match name {
@@ -17,13 +17,11 @@
 //! }
 //!
 //! # fn main() {
-//! let dsl = Language::uniform(
-//!     vec![
-//!         ("0", tp!(int)),
-//!         ("1", tp!(int)),
-//!         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-//!     ],
-//! );
+//! let dsl = Language::uniform(vec![
+//!     ("0", tp!(int)),
+//!     ("1", tp!(int)),
+//!     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+//! ]);
 //!
 //! // task: sum 1 with two numbers
 //! let tp = arrow![tp!(int), tp!(int), tp!(int)];
@@ -47,8 +45,8 @@ use std::collections::{HashMap, VecDeque};
 use std::f64;
 use std::fmt::{self, Debug};
 use std::rc::Rc;
-use polytype::{Context, Type};
-use super::{InferenceError, Representation, Task};
+use polytype::{Context, Type, UnificationError};
+use super::Task;
 use super::ec::{ECFrontier, EC};
 
 #[derive(Debug, Clone)]
@@ -74,8 +72,8 @@ impl ::std::error::Error for ParseError {
     }
 }
 
-/// A Language is a registry for primitive and invented expressions in a polymorphically-typed
-/// lambda calculus with corresponding production log-probabilities.
+/// (representation) A Language is a registry for primitive and invented expressions in a
+/// polymorphically-typed lambda calculus with corresponding production log-probabilities.
 #[derive(Debug, Clone)]
 pub struct Language {
     pub primitives: Vec<(String, Type, f64)>,
@@ -97,7 +95,7 @@ impl Language {
         }
     }
 
-    /// As with any [`Representation`], we must be able to infer the type of an [`Expression`]:
+    /// Infer the type of an [`Expression`].
     ///
     /// # Examples
     ///
@@ -105,16 +103,14 @@ impl Language {
     /// # #[macro_use] extern crate polytype;
     /// # extern crate programinduction;
     /// # fn main() {
-    /// # use programinduction::lambda::{Language, Expression};
-    /// let mut dsl = Language::uniform(
-    ///     vec![
+    /// # use programinduction::lambda::{Expression, Language};
+    /// let mut dsl = Language::uniform(vec![
     ///         ("singleton", arrow![tp!(0), tp!(list(tp!(0)))]),
     ///         (">=", arrow![tp!(int), tp!(int), tp!(bool)]),
     ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
     ///         ("0", tp!(int)),
     ///         ("1", tp!(int)),
-    ///     ],
-    /// );
+    /// ]);
     /// dsl.invent(
     ///     Expression::Application( // (+ 1)
     ///         Box::new(Expression::Primitive(2)),
@@ -122,12 +118,12 @@ impl Language {
     ///     ),
     ///     0f64,
     /// );
-    /// let expr = dsl.parse("(singleton ((λ (>= $0 1)) (#(+ 1) 0)))").unwrap();
+    /// let expr = dsl.parse("(singleton ((λ (>= $0 1)) (#(+ 1) 0)))")
+    ///     .unwrap();
     /// assert_eq!(dsl.infer(&expr).unwrap(), tp!(list(tp!(bool))));
     /// # }
     /// ```
     ///
-    /// [`Representation`]: ../trait.Representation.html
     /// [`Expression`]: ../enum.Expression.html
     pub fn infer(&self, expr: &Expression) -> Result<Type, InferenceError> {
         let mut ctx = Context::default();
@@ -147,14 +143,12 @@ impl Language {
     /// # fn main() {
     /// use programinduction::lambda::{Expression, Language};
     ///
-    /// let dsl = Language::uniform(
-    ///     vec![
-    ///         ("0", tp!(int)),
-    ///         ("1", tp!(int)),
-    ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-    ///         (">", arrow![tp!(int), tp!(int), tp!(bool)]),
-    ///     ],
-    /// );
+    /// let dsl = Language::uniform(vec![
+    ///     ("0", tp!(int)),
+    ///     ("1", tp!(int)),
+    ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+    ///     (">", arrow![tp!(int), tp!(int), tp!(bool)]),
+    /// ]);
     /// let exprs: Vec<Expression> = dsl.enumerate(tp!(int))
     ///     .take(8)
     ///     .map(|(expr, _log_prior)| expr)
@@ -185,7 +179,7 @@ impl Language {
     pub fn compress<O: Sync>(
         &self,
         params: &Params,
-        tasks: &[Task<Self, O>],
+        tasks: &[Task<Language, Expression, O>],
         frontiers: Vec<ECFrontier<Self>>,
     ) -> (Self, Vec<ECFrontier<Self>>) {
         compression::induce(self, params, tasks, frontiers)
@@ -217,13 +211,11 @@ impl Language {
     /// }
     ///
     /// # fn main() {
-    /// let dsl = Language::uniform(
-    ///     vec![
-    ///         ("0", tp!(int)),
-    ///         ("1", tp!(int)),
-    ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-    ///     ],
-    /// );
+    /// let dsl = Language::uniform(vec![
+    ///     ("0", tp!(int)),
+    ///     ("1", tp!(int)),
+    ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+    /// ]);
     /// let expr = dsl.parse("(λ (λ (+ (+ 1 $0) $1)))").unwrap();
     /// let inps = vec![2, 5];
     /// let evaluated = dsl.eval(&expr, &evaluator, &inps).unwrap();
@@ -249,13 +241,11 @@ impl Language {
     /// # extern crate programinduction;
     /// # use programinduction::lambda::Language;
     /// # fn main() {
-    /// let dsl = Language::uniform(
-    ///     vec![
-    ///         ("0", tp!(int)),
-    ///         ("1", tp!(int)),
-    ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-    ///     ],
-    /// );
+    /// let dsl = Language::uniform(vec![
+    ///     ("0", tp!(int)),
+    ///     ("1", tp!(int)),
+    ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+    /// ]);
     /// let req = arrow![tp!(int), tp!(int), tp!(int)];
     ///
     /// let expr = dsl.parse("(λ (λ (+ $0 $1)))").unwrap();
@@ -277,17 +267,18 @@ impl Language {
     /// # #[macro_use] extern crate polytype;
     /// # extern crate programinduction;
     /// # fn main() {
-    /// # use programinduction::lambda::{Language, Expression};
-    /// let mut dsl = Language::uniform(
-    ///     vec![
-    ///         ("0", tp!(int)),
-    ///         ("1", tp!(int)),
-    ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-    ///     ],
-    /// );
+    /// # use programinduction::lambda::{Expression, Language};
+    /// let mut dsl = Language::uniform(vec![
+    ///     ("0", tp!(int)),
+    ///     ("1", tp!(int)),
+    ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+    /// ]);
     /// let expr = dsl.parse("(+ 1)").unwrap();
     /// dsl.invent(expr.clone(), -0.5).unwrap();
-    /// assert_eq!(dsl.invented(0), Some((&expr, &arrow![tp!(int), tp!(int)], -0.5)));
+    /// assert_eq!(
+    ///     dsl.invented.get(0),
+    ///     Some(&(expr, arrow![tp!(int), tp!(int)], -0.5))
+    /// );
     /// # }
     /// ```
     pub fn invent(
@@ -408,16 +399,8 @@ impl Language {
         cands
     }
 }
-impl Representation for Language {
-    type Expression = Expression;
-    fn infer(&self, expr: &Self::Expression) -> Result<Type, InferenceError> {
-        self.infer(expr)
-    }
-    fn display(&self, expr: &Self::Expression) -> String {
-        self.display(expr)
-    }
-}
 impl EC for Language {
+    type Expression = Expression;
     type Params = Params;
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
         self.enumerate(tp)
@@ -425,7 +408,7 @@ impl EC for Language {
     fn compress<O: Sync>(
         &self,
         params: &Self::Params,
-        tasks: &[Task<Self, O>],
+        tasks: &[Task<Self, Self::Expression, O>],
         frontiers: Vec<ECFrontier<Self>>,
     ) -> (Self, Vec<ECFrontier<Self>>) {
         self.compress(params, tasks, frontiers)
@@ -749,7 +732,7 @@ impl Expression {
 /// # #[macro_use]
 /// # extern crate polytype;
 /// # extern crate programinduction;
-/// use programinduction::lambda::{Language, task_by_simple_evaluation};
+/// use programinduction::lambda::{task_by_simple_evaluation, Language};
 ///
 /// fn evaluator(name: &str, inps: &[i32]) -> i32 {
 ///     match name {
@@ -765,13 +748,11 @@ impl Expression {
 /// let tp = arrow![tp!(int), tp!(int), tp!(int)];
 /// let task = task_by_simple_evaluation(&evaluator, tp, &examples);
 ///
-/// let dsl = Language::uniform(
-///     vec![
-///         ("0", tp!(int)),
-///         ("1", tp!(int)),
-///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-///     ],
-/// );
+/// let dsl = Language::uniform(vec![
+///     ("0", tp!(int)),
+///     ("1", tp!(int)),
+///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+/// ]);
 /// let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
 /// assert!((task.oracle)(&dsl, &expr).is_finite())
 /// # }
@@ -780,7 +761,7 @@ pub fn task_by_simple_evaluation<'a, V, F>(
     simple_evaluator: &'a F,
     tp: Type,
     examples: &'a [(Vec<V>, V)],
-) -> Task<'a, Language, &'a [(Vec<V>, V)]>
+) -> Task<'a, Language, Expression, &'a [(Vec<V>, V)]>
 where
     V: PartialEq + Clone + Sync + Debug + 'a,
     F: Fn(&str, &[V]) -> V + Sync + 'a,
@@ -864,5 +845,29 @@ impl<T: Clone> ::std::ops::Index<usize> for LinkedList<T> {
             }
         }
         panic!("index out of bounds");
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum InferenceError {
+    BadExpression(String),
+    Unify(UnificationError),
+}
+impl From<UnificationError> for InferenceError {
+    fn from(err: UnificationError) -> Self {
+        InferenceError::Unify(err)
+    }
+}
+impl fmt::Display for InferenceError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            InferenceError::BadExpression(ref msg) => write!(f, "invalid expression: '{}'", msg),
+            InferenceError::Unify(ref err) => write!(f, "could not unify to infer type: {}", err),
+        }
+    }
+}
+impl ::std::error::Error for InferenceError {
+    fn description(&self) -> &str {
+        "could not infer type"
     }
 }

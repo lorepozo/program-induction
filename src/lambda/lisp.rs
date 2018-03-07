@@ -3,6 +3,7 @@ use std::f64;
 use std::io::{self, BufRead, BufReader, Write};
 use std::process::{ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::channel;
+use itertools::Itertools;
 use polytype::Type;
 use workerpool::{Pool, Worker};
 use super::super::Task;
@@ -34,11 +35,11 @@ use super::{Expression, Language};
 ///
 /// let task = lisp.make_task(
 ///     arrow![tp!(list(tp!(int))), tp!(list(tp!(int)))],
-///     vec![
+///     &[
 ///         // create a task using whichever lisp syntax.
 ///         // these are evaluated along with the expression.
-///         (Some("(list 1 2 3)"), "(list 2 4 6)"),
-///         (Some("'(3 5)"), "'(6 10)"),
+///         ("(list 1 2 3)", "(list 2 4 6)"),
+///         ("'(3 5)", "'(6 10)"),
 ///     ],
 /// );
 ///
@@ -66,12 +67,10 @@ impl LispEvaluator {
     /// ```
     /// use programinduction::lambda;
     ///
-    /// let lisp = lambda::LispEvaluator::new(
-    ///     vec![
-    ///         ("+1", "(lambda (x) (+ 1 x))"),
-    ///         ("*2", "(λ (x) (* 2 x))"),
-    ///     ]
-    /// );
+    /// let lisp = lambda::LispEvaluator::new(vec![
+    ///     ("+1", "(lambda (x) (+ 1 x))"),
+    ///     ("*2", "(λ (x) (* 2 x))"),
+    /// ]);
     /// ```
     pub fn new(prims: Vec<(&str, &str)>) -> Self {
         let conversions = prims
@@ -90,30 +89,25 @@ impl LispEvaluator {
     /// # Examples
     ///
     /// ```
-    /// #[macro_use]
-    /// extern crate polytype;
-    /// extern crate programinduction;
-    /// use programinduction::lambda::{Language, LispEvaluator};
-    ///
+    /// # #[macro_use]
+    /// # extern crate polytype;
+    /// # extern crate programinduction;
+    /// # use programinduction::lambda::{Language, LispEvaluator};
     /// # fn main() {
     /// let dsl = Language::uniform(vec![
-    ///     ("map", arrow![arrow![tp!(0), tp!(1)], tp!(list(tp!(0))), tp!(list(tp!(1)))]),
-    ///     ("list", arrow![tp!(int), tp!(int), tp!(list(tp!(int)))]),
-    ///     ("*2", arrow![tp!(int), tp!(int)]),
     ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
     ///     ("1", tp!(int)),
     ///     ("2", tp!(int)),
     /// ]);
-    /// let lisp = LispEvaluator::new(vec![
-    ///     // only one primitive in our DSL doesn't match what's provided by racket:
-    ///     ("*2", "(λ (x) (* x 2))"),
-    /// ]);
+    /// let lisp = LispEvaluator::default();
     ///
-    /// let expr = dsl.parse("(λ (map (λ (+ (*2 1) $0)) $0))").expect("parse");
-    /// assert!(
-    ///     lisp.check(&dsl, &expr, Some("(list 1 2)"), "(list 3 4)")
-    ///         .expect("evaluation should not fail")
-    /// );
+    /// // 2 + 2 == 4
+    /// let expr = dsl.parse("(+ 2 2)").expect("parse");
+    /// assert!(lisp.check(&dsl, &expr, None, "4").unwrap());
+    ///
+    /// // 1 + 2 != 4
+    /// let expr = dsl.parse("(+ 1 2)").expect("parse");
+    /// assert!(!lisp.check(&dsl, &expr, None, "4").unwrap());
     /// # }
     /// ```
     pub fn check(
@@ -138,6 +132,64 @@ impl LispEvaluator {
             _ => Err(io::Error::new(io::ErrorKind::Other, response)),
         }
     }
+    /// Like [`check`], but checks against multiple input/output pairs.
+    ///
+    /// Expressions is treated as unary procedures and are applied to each input before comparison
+    /// to the corresponding output.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[macro_use]
+    /// # extern crate polytype;
+    /// # extern crate programinduction;
+    /// # use programinduction::lambda::{Language, LispEvaluator};
+    /// # fn main() {
+    /// let dsl = Language::uniform(vec![
+    ///     ("map", arrow![arrow![tp!(0), tp!(1)], tp!(list(tp!(0))), tp!(list(tp!(1)))]),
+    ///     ("list", arrow![tp!(int), tp!(int), tp!(list(tp!(int)))]),
+    ///     ("*2", arrow![tp!(int), tp!(int)]),
+    ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+    ///     ("1", tp!(int)),
+    ///     ("2", tp!(int)),
+    /// ]);
+    /// let lisp = LispEvaluator::new(vec![
+    ///     // only one primitive in our DSL doesn't match what's provided by racket:
+    ///     ("*2", "(λ (x) (* x 2))"),
+    /// ]);
+    ///
+    /// let expr = dsl.parse("(λ (map (λ (+ (*2 1) $0)) $0))").expect("parse");
+    /// assert!(
+    ///     lisp.check_many(&dsl, &expr, &[("(list 1 2)", "(list 3 4)")])
+    ///         .expect("evaluation should not fail")
+    /// );
+    /// # }
+    /// ```
+    ///
+    /// [`check`]: #method.check
+    pub fn check_many(
+        &self,
+        dsl: &Language,
+        expr: &Expression,
+        examples: &[(&str, &str)],
+    ) -> Result<bool, io::Error> {
+        let cmd = dsl.lispify(expr, &self.conversions);
+        let op = format!(
+            "(and {})",
+            examples
+                .iter()
+                .map(|&(i, o)| format!("(equal? ({} {}) {})", cmd, i, o))
+                .join(" ")
+        );
+        let (tx, rx) = channel();
+        self.pool.execute_to(tx, op.clone());
+        let response = rx.recv().expect("receive")?;
+        match &*response {
+            "#t\n" => Ok(true),
+            "#f\n" => Ok(false),
+            _ => Err(io::Error::new(io::ErrorKind::Other, response)),
+        }
+    }
     /// Create a task based on evaluating a lisp expressions against test input/output pairs.
     ///
     /// The resulting task is "all-or-nothing": the oracle returns either 0 if all examples are
@@ -145,19 +197,15 @@ impl LispEvaluator {
     pub fn make_task<'a>(
         &'a self,
         tp: Type,
-        examples: Vec<(Option<&str>, &str)>,
-    ) -> Task<'a, Language, Vec<(Option<String>, String)>> {
-        let examples: Vec<_> = examples
-            .into_iter()
-            .map(|(inp, out)| (inp.map(String::from), String::from(out)))
+        examples: &[(&'a str, &'a str)],
+    ) -> Task<'a, Language, Expression, Vec<(String, String)>> {
+        let examples: Vec<_> = examples.to_vec();
+        let observation: Vec<_> = examples
+            .iter()
+            .map(|&(inp, out)| (String::from(inp), String::from(out)))
             .collect();
-        let examples_oracle = examples.clone();
         let oracle = Box::new(move |dsl: &Language, expr: &Expression| -> f64 {
-            let success = examples_oracle.iter().all(|&(ref inp, ref out)| {
-                self.check(dsl, expr, inp.as_ref().map(|x| &**x), out)
-                    .unwrap_or(false)
-            });
-            if success {
+            if self.check_many(dsl, expr, &examples).unwrap_or(false) {
                 0f64
             } else {
                 f64::NEG_INFINITY
@@ -165,9 +213,37 @@ impl LispEvaluator {
         });
         Task {
             oracle,
-            observation: examples,
+            observation,
             tp,
         }
+    }
+    /// Like [`make_task`], but doesn't treat expressions as unary procedures: they are evaluated
+    /// and directly compared against the output.
+    pub fn make_task_output_only<'a>(
+        &'a self,
+        tp: Type,
+        output: &'a str,
+    ) -> Task<'a, Language, Expression, String> {
+        let observation = String::from(output);
+        let oracle = Box::new(move |dsl: &Language, expr: &Expression| -> f64 {
+            if self.check(dsl, expr, None, output).unwrap_or(false) {
+                0f64
+            } else {
+                f64::NEG_INFINITY
+            }
+        });
+        Task {
+            oracle,
+            observation,
+            tp,
+        }
+    }
+}
+impl Default for LispEvaluator {
+    fn default() -> Self {
+        let conversions = HashMap::new();
+        let pool = Pool::<Racket>::default();
+        LispEvaluator { conversions, pool }
     }
 }
 

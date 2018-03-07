@@ -73,7 +73,7 @@ impl<'a> From<RescoredFrontier<'a>> for ECFrontier<Language> {
 pub fn induce<O: Sync>(
     dsl: &Language,
     params: &Params,
-    tasks: &[Task<Language, O>],
+    tasks: &[Task<Language, Expression, O>],
     mut original_frontiers: Vec<ECFrontier<Language>>,
 ) -> (Language, Vec<ECFrontier<Language>>) {
     let mut dsl = dsl.clone();
@@ -81,7 +81,7 @@ pub fn induce<O: Sync>(
         .par_iter()
         .map(|t| &t.tp)
         .zip(&original_frontiers)
-        .filter(|&(_, ref f)| !f.is_empty())
+        .filter(|&(_, f)| !f.is_empty())
         .map(|(tp, f)| RescoredFrontier(tp, f.0.clone()))
         .collect();
 

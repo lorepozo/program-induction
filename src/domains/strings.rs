@@ -15,9 +15,9 @@
 //! let lisp = LispEvaluator::new(strings::lisp_prims());
 //! let task = lisp.make_task(
 //!     arrow![tp!(str), tp!(str)],
-//!     vec![
+//!     &[
 //!         // Replace delimiter '>' with '/'
-//!         (Some("\"OFJQc>BLVP>eMS\""), "\"OFJQc/BLVP/eMS\""),
+//!         ("\"OFJQc>BLVP>eMS\"", "\"OFJQc/BLVP/eMS\""),
 //!     ],
 //! );
 //!
@@ -36,7 +36,7 @@
 
 use super::super::lambda::Language;
 
-/// The string editing [`Representation`] defines the following operations:
+/// The string editing [`lambda::Language`] defines the following operations:
 ///
 /// ```ignore
 /// "0":         tp!(int)
@@ -65,7 +65,6 @@ use super::super::lambda::Language;
 /// "|":         tp!(char)
 /// ```
 ///
-/// [`Representation`]: ../../trait.Representation.html
 /// [`lambda::Language`]: ../../lambda/struct.Language.html
 pub fn repr() -> Language {
     Language::uniform(vec![

@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use itertools::Itertools;
 use polytype::Type;
 use rand::{seq, Rng};
-use super::{Representation, Task};
+use super::Task;
 
 /// Parameters for genetic programming.
 pub struct GPParams {
@@ -18,19 +18,20 @@ pub struct GPParams {
     pub n_delta: usize,
 }
 
-/// A kind of [`Representation`] suitable for **genetic programming**.
+/// A kind of representation suitable for **genetic programming**.
 ///
 /// Implementors of `GP` must provide methods for [`genesis`], [`mutate`], [`crossover`]. A
 /// [`Task`] provides a fitness function via its [`oracle`].
 ///
-/// [`Representation`]: trait.Representation.html
 /// [`genesis`]: #method.genesis
 /// [`mutate`]: #method.mutate
 /// [`crossover`]: #method.crossover
 /// [`Task`]: struct.Task.html
 /// [`oracle`]: struct.Task.html#structfield.oracle
-/// [`Representation`]: trait.Representation.html
-pub trait GP: Representation {
+pub trait GP: Send + Sync + Sized {
+    /// An Expression is a sentence in the representation. **Tasks are solved by Expressions**.
+    type Expression: Clone + Send;
+
     /// Create an initial population for a particular requesting type.
     fn genesis<R: Rng>(&self, rng: &mut R, pop_size: usize, tp: &Type) -> Vec<Self::Expression>;
 
@@ -64,7 +65,7 @@ pub trait GP: Representation {
         &self,
         rng: &mut R,
         gpparams: &GPParams,
-        task: &Task<Self, O>,
+        task: &Task<Self, Self::Expression, O>,
     ) -> Vec<(Self::Expression, f64)> {
         let exprs = self.genesis(rng, gpparams.population_size, &task.tp);
         exprs
@@ -80,7 +81,7 @@ pub trait GP: Representation {
         &self,
         rng: &mut R,
         gpparams: &GPParams,
-        task: &Task<Self, O>,
+        task: &Task<Self, Self::Expression, O>,
         population: &mut Vec<(Self::Expression, f64)>,
     ) {
         let mut new_exprs = Vec::with_capacity(gpparams.n_delta);
@@ -113,7 +114,7 @@ pub trait GP: Representation {
         &self,
         rng: &mut R,
         gpparams: &GPParams,
-        task: &Task<Self, O>,
+        task: &Task<Self, Self::Expression, O>,
         generations: u32,
     ) -> Vec<(Self::Expression, f64)> {
         let mut pop = self.init(rng, gpparams, task);

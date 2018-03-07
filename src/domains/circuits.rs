@@ -28,13 +28,12 @@ use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
 use super::super::lambda::{Expression, Language};
 use super::super::Task;
 
-/// The circuit [`Representation`] only defines the binary `nand` operation.
+/// The circuit representation, a [`lambda::Language`], only defines the binary `nand` operation.
 ///
 /// ```ignore
 /// "nand": arrow![tp!(bool), tp!(bool), tp!(bool)]
 /// ```
 ///
-/// [`Representation`]: ../../trait.Representation.html
 /// [`lambda::Language`]: ../../lambda/struct.Language.html
 pub fn repr() -> Language {
     Language::uniform(vec![("nand", arrow![tp!(bool), tp!(bool), tp!(bool)])])
@@ -76,7 +75,7 @@ fn truth_table(dim: usize) -> Box<Iterator<Item = Vec<bool>>> {
 /// ```
 ///
 /// [`Task`]: ../../struct.Task.html
-pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Vec<bool>>> {
+pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Expression, Vec<bool>>> {
     let mut n_input_weights = vec![
         Weighted { weight: 1, item: 1 },
         Weighted { weight: 2, item: 2 },
