@@ -25,7 +25,7 @@
 //!     frontier_limit: 10,
 //!     search_limit: 2500,
 //! };
-//! let frontiers = dsl.explore(&ec_params, &[task], None);
+//! let frontiers = dsl.explore(&ec_params, &[task]);
 //! let solution = &frontiers[0].best_solution().unwrap().0;
 //! assert_eq!(
 //!     "(λ (join (char->str /) (split > $0)))",

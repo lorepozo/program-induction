@@ -107,16 +107,19 @@ pub trait EC: Send + Sync + Sized {
         params: &Self::Params,
         tasks: &[Task<Self, Self::Expression, O>],
     ) -> (Self, Vec<ECFrontier<Self>>) {
-        let frontiers = self.explore(ecparams, tasks, None);
+        let frontiers = self.explore(ecparams, tasks);
         self.compress(params, tasks, frontiers)
     }
 
-    /// The entry point for one iteration of the EC algorithm with a recognizer.
+    /// The entry point for one iteration of the EC algorithm with a recognizer, very similar to
+    /// [`ec`].
     ///
     /// The recognizer supplies a representation for every task which is then used for
     /// exploration-compression.
     ///
     /// Returned solutions include the log-prior and log-likelihood of successful expressions.
+    ///
+    /// [`ec`]: #method.ec
     fn ec_with_recognition<O: Sync, R>(
         &self,
         ecparams: &ECParams,
@@ -128,7 +131,7 @@ pub trait EC: Send + Sync + Sized {
         R: FnOnce(&Self, &[Task<Self, Self::Expression, O>]) -> Vec<Self>,
     {
         let recognized = recognizer(self, tasks);
-        let frontiers = self.explore(ecparams, tasks, Some(recognized));
+        let frontiers = self.explore_with_recognition(ecparams, tasks, &recognized);
         self.compress(params, tasks, frontiers)
     }
 
@@ -174,7 +177,7 @@ pub trait EC: Send + Sync + Sized {
     /// // task: the number 4
     /// let task = task_by_simple_evaluation(&simple_evaluator, &4, tp!(EXPR));
     ///
-    /// let frontiers = g.explore(&ec_params, &[task], None);
+    /// let frontiers = g.explore(&ec_params, &[task]);
     /// assert!(frontiers[0].best_solution().is_some());
     /// # }
     /// ```
@@ -182,38 +185,45 @@ pub trait EC: Send + Sync + Sized {
         &self,
         ec_params: &ECParams,
         tasks: &[Task<Self, Self::Expression, O>],
-        recognized: Option<Vec<Self>>,
     ) -> Vec<ECFrontier<Self>> {
-        if let Some(representations) = recognized {
-            tasks
-                .par_iter()
-                .zip(representations)
-                .enumerate()
-                .map(|(i, (t, ref repr))| {
-                    enumerate_solutions(repr, ec_params, t.tp.clone(), vec![(i, t)])
-                        .remove(&i)
-                        .unwrap_or_default()
-                })
-                .collect()
-        } else {
-            let mut tps = HashMap::new();
-            for (i, task) in tasks.into_iter().enumerate() {
-                tps.entry(&task.tp).or_insert_with(Vec::new).push((i, task))
-            }
-            let mut results: Vec<ECFrontier<Self>> =
-                (0..tasks.len()).map(|_| ECFrontier::default()).collect();
-            {
-                let mutex = Arc::new(Mutex::new(&mut results));
-                tps.into_par_iter()
-                    .map(|(tp, tasks)| enumerate_solutions(self, ec_params, tp.clone(), tasks))
-                    .flat_map(|iter| iter)
-                    .for_each(move |(i, frontier)| {
-                        let mut results = mutex.lock().unwrap();
-                        results[i] = frontier
-                    });
-            }
-            results
+        let mut tps = HashMap::new();
+        for (i, task) in tasks.into_iter().enumerate() {
+            tps.entry(&task.tp).or_insert_with(Vec::new).push((i, task))
         }
+        let mut results: Vec<ECFrontier<Self>> =
+            (0..tasks.len()).map(|_| ECFrontier::default()).collect();
+        {
+            let mutex = Arc::new(Mutex::new(&mut results));
+            tps.into_par_iter()
+                .map(|(tp, tasks)| enumerate_solutions(self, ec_params, tp.clone(), tasks))
+                .flat_map(|iter| iter)
+                .for_each(move |(i, frontier)| {
+                    let mut results = mutex.lock().unwrap();
+                    results[i] = frontier
+                });
+        }
+        results
+    }
+
+    /// Like [`explore`], but with specific "recognized" representations for each task.
+    ///
+    /// [`explore`]: #method.explore
+    fn explore_with_recognition<O: Sync>(
+        &self,
+        ec_params: &ECParams,
+        tasks: &[Task<Self, Self::Expression, O>],
+        representations: &[Self],
+    ) -> Vec<ECFrontier<Self>> {
+        tasks
+            .par_iter()
+            .zip(representations)
+            .enumerate()
+            .map(|(i, (t, repr))| {
+                enumerate_solutions(repr, ec_params, t.tp.clone(), vec![(i, t)])
+                    .remove(&i)
+                    .unwrap_or_default()
+            })
+            .collect()
     }
 }
 

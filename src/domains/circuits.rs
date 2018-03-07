@@ -14,7 +14,7 @@
 //!     search_limit: 1000,
 //! };
 //!
-//! let frontiers = dsl.explore(&ec_params, &tasks, None);
+//! let frontiers = dsl.explore(&ec_params, &tasks);
 //! let hits = frontiers.iter().filter_map(|f| f.best_solution()).count();
 //! assert!(50 < hits && hits < 150, "hits = {}", hits);
 //! ```
