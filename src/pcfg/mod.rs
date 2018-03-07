@@ -300,8 +300,8 @@ impl EC for Grammar {
         &self,
         params: &Self::Params,
         _tasks: &[Task<Self, O>],
-        frontiers: &[ECFrontier<Self>],
-    ) -> Self {
+        frontiers: Vec<ECFrontier<Self>>,
+    ) -> (Self, Vec<ECFrontier<Self>>) {
         let mut counts: HashMap<Type, Vec<AtomicUsize>> = HashMap::new();
         // initialize counts to pseudocounts
         for (nt, rs) in &self.rules {
@@ -327,7 +327,7 @@ impl EC for Grammar {
             }
         }
         g.normalize();
-        g
+        (g, frontiers)
     }
 }
 

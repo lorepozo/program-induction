@@ -186,8 +186,8 @@ impl Language {
         &self,
         params: &Params,
         tasks: &[Task<Self, O>],
-        frontiers: &[ECFrontier<Self>],
-    ) -> Self {
+        frontiers: Vec<ECFrontier<Self>>,
+    ) -> (Self, Vec<ECFrontier<Self>>) {
         compression::induce(self, params, tasks, frontiers)
     }
 
@@ -426,8 +426,8 @@ impl EC for Language {
         &self,
         params: &Self::Params,
         tasks: &[Task<Self, O>],
-        frontiers: &[ECFrontier<Self>],
-    ) -> Self {
+        frontiers: Vec<ECFrontier<Self>>,
+    ) -> (Self, Vec<ECFrontier<Self>>) {
         self.compress(params, tasks, frontiers)
     }
 }

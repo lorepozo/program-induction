@@ -40,9 +40,9 @@ pub trait EC: Representation {
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Self::Expression, f64)> + 'a>;
     /// Update the [`Representation`] based on findings of expressions that solve [`Task`]s.
     ///
-    /// The `frontiers` argument must always be of the same size as `tasks`. Each frontier is a
-    /// possibly-empty list of expressions that solve the corresponding task, and the log-prior and
-    /// log-likelihood for that expression.
+    /// The `frontiers` argument, and similar return value, must always be of the same size as
+    /// `tasks`. Each frontier is a possibly-empty list of expressions that solve the corresponding
+    /// task, and the log-prior and log-likelihood for that expression.
     ///
     /// [`Representation`]: ../trait.Representation.html
     /// [`Task`]: ../struct.Task.html
@@ -50,8 +50,8 @@ pub trait EC: Representation {
         &self,
         params: &Self::Params,
         tasks: &[Task<Self, O>],
-        frontiers: &[ECFrontier<Self>],
-    ) -> Self;
+        frontiers: Vec<ECFrontier<Self>>,
+    ) -> (Self, Vec<ECFrontier<Self>>);
 
     // provided methods:
 
@@ -65,8 +65,7 @@ pub trait EC: Representation {
         tasks: &[Task<Self, O>],
     ) -> (Self, Vec<ECFrontier<Self>>) {
         let frontiers = self.explore(ecparams, tasks, None);
-        let updated = self.compress(params, tasks, &frontiers);
-        (updated, frontiers)
+        self.compress(params, tasks, frontiers)
     }
 
     /// The entry point for one iteration of the EC algorithm with a recognizer.
@@ -87,8 +86,7 @@ pub trait EC: Representation {
     {
         let recognized = recognizer(self, tasks);
         let frontiers = self.explore(ecparams, tasks, Some(recognized));
-        let updated = self.compress(params, tasks, &frontiers);
-        (updated, frontiers)
+        self.compress(params, tasks, frontiers)
     }
 
     /// Enumerate solutions for the given tasks.

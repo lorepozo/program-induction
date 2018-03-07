@@ -64,29 +64,27 @@ impl Default for Params {
 /// A convenient frontier representation.
 #[derive(Debug, Clone)]
 struct RescoredFrontier<'a>(&'a Type, Vec<(Expression, f64, f64)>);
+impl<'a> From<RescoredFrontier<'a>> for ECFrontier<Language> {
+    fn from(rescored_frontier: RescoredFrontier) -> ECFrontier<Language> {
+        ECFrontier(rescored_frontier.1)
+    }
+}
 
 pub fn induce<O: Sync>(
     dsl: &Language,
     params: &Params,
     tasks: &[Task<Language, O>],
-    frontiers: &[ECFrontier<Language>],
-) -> Language {
+    mut original_frontiers: Vec<ECFrontier<Language>>,
+) -> (Language, Vec<ECFrontier<Language>>) {
     let mut dsl = dsl.clone();
     let mut frontiers: Vec<_> = tasks
         .par_iter()
         .map(|t| &t.tp)
-        .zip(frontiers)
-        .filter(|&(_, f)| !f.is_empty())
-        .map(|(tp, f)| {
-            let xs: Vec<_> = f.0
-                .iter()
-                .map(|&(ref expr, lp, ll)| (expr.clone(), lp, ll))
-                .collect();
-            RescoredFrontier(tp, xs)
-        })
+        .zip(&original_frontiers)
+        .filter(|&(_, ref f)| !f.is_empty())
+        .map(|(tp, f)| RescoredFrontier(tp, f.0.clone()))
         .collect();
 
-    let old_joint = dsl.joint_mdl(&frontiers, false);
     let mut best_score = dsl.score(
         &frontiers,
         params.pseudocounts,
@@ -97,11 +95,6 @@ pub fn induce<O: Sync>(
     if params.aic.is_finite() {
         loop {
             let fragment_expr = {
-                eprintln!(
-                    "grammar induction: attemping proposals against score {}",
-                    best_score
-                );
-                // propose using topk frontiers
                 let rescored_frontiers: Vec<_> = frontiers
                     .par_iter()
                     .map(|f| dsl.rescore_frontier(f, params.topk))
@@ -109,12 +102,7 @@ pub fn induce<O: Sync>(
                 let best_proposal = dsl.propose_inventions(&rescored_frontiers, params.arity)
                     .zip(iter::repeat(dsl.clone()))
                     .filter_map(|(fragment_expr, mut dsl)| {
-                        eprintln!(
-                            "grammar induction: proposing {} with type {}",
-                            dsl.display(&fragment_expr),
-                            dsl.infer(&fragment_expr).unwrap(),
-                        );
-                        dsl.invent(fragment_expr.clone(), 0f64).unwrap();
+                        dsl.invent(fragment_expr, 0f64).unwrap();
                         let s = dsl.score(
                             &rescored_frontiers,
                             params.pseudocounts,
@@ -129,27 +117,18 @@ pub fn induce<O: Sync>(
                     })
                     .max_by(|&(_, ref x), &(_, ref y)| x.partial_cmp(y).unwrap());
                 if best_proposal.is_none() {
-                    eprintln!("grammar induction: no best proposal");
                     break;
                 }
                 let (new_dsl, new_score) = best_proposal.unwrap();
                 if new_score <= best_score {
-                    eprintln!("grammar induction: score did not improve");
                     break;
                 }
                 dsl = new_dsl;
-                let (fragment_expr, tp, log_prior) = dsl.invented.pop().unwrap();
-                let inv = proposals::defragment(fragment_expr.clone());
-                dsl.invented.push((inv, tp, log_prior));
                 best_score = new_score;
 
-                let &(ref inv, ref tp, _) = dsl.invented.last().unwrap();
-                eprintln!(
-                    "grammar induction: invented with tp {} and improved score to {}: {}",
-                    tp,
-                    best_score,
-                    dsl.display(inv)
-                );
+                let (fragment_expr, _, log_prior) = dsl.invented.pop().unwrap();
+                let inv = proposals::defragment(fragment_expr.clone());
+                dsl.invent(inv, log_prior).expect("invalid invention");
                 fragment_expr
             };
             let i = dsl.invented.len() - 1;
@@ -162,13 +141,13 @@ pub fn induce<O: Sync>(
                 .collect();
         }
     }
-
-    let new_joint = dsl.joint_mdl(&frontiers, true);
-    eprintln!(
-        "grammar induction: old joint = {} ; new joint = {}",
-        old_joint, new_joint
-    );
-    dsl // TODO: consider also returning new frontiers
+    frontiers.reverse();
+    for f in &mut original_frontiers {
+        if !f.is_empty() {
+            f.0 = frontiers.pop().unwrap().1;
+        }
+    }
+    (dsl, original_frontiers)
 }
 
 /// Extend the Language in our scope so we can do useful compression things.
@@ -224,15 +203,7 @@ impl Language {
                 .iter()
                 .map(|&(ref expr, _, _)| expression_structure(expr))
                 .sum::<f64>();
-        let s = likelihood - aic * (nparams as f64) - structure_penalty * structure;
-        eprintln!(
-            "grammar induction: proposal had score {} with likelihood {}, aic term {}, structure term {}",
-            s,
-            likelihood,
-            aic * (nparams as f64),
-            structure_penalty * structure,
-        );
-        s
+        likelihood - aic * (nparams as f64) - structure_penalty * structure
     }
 
     fn reset_uniform(&mut self) {
@@ -354,7 +325,15 @@ impl Language {
                             (0..xs.len()).map(|_| ctx.new_variable()).collect();
                         template.push_back(request.clone());
                         // unification cannot fail, so we can safely unwrap:
-                        ctx.unify(&frag_tp, &Type::from(template)).unwrap();
+                        ctx.unify(&frag_tp, &Type::from(template.clone()))
+                            .expect(&format!(
+                            "likelihood unification failure against {} (type {} / {}) for {} (type {})",
+                            self.display(expr),
+                            tp,
+                            frag_tp,
+                            self.display(f),
+                            Type::from(template),
+                        ));
                         tp = frag_tp.apply(&ctx);
                     } else {
                         continue;
@@ -452,15 +431,15 @@ impl Language {
         inv: &Expression,
         n_args: usize,
     ) -> bool {
-        let mut ret = false;
+        let mut rewrote = false;
         let do_rewrite = match *expr {
             Expression::Application(ref mut f, ref mut x) => {
-                ret |= self.rewrite_expression(f, inv_n, inv, n_args + 1);
-                ret |= self.rewrite_expression(x, inv_n, inv, 0);
+                rewrote |= self.rewrite_expression(f, inv_n, inv, n_args + 1);
+                rewrote |= self.rewrite_expression(x, inv_n, inv, 0);
                 true
             }
             Expression::Abstraction(ref mut body) => {
-                ret |= self.rewrite_expression(body, inv_n, inv, 0);
+                rewrote |= self.rewrite_expression(body, inv_n, inv, 0);
                 true
             }
             _ => false,
@@ -478,10 +457,10 @@ impl Language {
                     new_expr = Expression::Application(inner, Box::new(b.clone()));
                 }
                 *expr = new_expr;
-                ret = true
+                rewrote = true
             }
         }
-        ret
+        rewrote
     }
 
     /// Yields expressions that may have free variables.
@@ -541,12 +520,7 @@ impl<'a> TreeMatcher<'a> {
         bindings: &mut HashMap<usize, (Type, Expression)>,
         n_args: usize,
     ) -> Option<Type> {
-        let fragment = if let Expression::Invented(num) = *fragment {
-            &dsl.invented[num].0
-        } else {
-            fragment
-        };
-        if !Self::might_match(fragment, concrete, 0) {
+        if !Self::might_match(dsl, fragment, concrete, 0) {
             None
         } else if let Some(tp) = {
             let mut tm = TreeMatcher { dsl, ctx, bindings };
@@ -559,21 +533,34 @@ impl<'a> TreeMatcher<'a> {
     }
 
     /// Small tree comparison that doesn't update any bindings.
-    fn might_match(fragment: &Expression, concrete: &Expression, depth: usize) -> bool {
+    fn might_match(
+        dsl: &Language,
+        fragment: &Expression,
+        concrete: &Expression,
+        depth: usize,
+    ) -> bool {
         match *fragment {
             Expression::Index(i) if i >= depth => true,
             Expression::Abstraction(ref f_body) => {
                 if let Expression::Abstraction(ref e_body) = *concrete {
-                    Self::might_match(f_body, e_body, depth + 1)
+                    Self::might_match(dsl, f_body, e_body, depth + 1)
                 } else {
                     false
                 }
             }
             Expression::Application(ref f_f, ref f_x) => {
                 if let Expression::Application(ref c_f, ref c_x) = *concrete {
-                    Self::might_match(f_x, c_x, depth) && Self::might_match(f_f, c_f, depth)
+                    Self::might_match(dsl, f_x, c_x, depth)
+                        && Self::might_match(dsl, f_f, c_f, depth)
                 } else {
                     false
+                }
+            }
+            Expression::Invented(f_num) => {
+                if let Expression::Invented(c_num) = *concrete {
+                    f_num == c_num
+                } else {
+                    Self::might_match(dsl, &dsl.invented[f_num].0, concrete, depth)
                 }
             }
             _ => fragment == concrete,
@@ -605,9 +592,17 @@ impl<'a> TreeMatcher<'a> {
                 let tp = &self.dsl.primitives[f_num].1;
                 Some(tp.instantiate_indep(self.ctx))
             }
-            (&Expression::Invented(f_num), &Expression::Invented(c_num)) if f_num == c_num => {
-                let tp = &self.dsl.primitives[f_num].1;
-                Some(tp.instantiate_indep(self.ctx))
+            (&Expression::Invented(f_num), &Expression::Invented(c_num)) => {
+                if f_num == c_num {
+                    let tp = &self.dsl.invented[f_num].1;
+                    Some(tp.instantiate_indep(self.ctx))
+                } else {
+                    None
+                }
+            }
+            (&Expression::Invented(f_num), _) => {
+                let inv = &self.dsl.invented[f_num].0;
+                self.execute(inv, concrete, env, n_args)
             }
             (&Expression::Abstraction(ref f_body), &Expression::Abstraction(ref c_body)) => {
                 let arg = self.ctx.new_variable();
