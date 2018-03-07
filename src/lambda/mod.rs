@@ -38,8 +38,10 @@ mod enumerator;
 mod eval;
 mod compression;
 mod lisp;
+mod parser;
 pub use self::compression::Params;
 pub use self::lisp::LispEvaluator;
+pub use self::parser::ParseError;
 
 use std::collections::{HashMap, VecDeque};
 use std::f64;
@@ -48,29 +50,6 @@ use std::rc::Rc;
 use polytype::{Context, Type, UnificationError};
 use super::Task;
 use super::ec::{ECFrontier, EC};
-
-#[derive(Debug, Clone)]
-pub struct ParseError {
-    /// The location of the original string where parsing failed.
-    pub location: usize,
-    /// A message associated with the parse error.
-    pub msg: &'static str,
-}
-impl ParseError {
-    fn new(location: usize, msg: &'static str) -> Self {
-        Self { location, msg }
-    }
-}
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{} at index {}", self.msg, self.location)
-    }
-}
-impl ::std::error::Error for ParseError {
-    fn description(&self) -> &str {
-        "could not parse expression"
-    }
-}
 
 /// (representation) A Language is a registry for primitive and invented expressions in a
 /// polymorphically-typed lambda calculus with corresponding production log-probabilities.
@@ -324,18 +303,7 @@ impl Language {
     /// [`display`]: #method.display
     /// [`Index`]: enum.Expression.html#variant.Index
     pub fn parse(&self, inp: &str) -> Result<Expression, ParseError> {
-        let s = inp.trim_left();
-        let offset = inp.len() - s.len();
-        Expression::parse(self, s, offset).and_then(move |(di, expr)| {
-            if s[di..].chars().all(char::is_whitespace) {
-                Ok(expr)
-            } else {
-                Err(ParseError::new(
-                    offset + di,
-                    "expected end of expression, found more tokens",
-                ))
-            }
-        })
+        parser::parse(self, inp)
     }
     /// The inverse of [`parse`].
     ///
@@ -595,142 +563,6 @@ impl Expression {
                 format!("#{}", dsl.invented[num as usize].0.show(dsl, false))
             }
         }
-    }
-    /// inp must not have leading whitespace. Does not invent.
-    fn parse(
-        dsl: &Language,
-        inp: &str,
-        offset: usize, // for good error messages
-    ) -> Result<(usize, Expression), ParseError> {
-        let init: Option<Result<(usize, Expression), ParseError>> = None;
-
-        let primitive = || {
-            match inp.find(|c: char| c.is_whitespace() || c == ')') {
-                None if !inp.is_empty() => Some(inp.len()),
-                Some(next) if next > 0 => Some(next),
-                _ => None,
-            }.map(|di| {
-                if let Some(num) = dsl.primitives
-                    .iter()
-                    .position(|&(ref name, _, _)| name == &inp[..di])
-                {
-                    Ok((di, Expression::Primitive(num)))
-                } else {
-                    Err(ParseError::new(offset + di, "unexpected end of expression"))
-                }
-            })
-        };
-        let application = || {
-            inp.find('(')
-                .and_then(|i| {
-                    if inp[..i].chars().all(char::is_whitespace) {
-                        Some(i + 1)
-                    } else {
-                        None
-                    }
-                })
-                .map(|mut di| {
-                    let mut items = VecDeque::new();
-                    loop {
-                        // parse expr
-                        let (ndi, expr) = Expression::parse(dsl, &inp[di..], offset + di)?;
-                        items.push_back(expr);
-                        di += ndi;
-                        // skip spaces
-                        di += inp[di..].chars().take_while(|c| c.is_whitespace()).count();
-                        // check if complete
-                        match inp[di..].chars().nth(0) {
-                            None => {
-                                break Err(ParseError::new(offset + di, "incomplete application"))
-                            }
-                            Some(')') => {
-                                di += 1;
-                                break if let Some(init) = items.pop_front() {
-                                    let app = items.into_iter().fold(init, |a, v| {
-                                        Expression::Application(Box::new(a), Box::new(v))
-                                    });
-                                    Ok((di, app))
-                                } else {
-                                    Err(ParseError::new(offset + di, "empty application"))
-                                };
-                            }
-                            _ => (),
-                        }
-                    }
-                })
-        };
-        let abstraction = || {
-            inp.find('(')
-                .and_then(|i| {
-                    if inp[..i].chars().all(char::is_whitespace) {
-                        Some(i + 1)
-                    } else {
-                        None
-                    }
-                })
-                .and_then(|di| match inp[di..].find(char::is_whitespace) {
-                    Some(ndi) if &inp[di..di + ndi] == "lambda" || &inp[di..di + ndi] == "λ" => {
-                        Some(di + ndi)
-                    }
-                    _ => None,
-                })
-                .map(|mut di| {
-                    // skip spaces
-                    di += inp[di..].chars().take_while(|c| c.is_whitespace()).count();
-                    // parse body
-                    let (ndi, body) = Expression::parse(dsl, &inp[di..], offset + di)?;
-                    di += ndi;
-                    // check if complete
-                    inp[di..]
-                        .chars()
-                        .nth(0)
-                        .and_then(|c| if c == ')' { Some(di + 1) } else { None })
-                        .ok_or_else(|| ParseError::new(offset + di, "incomplete application"))
-                        .map(|di| (di, Expression::Abstraction(Box::new(body))))
-                })
-        };
-        let index = || {
-            if inp.chars().nth(0) == Some('$') && inp.len() > 1 {
-                inp[1..]
-                    .find(|c: char| c.is_whitespace() || c == ')')
-                    .and_then(|i| inp[1..1 + i].parse::<usize>().ok().map(|num| (1 + i, num)))
-                    .map(|(di, num)| Ok((di, Expression::Index(num))))
-            } else {
-                None
-            }
-        };
-        let invented = || {
-            if inp.chars().take(2).collect::<String>() == "#(" {
-                Some(1)
-            } else {
-                None
-            }.map(|mut di| {
-                let (ndi, expr) = Expression::parse(dsl, &inp[di..], offset + di)?;
-                di += ndi;
-                if let Some(num) = dsl.invented.iter().position(|&(ref x, _, _)| x == &expr) {
-                    Ok((di, Expression::Invented(num)))
-                } else {
-                    Err(ParseError::new(
-                        offset + di,
-                        "invented expr is unfamiliar to context",
-                    ))
-                }
-            })
-        };
-        // These parsers return None if the expr isn't applicable
-        // or Some(Err(..)) if the expr applied but was invalid.
-        // Ordering is intentional.
-        init.or_else(abstraction)
-            .or_else(application)
-            .or_else(index)
-            .or_else(invented)
-            .or_else(primitive)
-            .unwrap_or_else(|| {
-                Err(ParseError::new(
-                    offset,
-                    "could not parse any expression variant",
-                ))
-            })
     }
 }
 
