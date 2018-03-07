@@ -105,6 +105,7 @@ pub trait GP: Send + Sync + Sized {
                 new_exprs.append(&mut scored_children);
             }
         }
+        new_exprs.truncate(gpparams.n_delta);
         for child in new_exprs {
             sorted_place(child, population)
         }
