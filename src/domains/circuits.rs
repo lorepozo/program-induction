@@ -1,5 +1,6 @@
-//! The classic circuit domain as in the paper "Bootstrap Learning for Modular Concept Discovery"
-//! (2013).
+//! The Boolean circuit domain.
+//!
+//! As in the paper "Bootstrap Learning for Modular Concept Discovery" (2013).
 //!
 //! # Examples
 //!
