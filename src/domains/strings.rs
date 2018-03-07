@@ -11,7 +11,7 @@
 //! use programinduction::domains::strings;
 //!
 //! # fn main() {
-//! let dsl = strings::repr();
+//! let dsl = strings::dsl();
 //! let lisp = LispEvaluator::new(strings::lisp_prims());
 //! let task = lisp.make_task(
 //!     arrow![tp!(str), tp!(str)],
@@ -66,7 +66,7 @@ use super::super::lambda::Language;
 /// ```
 ///
 /// [`lambda::Language`]: ../../lambda/struct.Language.html
-pub fn repr() -> Language {
+pub fn dsl() -> Language {
     Language::uniform(vec![
         ("0", tp!(int)),
         ("+1", arrow![tp!(int), tp!(int)]),

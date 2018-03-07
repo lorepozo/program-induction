@@ -175,7 +175,28 @@ impl Language {
 
     /// Update production probabilities and induce new primitives, with the guarantee that any
     /// changes to the language yield net lower prior probability for expressions in the frontier.
-    // TODO: add example
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use programinduction::domains::circuits;
+    /// use programinduction::{lambda, ECParams, EC};
+    ///
+    /// let dsl = circuits::dsl();
+    /// let tasks = circuits::make_tasks(250);
+    /// let ec_params = ECParams {
+    ///     frontier_limit: 5,
+    ///     search_limit: 1000,
+    /// };
+    /// let params = lambda::Params::default();
+    ///
+    /// // this is equivalent to one iteration of EC:
+    /// let frontiers = dsl.explore(&ec_params, &tasks);
+    /// let (dsl, _frontiers) = dsl.compress(&params, &tasks, frontiers);
+    ///
+    /// // there should have been inventions because we started with a non-expressive DSL:
+    /// assert!(!dsl.invented.is_empty());
+    /// ```
     pub fn compress<O: Sync>(
         &self,
         params: &Params,

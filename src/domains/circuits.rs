@@ -7,7 +7,7 @@
 //! use programinduction::{ECParams, EC};
 //! use programinduction::domains::circuits;
 //!
-//! let dsl = circuits::repr();
+//! let dsl = circuits::dsl();
 //! let tasks = circuits::make_tasks(250);
 //! let ec_params = ECParams {
 //!     frontier_limit: 100,
@@ -35,7 +35,7 @@ use super::super::Task;
 /// ```
 ///
 /// [`lambda::Language`]: ../../lambda/struct.Language.html
-pub fn repr() -> Language {
+pub fn dsl() -> Language {
     Language::uniform(vec![("nand", arrow![tp!(bool), tp!(bool), tp!(bool)])])
 }
 
@@ -51,7 +51,7 @@ pub fn repr() -> Language {
 /// use programinduction::domains::circuits;
 ///
 /// # fn main() {
-/// let dsl = circuits::repr();
+/// let dsl = circuits::dsl();
 ///
 /// let examples = vec![ // NOT
 ///     (vec![false], true),

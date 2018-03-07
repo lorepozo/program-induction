@@ -170,7 +170,7 @@ pub trait EC: Send + Sync + Sized {
     ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
     ///     ],
     /// );
-    /// let ec_params = ECParams{
+    /// let ec_params = ECParams {
     ///     frontier_limit: 1,
     ///     search_limit: 50,
     /// };
