@@ -75,7 +75,7 @@ pub trait EC: Send + Sync + Sized {
     /// use programinduction::domains::circuits;
     ///
     /// # fn main() {
-    /// let mut dsl = circuits::repr();
+    /// let mut dsl = circuits::dsl();
     /// let tasks = circuits::make_tasks(250);
     /// let ec_params = ECParams {
     ///     frontier_limit: 10,
