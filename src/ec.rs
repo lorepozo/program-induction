@@ -286,7 +286,7 @@ impl<L: EC> ECFrontier<L> {
     pub fn best_solution(&self) -> Option<&(L::Expression, f64, f64)> {
         self.0
             .iter()
-            .max_by(|&&(_, _, ref x), &&(_, _, ref y)| x.partial_cmp(y).unwrap())
+            .max_by(|&&(_, xp, xl), &&(_, yp, yl)| (xp + xl).partial_cmp(&(yp + yl)).unwrap())
     }
 }
 impl<L: EC> Default for ECFrontier<L> {

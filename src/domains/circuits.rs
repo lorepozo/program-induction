@@ -42,6 +42,37 @@ pub fn repr() -> Language {
 /// Evaluate an expression in this domain in accordance with the argument of
 /// [`lambda::task_by_simple_evaluation`].
 ///
+/// # Examples
+///
+/// ```
+/// # #[macro_use] extern crate polytype;
+/// # extern crate programinduction;
+/// use programinduction::{lambda, ECParams, EC};
+/// use programinduction::domains::circuits;
+///
+/// # fn main() {
+/// let dsl = circuits::repr();
+///
+/// let examples = vec![ // NOT
+///     (vec![false], true),
+///     (vec![true], false),
+/// ];
+/// let task = lambda::task_by_simple_evaluation(
+///     &circuits::simple_evaluator,
+///     arrow![tp!(bool), tp!(bool)],
+///     &examples,
+/// );
+/// let ec_params = ECParams {
+///     frontier_limit: 1,
+///     search_limit: 100,
+/// };
+///
+/// let frontiers = dsl.explore(&ec_params, &[task]);
+/// let &(ref expr, _logprior, _loglikelihood) = frontiers[0].best_solution().unwrap();
+/// assert_eq!(dsl.display(expr), "(λ (nand $0 $0))");
+/// # }
+/// ```
+///
 /// [`lambda::task_by_simple_evaluation`]: ../../lambda/fn.task_by_simple_evaluation.html
 pub fn simple_evaluator(primitive: &str, inp: &[bool]) -> bool {
     match primitive {
