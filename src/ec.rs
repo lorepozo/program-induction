@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use polytype::Type;
 use rayon::prelude::*;
 
-use super::Task;
+use Task;
 
 /// Parameters for the EC algorithm.
 pub struct ECParams {

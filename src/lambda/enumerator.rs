@@ -3,6 +3,7 @@ use std::iter;
 use std::f64;
 use std::rc::Rc;
 use polytype::{Context, Type};
+
 use super::{Expression, Language, LinkedList};
 
 const BUDGET_INCREMENT: f64 = 1.0;

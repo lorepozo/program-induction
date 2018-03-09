@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use std::iter;
 use itertools::Itertools;
 use polytype::Type;
+
 use super::{AppliedRule, Grammar};
 
 pub fn new<'a>(g: &'a Grammar, nonterminal: Type) -> Box<Iterator<Item = (AppliedRule, f64)> + 'a> {

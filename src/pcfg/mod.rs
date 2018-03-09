@@ -49,7 +49,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use itertools::Itertools;
 use polytype::Type;
 use rayon::prelude::*;
-use super::{ECFrontier, Task, EC};
+
+use {ECFrontier, Task, EC};
 
 /// (representation) Probabilistic context-free grammar. Currently cannot handle bound variables or
 /// polymorphism.

@@ -4,7 +4,8 @@ use std::cmp::Ordering;
 use itertools::Itertools;
 use polytype::Type;
 use rand::{seq, Rng};
-use super::Task;
+
+use Task;
 
 /// Parameters for genetic programming.
 pub struct GPParams {

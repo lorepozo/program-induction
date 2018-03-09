@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use std::{error, fmt};
+
 use super::{Expression, Language};
 
 #[derive(Debug, Clone)]

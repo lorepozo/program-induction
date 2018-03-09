@@ -34,7 +34,7 @@
 //! # }
 //! ```
 
-use super::super::lambda::Language;
+use lambda::Language;
 
 /// The string editing [`lambda::Language`] defines the following operations:
 ///

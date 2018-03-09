@@ -37,10 +37,9 @@
 mod enumerator;
 mod eval;
 mod compression;
-mod lisp;
 mod parser;
 pub use self::compression::Params;
-pub use self::lisp::LispEvaluator;
+pub use self::eval::LispEvaluator;
 pub use self::parser::ParseError;
 
 use std::collections::{HashMap, VecDeque};
@@ -48,8 +47,8 @@ use std::f64;
 use std::fmt::{self, Debug};
 use std::rc::Rc;
 use polytype::{Context, Type, UnificationError};
-use super::Task;
-use super::ec::{ECFrontier, EC};
+
+use {ECFrontier, Task, EC};
 
 /// (representation) A Language is a registry for primitive and invented expressions in a
 /// polymorphically-typed lambda calculus with corresponding production log-probabilities.
@@ -227,7 +226,7 @@ impl Language {
         F: Fn(&str, &[V]) -> V,
         V: Clone + PartialEq + Debug,
     {
-        eval::ReducedExpression::new(self, expr).eval_inps(evaluator, inps)
+        eval::simple_eval(self, expr, evaluator, inps)
     }
 
     /// Get the log-likelihood of an expression normalized with other expressions with the given

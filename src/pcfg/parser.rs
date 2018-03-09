@@ -1,6 +1,7 @@
 use std::{error, fmt};
 use polytype::Type;
 use nom::types::CompleteStr;
+
 use super::{AppliedRule, Grammar, Rule};
 
 #[derive(Clone, Debug)]

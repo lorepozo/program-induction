@@ -1,11 +1,12 @@
-//! Only works with systems that don't have first order functions. (i.e. evaluation only
-//! happens by calling primitives.)
+//! Only works with systems that don't have first order functions.
+//! Evaluation only happens by calling primitives provided by a simple evaluator.
 
 use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::rc::Rc;
 use polytype::Type;
-use super::{Expression, Language};
+
+use lambda::{Expression, Language};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ReducedExpression<'a, V: Clone + PartialEq + Debug> {
@@ -23,6 +24,7 @@ where
     pub fn new(dsl: &'a Language, expr: &Expression) -> Self {
         Self::from_expr(dsl, &dsl.strip_invented(expr))
     }
+    /// Evaluation here is "simple". For more complex evaluation, see self::lisp.
     pub fn eval_inps<F>(&self, evaluator: &F, inps: &[V]) -> Option<V>
     where
         F: Fn(&str, &[V]) -> V,

@@ -26,8 +26,9 @@ use itertools::Itertools;
 use polytype::Type;
 use rand;
 use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
-use super::super::lambda::{Expression, Language};
-use super::super::Task;
+
+use Task;
+use lambda::{Expression, Language};
 
 /// The circuit representation, a [`lambda::Language`], only defines the binary `nand` operation.
 ///

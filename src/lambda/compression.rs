@@ -5,8 +5,9 @@ use std::rc::Rc;
 use itertools::Itertools;
 use polytype::{Context, Type};
 use rayon::prelude::*;
+
+use {ECFrontier, Task};
 use super::{Expression, Language, LinkedList};
-use super::super::{ECFrontier, Task};
 
 const BOUND_VAR_COST: f64 = 0.1;
 const FREE_VAR_COST: f64 = 0.01;
