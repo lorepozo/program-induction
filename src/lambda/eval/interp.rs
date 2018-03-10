@@ -71,11 +71,6 @@ fn eval_sexp(sexp: &Sexp, env: &mut Env) -> Result<Value, LispError> {
         Sexp::Pair(ref car, ref cdr) => {
             let mut xs = VecDeque::new();
             read_list(cdr, env, &mut xs);
-            assert_eq!(
-                xs.pop_back().unwrap(),
-                Sexp::Null,
-                "invalid list (was not null-terminated)"
-            );
             let f = eval_sexp(car, env)?;
             eval_call(f, xs, env)
         }
@@ -737,7 +732,7 @@ mod builtin {
                         .map(|(v, f)| {
                             eval_call_nonspecial(f, vec![v.clone()].into(), env).map(|x| (x, v))
                         })
-                        .collect::<Result<Vec<_>, LispError>>()?;
+                        .collect::<Result<Vec<_>, LispError>>()?; // collect to ensure all Ok
                     let items = evaluated
                         .into_iter()
                         .filter_map(|(x, v)| match x {

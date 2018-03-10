@@ -63,7 +63,6 @@ fn likelihood_internal<'a>(
             Some((f_l, _, f_tp, ctx)) => {
                 if let Type::Arrow(f_tp) = f_tp {
                     let arg_tps = f_tp.args();
-                    assert_eq!(xs.len(), arg_tps.len());
                     xs.into_iter()
                         .zip(arg_tps)
                         .fold((f_l, ctx), |(l, ctx), (x, x_tp)| {
@@ -71,7 +70,6 @@ fn likelihood_internal<'a>(
                             (l + x_l, ctx)
                         })
                 } else {
-                    assert!(xs.is_empty());
                     (f_l, ctx)
                 }
             }
