@@ -10,3 +10,7 @@ polytype = "1.2"
 rand = "0.4"
 rayon = "1.0"
 workerpool = "1.1"
+
+[features]
+default = ["racket"]
+racket = []
