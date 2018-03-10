@@ -48,7 +48,7 @@ pub enum LispError {
 ///     ("1", tp!(int)),
 /// ]);
 /// let lisp = LispEvaluator::new(vec![
-///     // only one primitive in our DSL doesn't match what's provided by racket:
+///     // only one primitive in our DSL doesn't match what's provided by the interpreter:
 ///     ("*2", "(λ (x) (* x 2))"),
 /// ]);
 ///
@@ -166,7 +166,7 @@ impl LispEvaluator {
     ///     ("2", tp!(int)),
     /// ]);
     /// let lisp = LispEvaluator::new(vec![
-    ///     // only one primitive in our DSL doesn't match what's provided by racket:
+    ///     // only one primitive in our DSL doesn't match what's provided by the interpreter:
     ///     ("*2", "(λ (x) (* x 2))"),
     /// ]);
     ///
