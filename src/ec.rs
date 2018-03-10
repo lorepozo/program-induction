@@ -276,7 +276,7 @@ where
 ///
 /// Stores tuples of [`Expression`], log-prior, and log-likelihood.
 ///
-/// [`Expression`]: trait.EC.html#associatetype.Expression
+/// [`Expression`]: trait.EC.html#associatedtype.Expression
 #[derive(Clone, Debug)]
 pub struct ECFrontier<L: EC>(pub Vec<(L::Expression, f64, f64)>);
 impl<L: EC> ECFrontier<L> {
