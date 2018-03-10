@@ -221,6 +221,8 @@ impl LispEvaluator {
     }
     /// Like [`make_task`], but doesn't treat expressions as unary procedures: they are evaluated
     /// and directly compared against the output.
+    ///
+    /// [`make_task`]: #method.make_task
     pub fn make_task_output_only<'a>(
         &'a self,
         tp: Type,

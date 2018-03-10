@@ -26,8 +26,8 @@ pub struct ECParams {
 /// Typically, you will interact with this trait via existing implementations, such as with
 /// [`lambda::Language`] or [`pcfg::Grammar`].
 ///
-/// [`enumerate`]: #method.enumerator
-/// [`compress`]: #method.compress
+/// [`enumerate`]: #tymethod.enumerate
+/// [`compress`]: #tymethod.compress
 /// [`ec`]: #method.ec
 /// [`ec_with_recognition`]: #method.ec_with_recognition
 /// [`explore`]: #method.explore
@@ -45,7 +45,7 @@ pub trait EC: Send + Sync + Sized {
     ///
     /// This will in most cases iterate infinitely, giving increasingly complex expressions.
     ///
-    /// [`Expression`]: ../trait.EC.html#associatedtype.Expression
+    /// [`Expression`]: #associatedtype.Expression
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Self::Expression, f64)> + 'a>;
     /// Update the representation based on findings of expressions that solve [`Task`]s.
     ///
@@ -53,7 +53,7 @@ pub trait EC: Send + Sync + Sized {
     /// `tasks`. Each frontier is a possibly-empty list of expressions that solve the corresponding
     /// task, and the log-prior and log-likelihood for that expression.
     ///
-    /// [`Task`]: ../struct.Task.html
+    /// [`Task`]: struct.Task.html
     fn compress<O: Sync>(
         &self,
         params: &Self::Params,

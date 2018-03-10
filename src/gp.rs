@@ -24,9 +24,9 @@ pub struct GPParams {
 /// Implementors of `GP` must provide methods for [`genesis`], [`mutate`], [`crossover`]. A
 /// [`Task`] provides a fitness function via its [`oracle`].
 ///
-/// [`genesis`]: #method.genesis
-/// [`mutate`]: #method.mutate
-/// [`crossover`]: #method.crossover
+/// [`genesis`]: #tymethod.genesis
+/// [`mutate`]: #tymethod.mutate
+/// [`crossover`]: #tymethod.crossover
 /// [`Task`]: struct.Task.html
 /// [`oracle`]: struct.Task.html#structfield.oracle
 pub trait GP: Send + Sync + Sized {

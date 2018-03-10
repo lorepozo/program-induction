@@ -102,7 +102,7 @@ impl Language {
     /// # }
     /// ```
     ///
-    /// [`Expression`]: ../enum.Expression.html
+    /// [`Expression`]: enum.Expression.html
     pub fn infer(&self, expr: &Expression) -> Result<Type, InferenceError> {
         let mut ctx = Context::default();
         let env = VecDeque::new();
