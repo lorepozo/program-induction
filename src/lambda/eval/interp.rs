@@ -71,6 +71,7 @@ fn eval_sexp(sexp: &Sexp, env: &mut Env) -> Result<Value, LispError> {
         Sexp::Pair(ref car, ref cdr) => {
             let mut xs = VecDeque::new();
             read_list(cdr, env, &mut xs);
+            xs.pop_back(); // no null
             let f = eval_sexp(car, env)?;
             eval_call(f, xs, env)
         }
