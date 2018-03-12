@@ -2,6 +2,14 @@
 name = "programinduction"
 version = "0.1.0"
 authors = ["Lucas Morales <lucas@lucasem.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/lucasem/program-induction"
+homepage = "https://github.com/lucasem/program-induction"
+documentation = "https://docs.rs/programinduction"
+description = "A library for program induction and learning representations."
+keywords = ["language", "inference", "bayesian", "genetic", "learning"]
+categories = ["algorithms", "science"]
 
 [dependencies]
 itertools = "0.7"
@@ -12,5 +20,5 @@ rayon = "1.0"
 workerpool = "1.1"
 
 [features]
-default = ["racket"]
+default = []
 racket = []
