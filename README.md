@@ -1,6 +1,6 @@
 # programinduction
 
-[![Build Status](https://travis-ci.org/lucasem/programinduction.svg?branch=master)](https://travis-ci.org/lucasem/programinduction)
+[![Build Status](https://travis-ci.org/lucasem/program-induction.svg?branch=master)](https://travis-ci.org/lucasem/program-induction)
 [![crates.io](https://img.shields.io/crates/v/programinduction.svg)](https://crates.io/crates/programinduction)
 [![docs.rs](https://docs.rs/programinduction/badge.svg)](https://docs.rs/programinduction)
 
