@@ -38,7 +38,7 @@ mod enumerator;
 mod eval;
 mod compression;
 mod parser;
-pub use self::compression::Params;
+pub use self::compression::CompressionParams;
 pub use self::eval::LispEvaluator;
 pub use self::parser::ParseError;
 
@@ -166,7 +166,7 @@ impl Language {
     ///     frontier_limit: 5,
     ///     search_limit: 1000,
     /// };
-    /// let params = lambda::Params::default();
+    /// let params = lambda::CompressionParams::default();
     ///
     /// // this is equivalent to one iteration of EC:
     /// let frontiers = dsl.explore(&ec_params, &tasks);
@@ -177,7 +177,7 @@ impl Language {
     /// ```
     pub fn compress<O: Sync>(
         &self,
-        params: &Params,
+        params: &CompressionParams,
         tasks: &[Task<Language, Expression, O>],
         frontiers: Vec<ECFrontier<Self>>,
     ) -> (Self, Vec<ECFrontier<Self>>) {
@@ -389,7 +389,7 @@ impl Language {
 }
 impl EC for Language {
     type Expression = Expression;
-    type Params = Params;
+    type Params = CompressionParams;
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
         self.enumerate(tp)
     }

@@ -81,7 +81,7 @@ pub trait EC: Send + Sync + Sized {
     ///     frontier_limit: 10,
     ///     search_limit: 1000,
     /// };
-    /// let params = lambda::Params::default();
+    /// let params = lambda::CompressionParams::default();
     ///
     /// let mut frontiers = Vec::new();
     /// for i in 1..6 {

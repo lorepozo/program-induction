@@ -17,7 +17,7 @@ const FREE_VAR_COST: f64 = 0.01;
 /// Proposed grammars are scored as `likelihood - aic * #primitives - structure_penalty * #nodes`.
 /// Additionally, `pseudocounts` affects the likelihood calculation, and `topk` and `arity` affect
 /// what fragments can be proposed.
-pub struct Params {
+pub struct CompressionParams {
     /// Pseudocounts are added to the observed counts associated with each primitive and invented
     /// expression.
     pub pseudocounts: u64,
@@ -36,13 +36,13 @@ pub struct Params {
     /// a fragment.
     pub arity: u32,
 }
-impl Default for Params {
+impl Default for CompressionParams {
     /// The default params prevent completely discarding of primives by having non-zero
     /// pseudocounts.
     ///
     /// ```
-    /// # use programinduction::lambda::Params;
-    /// Params {
+    /// # use programinduction::lambda::CompressionParams;
+    /// CompressionParams {
     ///     pseudocounts: 5,
     ///     topk: 2,
     ///     structure_penalty: 1f64,
@@ -52,7 +52,7 @@ impl Default for Params {
     /// # ;
     /// ```
     fn default() -> Self {
-        Params {
+        CompressionParams {
             pseudocounts: 5,
             topk: 2,
             structure_penalty: 1f64,
@@ -73,7 +73,7 @@ impl<'a> From<RescoredFrontier<'a>> for ECFrontier<Language> {
 
 pub fn induce<O: Sync>(
     dsl: &Language,
-    params: &Params,
+    params: &CompressionParams,
     tasks: &[Task<Language, Expression, O>],
     mut original_frontiers: Vec<ECFrontier<Language>>,
 ) -> (Language, Vec<ECFrontier<Language>>) {

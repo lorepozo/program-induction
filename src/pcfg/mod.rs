@@ -134,7 +134,7 @@ impl Grammar {
     /// Set parameters based on supplied sentences. This is performed by [`Grammar::compress`].
     ///
     /// [`Grammar::compress`]: ../trait.EC.html#method.compress
-    pub fn update_parameters(&mut self, params: &Params, sentences: &[AppliedRule]) {
+    pub fn update_parameters(&mut self, params: &EstimationParams, sentences: &[AppliedRule]) {
         let mut counts: HashMap<Type, Vec<AtomicUsize>> = HashMap::new();
         // initialize counts to pseudocounts
         for (nt, rs) in &self.rules {
@@ -280,7 +280,7 @@ impl Grammar {
 }
 impl EC for Grammar {
     type Expression = AppliedRule;
-    type Params = Params;
+    type Params = EstimationParams;
 
     fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Self::Expression, f64)> + 'a> {
         self.enumerate_nonterminal(tp)
@@ -325,20 +325,20 @@ impl EC for Grammar {
 }
 
 /// Parameters for PCFG parameter estimation.
-pub struct Params {
+pub struct EstimationParams {
     pub pseudocounts: u64,
 }
-impl Default for Params {
-    /// The default for PCFG `Params` prevents completely discarding rules by having non-zero
-    /// pseudocounts:
+impl Default for EstimationParams {
+    /// The default for PCFG `EstimationParams` prevents completely discarding rules by having
+    /// non-zero pseudocounts:
     ///
     /// ```
-    /// # use programinduction::pcfg::Params;
-    /// Params { pseudocounts: 1 }
+    /// # use programinduction::pcfg::EstimationParams;
+    /// EstimationParams { pseudocounts: 1 }
     /// # ;
     /// ```
     fn default() -> Self {
-        Params { pseudocounts: 1 }
+        EstimationParams { pseudocounts: 1 }
     }
 }
 
