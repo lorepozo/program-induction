@@ -48,6 +48,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use itertools::Itertools;
 use polytype::Type;
+use rand::Rng;
 use rayon::prelude::*;
 
 use {ECFrontier, Task, EC};
@@ -200,6 +201,32 @@ impl Grammar {
             .map(|ar| self.eval(ar, simple_evaluator))
             .collect();
         simple_evaluator(self.rules[&ar.0][ar.1].name, &args)
+    }
+    /// Sample a statement of the PCFG.
+    ///
+    /// ```
+    /// #[macro_use] extern crate polytype;
+    /// extern crate programinduction;
+    /// extern crate rand;
+    /// # fn main() {
+    ///
+    /// use programinduction::pcfg::{Grammar, Rule};
+    ///
+    /// let g = Grammar::new(
+    ///     tp!(EXPR),
+    ///     vec![
+    ///         Rule::new("0", tp!(EXPR), 1.0),
+    ///         Rule::new("1", tp!(EXPR), 1.0),
+    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
+    ///     ],
+    /// );
+    /// let ar = g.sample(&tp!(EXPR), &mut rand::thread_rng());
+    /// assert_eq!(&ar.0, &tp!(EXPR));
+    /// println!("{}", g.display(&ar));
+    /// # }
+    /// ```
+    pub fn sample<R: Rng>(&self, tp: &Type, rng: &mut R) -> AppliedRule {
+        enumerator::sample(self, tp, rng)
     }
     /// Get the log-likelihood of an expansion for the given nonterminal.
     ///

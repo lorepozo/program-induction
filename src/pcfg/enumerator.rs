@@ -2,9 +2,12 @@ const BUDGET_INCREMENT: f64 = 2.0;
 const MAX_DEPTH: u32 = 512;
 
 use std::collections::VecDeque;
+use std::f64;
 use std::iter;
 use itertools::Itertools;
 use polytype::Type;
+use rand::distributions::{IndependentSample, Range};
+use rand::Rng;
 
 use super::{AppliedRule, Grammar};
 
@@ -71,4 +74,24 @@ fn enumerate_many<'a>(
     } else {
         Box::new(iter::empty())
     }
+}
+
+pub fn sample<R: Rng>(g: &Grammar, tp: &Type, rng: &mut R) -> AppliedRule {
+    let mut t = Range::new(0f64, 1.0).ind_sample(rng);
+    for (i, r) in g.rules[tp].iter().enumerate() {
+        t -= r.logprob.exp();
+        if t < 0f64 {
+            // selected a rule
+            let args = if let Type::Arrow(ref arr) = r.production {
+                arr.args()
+                    .into_iter()
+                    .map(|tp| sample(g, tp, rng))
+                    .collect()
+            } else {
+                vec![]
+            };
+            return AppliedRule(tp.clone(), i, args);
+        }
+    }
+    panic!("rules were not normalized");
 }
