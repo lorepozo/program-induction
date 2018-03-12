@@ -49,9 +49,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use itertools::Itertools;
 use polytype::Type;
 use rand::Rng;
+use rand::distributions::{IndependentSample, Range};
 use rayon::prelude::*;
 
-use {ECFrontier, Task, EC};
+use {ECFrontier, Task, EC, GP};
 
 /// (representation) Probabilistic context-free grammar. Currently cannot handle bound variables or
 /// polymorphism.
@@ -305,6 +306,25 @@ impl Grammar {
         }
     }
 }
+
+/// Parameters for PCFG parameter estimation.
+pub struct EstimationParams {
+    pub pseudocounts: u64,
+}
+impl Default for EstimationParams {
+    /// The default for PCFG `EstimationParams` prevents completely discarding rules by having
+    /// non-zero pseudocounts:
+    ///
+    /// ```
+    /// # use programinduction::pcfg::EstimationParams;
+    /// EstimationParams { pseudocounts: 1 }
+    /// # ;
+    /// ```
+    fn default() -> Self {
+        EstimationParams { pseudocounts: 1 }
+    }
+}
+
 impl EC for Grammar {
     type Expression = AppliedRule;
     type Params = EstimationParams;
@@ -351,21 +371,72 @@ impl EC for Grammar {
     }
 }
 
-/// Parameters for PCFG parameter estimation.
-pub struct EstimationParams {
-    pub pseudocounts: u64,
+/// Parameters for PCFG genetic programming ([`GP`]).
+///
+/// Values for each `mutation_` field should be probabilities that sum to 1. Every mutation will
+/// randomly select one of these variants.
+///
+/// [`GP`]: ../trait.GP.html
+pub struct GeneticParams {
+    pub max_crossover_depth: u32,
+    pub mutation_point: f64,
+    pub mutation_subtree: f64,
+    pub mutation_reproduction: f64,
 }
-impl Default for EstimationParams {
-    /// The default for PCFG `EstimationParams` prevents completely discarding rules by having
-    /// non-zero pseudocounts:
-    ///
-    /// ```
-    /// # use programinduction::pcfg::EstimationParams;
-    /// EstimationParams { pseudocounts: 1 }
-    /// # ;
-    /// ```
-    fn default() -> Self {
-        EstimationParams { pseudocounts: 1 }
+
+impl GP for Grammar {
+    type Expression = AppliedRule;
+    type Params = GeneticParams;
+
+    fn genesis<R: Rng>(
+        &self,
+        _params: &Self::Params,
+        rng: &mut R,
+        pop_size: usize,
+        tp: &Type,
+    ) -> Vec<Self::Expression> {
+        (0..pop_size).map(|_| self.sample(tp, rng)).collect()
+    }
+    fn mutate<R: Rng>(
+        &self,
+        params: &Self::Params,
+        rng: &mut R,
+        prog: &Self::Expression,
+    ) -> Self::Expression {
+        let tot = params.mutation_point + params.mutation_subtree + params.mutation_reproduction;
+        let _ = rng;
+        match Range::new(0f64, tot).ind_sample(rng) {
+            x if x < params.mutation_point => mutate_random_node(prog.clone(), rng, |ar, rng| {
+                let rule = &self.rules[&ar.0][ar.1];
+                let mut candidates: Vec<_> = self.rules[&ar.0]
+                    .iter()
+                    .enumerate()
+                    .filter(|&(i, ref r)| r.production == rule.production && i != ar.1)
+                    .map(|(i, _)| i)
+                    .collect();
+                if candidates.is_empty() {
+                    ar
+                } else {
+                    rng.shuffle(&mut candidates);
+                    AppliedRule(ar.0, candidates[0], ar.2)
+                }
+            }),
+            x if x < params.mutation_point + params.mutation_subtree => {
+                mutate_random_node(prog.clone(), rng, |ar, rng| self.sample(&ar.0, rng))
+            }
+            _ => prog.clone(), // reproduction
+        }
+    }
+    fn crossover<R: Rng>(
+        &self,
+        params: &Self::Params,
+        rng: &mut R,
+        parent1: &Self::Expression,
+        parent2: &Self::Expression,
+    ) -> Vec<Self::Expression> {
+        // TODO
+        let _ = (rng, params);
+        vec![parent1.clone(), parent2.clone()]
     }
 }
 
@@ -490,4 +561,13 @@ where
         observation: output,
         tp,
     }
+}
+
+fn mutate_random_node<R, F>(ar: AppliedRule, rng: &mut R, mutation: F) -> AppliedRule
+where
+    R: Rng,
+    F: Fn(AppliedRule, &mut R) -> AppliedRule,
+{
+    // TODO: set ar to a random node within the tree (see commented code below)
+    mutation(ar, rng)
 }

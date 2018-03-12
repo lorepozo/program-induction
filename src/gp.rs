@@ -32,16 +32,30 @@ pub struct GPParams {
 pub trait GP: Send + Sync + Sized {
     /// An Expression is a sentence in the representation. **Tasks are solved by Expressions**.
     type Expression: Clone + Send;
+    /// Extra parameters for a representation go here.
+    type Params;
 
     /// Create an initial population for a particular requesting type.
-    fn genesis<R: Rng>(&self, rng: &mut R, pop_size: usize, tp: &Type) -> Vec<Self::Expression>;
+    fn genesis<R: Rng>(
+        &self,
+        params: &Self::Params,
+        rng: &mut R,
+        pop_size: usize,
+        tp: &Type,
+    ) -> Vec<Self::Expression>;
 
     /// Mutate a single program.
-    fn mutate<R: Rng>(&self, rng: &mut R, prog: &Self::Expression) -> Self::Expression;
+    fn mutate<R: Rng>(
+        &self,
+        params: &Self::Params,
+        rng: &mut R,
+        prog: &Self::Expression,
+    ) -> Self::Expression;
 
     /// Perform crossover between two programs. There must be at least one child.
     fn crossover<R: Rng>(
         &self,
+        params: &Self::Params,
         rng: &mut R,
         parent1: &Self::Expression,
         parent2: &Self::Expression,
@@ -64,11 +78,12 @@ pub trait GP: Send + Sync + Sized {
 
     fn init<R: Rng, O: Sync>(
         &self,
+        params: &Self::Params,
         rng: &mut R,
         gpparams: &GPParams,
         task: &Task<Self, Self::Expression, O>,
     ) -> Vec<(Self::Expression, f64)> {
-        let exprs = self.genesis(rng, gpparams.population_size, &task.tp);
+        let exprs = self.genesis(params, rng, gpparams.population_size, &task.tp);
         exprs
             .into_iter()
             .map(|expr| {
@@ -80,6 +95,7 @@ pub trait GP: Send + Sync + Sized {
 
     fn evolve<R: Rng, O: Sync>(
         &self,
+        params: &Self::Params,
         rng: &mut R,
         gpparams: &GPParams,
         task: &Task<Self, Self::Expression, O>,
@@ -89,13 +105,13 @@ pub trait GP: Send + Sync + Sized {
         while new_exprs.len() < gpparams.n_delta {
             if rng.gen_range(0f64, 1f64) < gpparams.mutation_prob {
                 let parent = self.tournament(rng, gpparams.tournament_size, population);
-                let child = self.mutate(rng, parent);
+                let child = self.mutate(params, rng, parent);
                 let fitness = (task.oracle)(self, &child);
                 new_exprs.push((child, fitness));
             } else {
                 let parent1 = self.tournament(rng, gpparams.tournament_size, population);
                 let parent2 = self.tournament(rng, gpparams.tournament_size, population);
-                let children = self.crossover(rng, parent1, parent2);
+                let children = self.crossover(params, rng, parent1, parent2);
                 let mut scored_children = children
                     .into_iter()
                     .map(|child| {
@@ -114,14 +130,15 @@ pub trait GP: Send + Sync + Sized {
 
     fn init_and_evolve<R: Rng, O: Sync>(
         &self,
+        params: &Self::Params,
         rng: &mut R,
         gpparams: &GPParams,
         task: &Task<Self, Self::Expression, O>,
         generations: u32,
     ) -> Vec<(Self::Expression, f64)> {
-        let mut pop = self.init(rng, gpparams, task);
+        let mut pop = self.init(params, rng, gpparams, task);
         for _ in 0..generations {
-            self.evolve(rng, gpparams, task, &mut pop)
+            self.evolve(params, rng, gpparams, task, &mut pop)
         }
         pop
     }
