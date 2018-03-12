@@ -1,4 +1,4 @@
-# programinduction
+# program-induction
 
 [![Build Status](https://travis-ci.org/lucasem/program-induction.svg?branch=master)](https://travis-ci.org/lucasem/program-induction)
 [![crates.io](https://img.shields.io/crates/v/programinduction.svg)](https://crates.io/crates/programinduction)
