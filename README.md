@@ -22,7 +22,7 @@ polytype = "1.2"
 
 ## Usage
 
-Specify a Probabilistic Context-Free Grammar (PCFG; see `pcfg::Grammar`) and
+Specify a probabilistic context-free grammar (PCFG; see `pcfg::Grammar`) and
 induce a sentence that matches an example:
 
 ```rust
