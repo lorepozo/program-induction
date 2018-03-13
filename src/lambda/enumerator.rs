@@ -33,12 +33,9 @@ fn new_par(dsl: Language, request: Type, budget: (f64, f64)) -> mpsc::IntoIter<(
                 let e = enumerate(&dsl, request.clone(), &ctx, env.clone(), budget, 0)
                     .map(|(log_prior, _, expr)| (expr, log_prior));
                 for (expr, logprior) in e {
-                    match tx.send((expr.clone(), logprior)) {
-                        Err(_) => {
-                            // receiving end was dropped
-                            break;
-                        }
-                        _ => (),
+                    if tx.send((expr.clone(), logprior)).is_err() {
+                        // receiving end was dropped
+                        break;
                     }
                 }
             })
@@ -60,11 +57,11 @@ fn exponential_decay(budget: (f64, f64)) -> Vec<(f64, f64)> {
         x if x < 17. => 64,
         _ => 256,
     };
-    let step = (budget.1.exp() - budget.0.exp()) / (pieces as f64);
+    let step = (budget.1.exp() - budget.0.exp()) / (f64::from(pieces));
     let mut v = Vec::new();
     let mut prev = budget.0;
     for x in (1..(pieces + 1))
-        .map(|i| budget.0.exp() + (i as f64) * step)
+        .map(|i| budget.0.exp() + (f64::from(i)) * step)
         .map(f64::ln)
     {
         v.push((prev, x));
