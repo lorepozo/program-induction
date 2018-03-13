@@ -32,7 +32,7 @@ use polytype::Type;
 /// [`lambda::task_by_simple_evaluation`]: lambda/fn.task_by_simple_evaluation.html
 /// [`pcfg::task_by_simple_evaluation`]: pcfg/fn.task_by_simple_evaluation.html
 /// [`lambda::LispEvaluator`]: lambda/struct.LispEvaluator.html
-pub struct Task<'a, R: Send + Sync + Sized, X: Clone + Send, O: Sync> {
+pub struct Task<'a, R: Send + Sync + Sized, X: Clone + Send + Sync, O: Sync> {
     /// Evaluate an expression by getting its log-likelihood.
     pub oracle: Box<Fn(&R, &X) -> f64 + Send + Sync + 'a>,
     /// Some program induction methods can take advantage of observations. This may often

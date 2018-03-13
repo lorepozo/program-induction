@@ -31,7 +31,7 @@ pub struct GPParams {
 /// [`oracle`]: struct.Task.html#structfield.oracle
 pub trait GP: Send + Sync + Sized {
     /// An Expression is a sentence in the representation. **Tasks are solved by Expressions**.
-    type Expression: Clone + Send;
+    type Expression: Clone + Send + Sync;
     /// Extra parameters for a representation go here.
     type Params;
 

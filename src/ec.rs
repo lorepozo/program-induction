@@ -35,7 +35,7 @@ pub struct ECParams {
 /// [`pcfg::Grammar`]: pcfg/struct.Grammar.html
 pub trait EC: Send + Sync + Sized {
     /// An Expression is a sentence in the representation. Tasks are solved by Expressions.
-    type Expression: Clone + Send;
+    type Expression: Clone + Send + Sync;
     /// Many representations have some parameters for compression. They belong here.
     type Params;
 
@@ -241,7 +241,7 @@ fn enumerate_solutions<L, X, O: Sync>(
     mut tasks: Vec<(usize, &Task<L, X, O>)>,
 ) -> HashMap<usize, ECFrontier<L>>
 where
-    X: Send + Clone,
+    X: Send + Sync + Clone,
     L: EC<Expression = X>,
 {
     let mut frontiers = HashMap::new();
