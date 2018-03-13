@@ -13,11 +13,13 @@ const BUDGET_INCREMENT: f64 = 1.0;
 const MAX_DEPTH: u32 = 256;
 
 pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
-    let budget = |offset: f64| (offset, offset + BUDGET_INCREMENT);
+    let to_budget = |offset: f64| (offset, offset + BUDGET_INCREMENT);
     Box::new(
         (0..)
             .map(|n| BUDGET_INCREMENT * f64::from(n))
-            .flat_map(move |offset| new_par(dsl.clone(), request.clone(), budget(offset))),
+            .map(to_budget)
+            .zip(iter::repeat((dsl.clone(), request)))
+            .flat_map(|(budget, (dsl, request))| new_par(dsl, request, budget)),
     )
 }
 
@@ -33,7 +35,7 @@ fn new_par(dsl: Language, request: Type, budget: (f64, f64)) -> mpsc::IntoIter<(
                 let e = enumerate(&dsl, request.clone(), &ctx, env.clone(), budget, 0)
                     .map(|(log_prior, _, expr)| (expr, log_prior));
                 for (expr, logprior) in e {
-                    if tx.send((expr.clone(), logprior)).is_err() {
+                    if tx.send((expr, logprior)).is_err() {
                         // receiving end was dropped
                         break;
                     }
