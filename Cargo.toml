@@ -20,5 +20,4 @@ rayon = "1.0"
 workerpool = "1.1"
 
 [features]
-default = []
 racket = []

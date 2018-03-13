@@ -32,6 +32,15 @@ pub enum LispError {
 /// - rational and complex numbers
 /// - some obviously sophisticated things (e.g. continuations)
 ///
+/// If you want a more sophisticated lisp interpreter, you can install racket and enable the racket
+/// feature which will spawn threads for evaluating expressions with the racket REPL.
+///
+/// ```toml
+/// [dependencies.programinduction]
+/// version = "0.1"
+/// features = ["racket"]
+/// ```
+///
 /// # Examples
 ///
 /// ```
