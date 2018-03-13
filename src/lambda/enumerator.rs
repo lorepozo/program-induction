@@ -2,6 +2,9 @@ use std::collections::VecDeque;
 use std::iter;
 use std::f64;
 use std::rc::Rc;
+use std::sync::mpsc::{self, channel};
+use rayon::prelude::*;
+use rayon;
 use polytype::{Context, Type};
 
 use super::{Expression, Language, LinkedList};
@@ -11,23 +14,46 @@ const MAX_DEPTH: u32 = 256;
 
 pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
     let budget = |offset: f64| (offset, offset + BUDGET_INCREMENT);
-    let ctx = Context::default();
-    let env = Rc::new(LinkedList::default());
-    let depth = 0;
     Box::new(
         (0..)
             .map(|n| BUDGET_INCREMENT * f64::from(n))
-            .flat_map(move |offset| {
-                enumerate(
-                    dsl,
-                    request.clone(),
-                    &ctx,
-                    env.clone(),
-                    budget(offset),
-                    depth,
-                ).map(move |(log_prior, _, expr)| (expr, log_prior))
-            }),
+            .flat_map(move |offset| new_par(dsl.clone(), request.clone(), budget(offset))),
     )
+}
+
+/// enumerate expressions in parallel within the budget interval
+fn new_par(dsl: Language, request: Type, budget: (f64, f64)) -> mpsc::IntoIter<(Expression, f64)> {
+    let (tx, rx) = channel();
+    rayon::spawn(move || {
+        rayon::iter::repeat(tx)
+            .zip(exponential_decay(budget, 256))
+            .for_each(|(tx, budget)| {
+                let ctx = Context::default();
+                let env = Rc::new(LinkedList::default());
+                enumerate(&dsl, request.clone(), &ctx, env.clone(), budget, 0)
+                    .map(|(log_prior, _, expr)| (expr, log_prior))
+                    .for_each(|(expr, logprior)| tx.send((expr, logprior)).expect("send"))
+            })
+    });
+    rx.into_iter()
+}
+
+fn exponential_decay(budget: (f64, f64), pieces: usize) -> Vec<(f64, f64)> {
+    // because depth values correspond to description length in nats, we
+    // assume that for pieces to have the same total description coverage
+    // (which should correspond roughly to enumerate time), their budget
+    // widths follow exponential decay.
+    let step = (budget.1.exp() - budget.0.exp()) / (pieces as f64);
+    let mut v = Vec::new();
+    let mut prev = budget.0;
+    for x in (1..(pieces + 1))
+        .map(|i| budget.0.exp() + (i as f64) * step)
+        .map(f64::ln)
+    {
+        v.push((prev, x));
+        prev = x;
+    }
+    v
 }
 
 pub fn likelihood<'a>(dsl: &'a Language, request: &Type, expr: &Expression) -> f64 {
