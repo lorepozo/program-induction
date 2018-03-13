@@ -9,3 +9,12 @@ script:
   - cargo test --release --verbose
   - cargo test --release --verbose --features racket
   - cargo doc
+matrix:
+  include:
+    - rust: nightly-2018-02-12
+      env:
+        - CLIPPY_VERSION=0.0.187
+      before_script:
+        - cargo install clippy --version $CLIPPY_VERSION || echo "clippy already installed"
+      script:
+        - cargo clippy

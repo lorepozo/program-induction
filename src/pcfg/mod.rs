@@ -411,7 +411,7 @@ impl GP for Grammar {
                 let mut candidates: Vec<_> = self.rules[&ar.0]
                     .iter()
                     .enumerate()
-                    .filter(|&(i, ref r)| r.production == rule.production && i != ar.1)
+                    .filter(|&(i, r)| r.production == rule.production && i != ar.1)
                     .map(|(i, _)| i)
                     .collect();
                 if candidates.is_empty() {
