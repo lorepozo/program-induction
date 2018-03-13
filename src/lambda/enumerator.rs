@@ -14,16 +14,22 @@ const MAX_DEPTH: u32 = 256;
 
 pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
     let to_budget = |offset: f64| (offset, offset + BUDGET_INCREMENT);
+    let ctx = Context::default();
+    let env = Rc::new(LinkedList::default());
     Box::new(
         (0..)
             .map(|n| BUDGET_INCREMENT * f64::from(n))
             .map(to_budget)
-            .zip(iter::repeat((dsl.clone(), request)))
-            .flat_map(|(budget, (dsl, request))| new_par(dsl, request, budget)),
+            .zip(iter::repeat(request))
+            .flat_map(move |(budget, request)| {
+                enumerate(dsl, request, &ctx, env.clone(), budget, 0)
+            })
+            .map(|(log_prior, _, expr)| (expr, log_prior)),
     )
 }
 
 /// enumerate expressions in parallel within the budget interval
+#[allow(dead_code)]
 fn new_par(dsl: Language, request: Type, budget: (f64, f64)) -> mpsc::IntoIter<(Expression, f64)> {
     let (tx, rx) = channel();
     rayon::spawn(move || {
@@ -45,6 +51,7 @@ fn new_par(dsl: Language, request: Type, budget: (f64, f64)) -> mpsc::IntoIter<(
     rx.into_iter()
 }
 
+#[allow(dead_code)]
 fn exponential_decay(budget: (f64, f64)) -> Vec<(f64, f64)> {
     // because depth values correspond to description length in nats, we
     // assume that for pieces to have the same total description coverage
