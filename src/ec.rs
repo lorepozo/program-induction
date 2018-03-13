@@ -220,8 +220,9 @@ pub trait EC: Send + Sync + Sized {
             .enumerate()
             .map(|(i, (t, repr))| {
                 enumerate_solutions(repr, ec_params, t.tp.clone(), vec![(i, t)])
-                    .remove(&i)
-                    .unwrap_or_default()
+                    .pop()
+                    .unwrap()
+                    .1
             })
             .collect()
     }
@@ -238,25 +239,45 @@ fn enumerate_solutions<L, X, O: Sync>(
     repr: &L,
     params: &ECParams,
     tp: Type,
-    mut tasks: Vec<(usize, &Task<L, X, O>)>,
-) -> HashMap<usize, ECFrontier<L>>
+    tasks: Vec<(usize, &Task<L, X, O>)>,
+) -> Vec<(usize, ECFrontier<L>)>
 where
     X: Send + Sync + Clone,
     L: EC<Expression = X>,
 {
-    let mut frontiers = HashMap::new();
+    let mut frontiers = tasks
+        .iter()
+        .map(|&(j, _)| (j, ECFrontier::default()))
+        .collect();
+    let mut tasks: Vec<_> = tasks
+        .into_iter()
+        .enumerate()
+        .map(|(i, (_, t))| (i, t))
+        .collect();
     let mut searched = 0;
-    let mut update = |frontiers: &mut HashMap<_, _>, expr: L::Expression, log_prior: f64| {
-        tasks.retain(|&(i, t)| {
-            let log_likelihood = (t.oracle)(repr, &expr);
-            if log_likelihood.is_finite() {
-                let f = frontiers.entry(i).or_insert_with(ECFrontier::default);
-                f.push(expr.clone(), log_prior, log_likelihood);
-                f.len() < params.frontier_limit
-            } else {
-                true
-            }
-        });
+    let mut update = |frontiers: &mut Vec<(usize, ECFrontier<L>)>, expr: X, log_prior: f64| {
+        let evaluations: Vec<_> = tasks
+            .par_iter()
+            .map(|&(i, t)| {
+                let log_likelihood = (t.oracle)(repr, &expr);
+                (i, t, log_likelihood)
+            })
+            .collect();
+        tasks = evaluations
+            .into_iter()
+            .filter_map(|(i, t, l)| {
+                if l.is_finite() {
+                    frontiers[i].1.push(expr.clone(), log_prior, l);
+                    if frontiers[i].1.len() < params.frontier_limit {
+                        Some((i, t))
+                    } else {
+                        None
+                    }
+                } else {
+                    Some((i, t))
+                }
+            })
+            .collect();
         if tasks.is_empty() {
             false
         } else {
