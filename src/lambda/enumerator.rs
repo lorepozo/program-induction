@@ -26,23 +26,40 @@ fn new_par(dsl: Language, request: Type, budget: (f64, f64)) -> mpsc::IntoIter<(
     let (tx, rx) = channel();
     rayon::spawn(move || {
         rayon::iter::repeat(tx)
-            .zip(exponential_decay(budget, 256))
+            .zip(exponential_decay(budget))
             .for_each(|(tx, budget)| {
                 let ctx = Context::default();
                 let env = Rc::new(LinkedList::default());
-                enumerate(&dsl, request.clone(), &ctx, env.clone(), budget, 0)
-                    .map(|(log_prior, _, expr)| (expr, log_prior))
-                    .for_each(|(expr, logprior)| tx.send((expr, logprior)).expect("send"))
+                let e = enumerate(&dsl, request.clone(), &ctx, env.clone(), budget, 0)
+                    .map(|(log_prior, _, expr)| (expr, log_prior));
+                for (expr, logprior) in e {
+                    match tx.send((expr.clone(), logprior)) {
+                        Err(_) => {
+                            // receiving end was dropped
+                            break;
+                        }
+                        _ => (),
+                    }
+                }
             })
     });
     rx.into_iter()
 }
 
-fn exponential_decay(budget: (f64, f64), pieces: usize) -> Vec<(f64, f64)> {
+fn exponential_decay(budget: (f64, f64)) -> Vec<(f64, f64)> {
     // because depth values correspond to description length in nats, we
     // assume that for pieces to have the same total description coverage
     // (which should correspond roughly to enumerate time), their budget
     // widths follow exponential decay.
+    let pieces = match budget.1 {
+        x if x < 4. => 2,
+        x if x < 8. => 4,
+        x if x < 10. => 8,
+        x if x < 12. => 16,
+        x if x < 15. => 32,
+        x if x < 17. => 64,
+        _ => 256,
+    };
     let step = (budget.1.exp() - budget.0.exp()) / (pieces as f64);
     let mut v = Vec::new();
     let mut prev = budget.0;
