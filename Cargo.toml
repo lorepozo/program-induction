@@ -1,6 +1,6 @@
 [package]
 name = "programinduction"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Lucas Morales <lucas@lucasem.com>"]
 license = "MIT"
 readme = "README.md"
@@ -13,8 +13,8 @@ categories = ["algorithms", "science"]
 
 [dependencies]
 itertools = "0.7"
-nom = "4.0.0-beta1"
-polytype = "1.2"
+nom = "4.0.0-beta2"
+polytype = "2.1"
 rand = "0.4"
 rayon = "1.0"
 workerpool = "1.1"

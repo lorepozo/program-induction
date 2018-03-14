@@ -15,7 +15,7 @@ following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-programinduction = "0.1"
+programinduction = "0.2"
 # many examples also depend on polytype for the tp! and arrow! macros:
 polytype = "1.2"
 ```
@@ -111,7 +111,7 @@ feature in your `Cargo.toml`:
 
 ```toml
 [dependencies.programinduction]
-version = "0.1"
+version = "0.2"
 features = ["racket"]
 ```
 

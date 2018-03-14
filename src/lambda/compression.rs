@@ -283,9 +283,9 @@ impl Language {
         env: &Rc<LinkedList<Type>>,
     ) -> (f64, Context, Uses) {
         if let Type::Arrow(ref arrow) = *request {
-            let env = LinkedList::prepend(env, *arrow.arg.clone());
+            let env = LinkedList::prepend(env, arrow.arg.clone());
             if let Expression::Abstraction(ref body) = *expr {
-                self.likelihood_uses(&*arrow.ret, body, ctx, &env)
+                self.likelihood_uses(&arrow.ret, body, ctx, &env)
             } else {
                 (f64::NEG_INFINITY, ctx.clone(), Uses::new(self)) // invalid expression
             }

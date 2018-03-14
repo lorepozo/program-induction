@@ -92,9 +92,9 @@ fn likelihood_internal<'a>(
     mut expr: &Expression,
 ) -> (f64, Context) {
     if let Type::Arrow(ref arrow) = *request {
-        let env = LinkedList::prepend(env, *arrow.arg.clone());
+        let env = LinkedList::prepend(env, arrow.arg.clone());
         if let Expression::Abstraction(ref body) = *expr {
-            likelihood_internal(dsl, &*arrow.ret, ctx, &env, body)
+            likelihood_internal(dsl, &arrow.ret, ctx, &env, body)
         } else {
             (f64::NEG_INFINITY, ctx.clone()) // invalid expression
         }
@@ -147,8 +147,8 @@ fn enumerate<'a>(
     if budget.1 <= 0f64 || depth > MAX_DEPTH {
         Box::new(iter::empty())
     } else if let Type::Arrow(arrow) = request {
-        let env = LinkedList::prepend(&env, *arrow.arg);
-        let it = enumerate(dsl, *arrow.ret, ctx, env, budget, depth)
+        let env = LinkedList::prepend(&env, arrow.arg.clone());
+        let it = enumerate(dsl, arrow.ret, ctx, env, budget, depth)
             .map(|(ll, ctx, body)| (ll, ctx, Expression::Abstraction(Box::new(body))));
         Box::new(it)
     } else {
