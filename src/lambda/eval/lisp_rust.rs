@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::f64;
+use std::rc::Rc;
 use itertools::Itertools;
 use polytype::Type;
 
@@ -148,9 +149,13 @@ impl LispEvaluator {
         } else {
             format!("(equal? {} {})", cmd, output)
         };
-        match sexp::parse(&op)?.eval()? {
+        let e = sexp::parse(&op)?.eval()?;
+        match *e {
             interp::Value::Bool(b) => Ok(b),
-            e => Err(LispError::ExpectedBool("META", e)),
+            _ => Err(LispError::ExpectedBool(
+                "META",
+                Rc::try_unwrap(e).unwrap_or_else(|x| (*x).clone()),
+            )),
         }
     }
     /// Like [`check`], but checks against multiple input/output pairs.
@@ -202,9 +207,13 @@ impl LispEvaluator {
                 .map(|&(i, o)| format!("(equal? ({} {}) {})", cmd, i, o))
                 .join(" ")
         );
-        match sexp::parse(&op)?.eval()? {
+        let e = sexp::parse(&op)?.eval()?;
+        match *e {
             interp::Value::Bool(b) => Ok(b),
-            e => Err(LispError::ExpectedBool("META", e)),
+            _ => Err(LispError::ExpectedBool(
+                "META",
+                Rc::try_unwrap(e).unwrap_or_else(|x| (*x).clone()),
+            )),
         }
     }
     /// Create a task based on evaluating a lisp expressions against test input/output pairs.
@@ -268,15 +277,17 @@ impl Default for LispEvaluator {
 #[cfg(test)]
 mod tests {
     use std::f64::EPSILON;
+    use std::rc::Rc;
 
     use super::sexp::{self, Sexp};
     use super::interp::Value;
 
-    fn list_of_pair(mut v: Value) -> Vec<Value> {
+    fn list_of_pair(v: Value) -> Vec<Rc<Value>> {
         let mut lst = Vec::new();
-        while let Value::Pair(car, cdr) = v {
-            lst.push(*car);
-            v = *cdr;
+        let mut v = Rc::new(v);
+        while let Value::Pair(ref car, ref cdr) = *v.clone() {
+            lst.push(Rc::clone(car));
+            v = Rc::clone(cdr);
         }
         lst.push(v);
         lst
@@ -289,11 +300,11 @@ mod tests {
         ($title:ident, $inp:expr, $pat:pat => $arm:expr) => {
             #[test]
             fn $title() {
-                match sexp::parse($inp)
+                let rv = sexp::parse($inp)
                     .expect(&format!("sexp {}", stringify!($title)))
                     .eval()
-                    .expect(&format!("value {}", stringify!($title)))
-                {
+                    .expect(&format!("value {}", stringify!($title)));
+                match Rc::try_unwrap(rv).unwrap() {
                     $pat => $arm,
                     ref e => panic!("assertion failed: `{:?}` does not match `{}`",
                                     e, stringify!($pat))
@@ -317,11 +328,11 @@ mod tests {
 
     check_eval!(eval_lambda_1, "(lambda (x) 42)", Value::Lambda(params, body) => {
         assert_eq!(params, vec![String::from("x")]);
-        assert_eq!(body, Sexp::Integer(42));
+        assert_eq!(*body, Sexp::Integer(42));
     });
     check_eval!(eval_lambda_2, "(λ (x) 42)", Value::Lambda(params, body) => {
         assert_eq!(params, vec![String::from("x")]);
-        assert_eq!(body, Sexp::Integer(42));
+        assert_eq!(*body, Sexp::Integer(42));
     });
     check_eval!(eval_lambda_3, "((lambda (x) 42) #t)", Value::Integer(42));
     check_eval!(eval_lambda_4, "((lambda (x) x) 42)", Value::Integer(42));
@@ -678,14 +689,14 @@ mod tests {
     check_eval!(
         eval_string_split_1,
         "(string-split \"foo\")",
-        Value::Pair(car, cdr) => {
-            let xs = list_of_pair(Value::Pair(car, cdr));
+        p @ Value::Pair(_, _) => {
+            let xs = list_of_pair(p);
             assert_eq!(xs.len(), 2);
-            match xs[0] {
+            match *xs[0] {
                 Value::Str(ref s) => assert_eq!(s, "foo"),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Str(..)", e),
             }
-            match xs[1] {
+            match *xs[1] {
                 Value::Null => (),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Null", e),
             }
@@ -694,26 +705,26 @@ mod tests {
     check_eval!(
         eval_string_split_2,
         "(string-split \"foo bar  baz	buzz\")",
-        Value::Pair(car, cdr) => {
-            let xs = list_of_pair(Value::Pair(car, cdr));
+        p @ Value::Pair(_, _) => {
+            let xs = list_of_pair(p);
             assert_eq!(xs.len(), 5);
-            match xs[0] {
+            match *xs[0] {
                 Value::Str(ref s) => assert_eq!(s, "foo"),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Str(..)", e),
             }
-            match xs[1] {
+            match *xs[1] {
                 Value::Str(ref s) => assert_eq!(s, "bar"),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Str(..)", e),
             }
-            match xs[2] {
+            match *xs[2] {
                 Value::Str(ref s) => assert_eq!(s, "baz"),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Str(..)", e),
             }
-            match xs[3] {
+            match *xs[3] {
                 Value::Str(ref s) => assert_eq!(s, "buzz"),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Str(..)", e),
             }
-            match xs[4] {
+            match *xs[4] {
                 Value::Null => (),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Null", e),
             }
@@ -722,30 +733,30 @@ mod tests {
     check_eval!(
         eval_string_split_3,
         "(string-split \"foo_bar__baz_buzz\" \"_\")",
-        Value::Pair(car, cdr) => {
-            let xs = list_of_pair(Value::Pair(car, cdr));
+        p @ Value::Pair(_, _) => {
+            let xs = list_of_pair(p);
             assert_eq!(xs.len(), 6);
-            match xs[0] {
+            match *xs[0] {
                 Value::Str(ref s) => assert_eq!(s, "foo"),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Str(..)", e),
             }
-            match xs[1] {
+            match *xs[1] {
                 Value::Str(ref s) => assert_eq!(s, "bar"),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Str(..)", e),
             }
-            match xs[2] {
+            match *xs[2] {
                 Value::Str(ref s) => assert_eq!(s, ""),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Str(..)", e),
             }
-            match xs[3] {
+            match *xs[3] {
                 Value::Str(ref s) => assert_eq!(s, "baz"),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Str(..)", e),
             }
-            match xs[4] {
+            match *xs[4] {
                 Value::Str(ref s) => assert_eq!(s, "buzz"),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Str(..)", e),
             }
-            match xs[5] {
+            match *xs[5] {
                 Value::Null => (),
                 ref e => panic!("assertion failed: `{:?}` does not match Value::Null", e),
             }

@@ -39,7 +39,7 @@ mod eval;
 mod compression;
 mod parser;
 pub use self::compression::CompressionParams;
-pub use self::eval::LispEvaluator;
+pub use self::eval::{LispError, LispEvaluator};
 pub use self::parser::ParseError;
 
 use std::collections::{HashMap, VecDeque};

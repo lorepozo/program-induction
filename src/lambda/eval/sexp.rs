@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use nom::{digit, multispace};
 use nom::types::CompleteStr;
 
@@ -16,7 +17,7 @@ pub enum Sexp {
     Null,
 }
 impl Sexp {
-    pub fn eval(&self) -> Result<interp::Value, LispError> {
+    pub fn eval(&self) -> Result<Rc<interp::Value>, LispError> {
         interp::eval(self)
     }
 }
