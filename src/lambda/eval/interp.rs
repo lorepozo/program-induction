@@ -1054,68 +1054,49 @@ mod builtin {
         mut args: VecDeque<Rc<Value>>,
         _env: &mut Env,
     ) -> Result<Rc<Value>, LispError> {
-        if let Some(s) = args.pop_front() {
-            match *s {
-                Value::Str(ref s) => {
-                    if let Some(startv) = args.pop_front() {
-                        match *startv {
-                            Value::Integer(start) if start >= 0 => {
-                                if let Some(endv) = args.pop_front() {
-                                    match *endv {
-                                        Value::Integer(end) if end >= start => {
-                                            Ok(Rc::new(Value::Str(
-                                                s.chars()
-                                                    .skip(start as usize)
-                                                    .take((end - start) as usize)
-                                                    .collect(),
-                                            )))
-                                        }
-                                        Value::Integer(_) => Err(Some(LispError::Runtime(
-                                            "list-ref end was less that start",
-                                        ))),
-                                        _ => Err(None),
-                                    }.map_err(|x| {
-                                        Some(x.unwrap_or_else(|| {
-                                            LispError::ExpectedInteger(
-                                                "substring",
-                                                Rc::try_unwrap(endv)
-                                                    .unwrap_or_else(|x| (*x).clone()),
-                                            )
-                                        }))
-                                    })
-                                } else {
-                                    Ok(Rc::new(Value::Str(
-                                        s.chars().skip(start as usize).collect(),
-                                    )))
-                                }
-                            }
-                            Value::Integer(_) => Err(Some(LispError::Runtime(
-                                "list-ref expected nonnegative integer",
-                            ))),
-                            _ => Err(None),
-                        }.map_err(|x| {
-                            Some(x.unwrap_or_else(|| {
-                                LispError::ExpectedInteger(
-                                    "substring",
-                                    Rc::try_unwrap(startv).unwrap_or_else(|x| (*x).clone()),
-                                )
-                            }))
-                        })
-                    } else {
-                        Err(Some(LispError::BadArity("string-join")))
-                    }
-                }
-                _ => Err(None),
-            }.map_err(|x| {
-                x.unwrap_or_else(|| {
-                    LispError::ExpectedStr(
-                        "substring",
-                        Rc::try_unwrap(s).unwrap_or_else(|x| (*x).clone()),
-                    )
-                })
-            })
+        if args.len() != 2 || args.len() != 3 {
+            Err(LispError::BadArity("substring"))
         } else {
-            Err(LispError::BadArity("string-join"))
+            let sv = args.pop_front().unwrap();
+            let startv = args.pop_front().unwrap();
+            let endo = args.pop_front();
+            if let Value::Str(_) = *sv {
+                match *sv {
+                    Value::Str(ref s) => match (&*startv, endo) {
+                        (&Value::Integer(start), _) if start < 0 => {
+                            Err(LispError::Runtime("list-ref expected nonnegative integer"))
+                        }
+                        (&Value::Integer(start), None) => Ok(Rc::new(Value::Str(
+                            s.chars().skip(start as usize).collect(),
+                        ))),
+                        (&Value::Integer(start), Some(endv)) => match *endv {
+                            Value::Integer(end) if end < start => {
+                                Err(LispError::Runtime("list-ref end was less that start"))
+                            }
+                            Value::Integer(end) => Ok(Rc::new(Value::Str(
+                                s.chars()
+                                    .skip(start as usize)
+                                    .take((end - start) as usize)
+                                    .collect(),
+                            ))),
+                            _ => Err(LispError::ExpectedInteger(
+                                "substring",
+                                Rc::try_unwrap(endv).unwrap_or_else(|x| (*x).clone()),
+                            )),
+                        },
+                        _ => Err(LispError::ExpectedInteger(
+                            "substring",
+                            Rc::try_unwrap(startv).unwrap_or_else(|x| (*x).clone()),
+                        )),
+                    },
+                    _ => unreachable!(),
+                }
+            } else {
+                Err(LispError::ExpectedStr(
+                    "substring",
+                    Rc::try_unwrap(sv).unwrap_or_else(|x| (*x).clone()),
+                ))
+            }
         }
     }
 
@@ -1123,44 +1104,44 @@ mod builtin {
         mut args: VecDeque<Rc<Value>>,
         env: &mut Env,
     ) -> Result<Rc<Value>, LispError> {
-        if let Some(xs) = args.pop_front() {
-            match *xs {
-                Value::Str(ref s) => {
-                    if let Some(sepv) = args.pop_front() {
-                        match *sepv {
-                            Value::Str(ref sep) => {
-                                let vals = s.split(sep)
-                                    .map(|s| Rc::new(Value::Str(String::from(s))))
-                                    .collect();
-                                list(vals, env).map_err(Some)
-                            }
-                            _ => Err(None),
-                        }.map_err(|x| {
-                            Some(x.unwrap_or_else(|| {
-                                LispError::ExpectedStr(
-                                    "string-split",
-                                    Rc::try_unwrap(sepv).unwrap_or_else(|x| (*x).clone()),
-                                )
-                            }))
-                        })
-                    } else {
-                        let vals = s.split_whitespace()
-                            .map(|s| Rc::new(Value::Str(String::from(s))))
-                            .collect();
-                        list(vals, env).map_err(Some)
-                    }
-                }
-                _ => Err(None),
-            }.map_err(|x| {
-                x.unwrap_or_else(|| {
-                    LispError::ExpectedStr(
-                        "string-split",
-                        Rc::try_unwrap(xs).unwrap_or_else(|x| (*x).clone()),
-                    )
-                })
-            })
+        if args.len() != 1 || args.len() != 2 {
+            Err(LispError::BadArity("substring"))
         } else {
-            Err(LispError::BadArity("string-join"))
+            let sv = args.pop_front().unwrap();
+            let sepo = args.pop_front();
+            if let Value::Str(_) = *sv {
+                match *sv {
+                    Value::Str(ref s) => match sepo {
+                        None => {
+                            let vals = s.split_whitespace()
+                                .map(|s| Rc::new(Value::Str(String::from(s))))
+                                .collect();
+                            list(vals, env)
+                        }
+                        Some(sepv) => match *sepv {
+                            Value::Str(_) => match *sepv {
+                                Value::Str(ref sep) => {
+                                    let vals = s.split(sep)
+                                        .map(|s| Rc::new(Value::Str(String::from(s))))
+                                        .collect();
+                                    list(vals, env)
+                                }
+                                _ => unreachable!(),
+                            },
+                            _ => Err(LispError::ExpectedStr(
+                                "string-split",
+                                Rc::try_unwrap(sepv).unwrap_or_else(|x| (*x).clone()),
+                            )),
+                        },
+                    },
+                    _ => unreachable!(),
+                }
+            } else {
+                Err(LispError::ExpectedStr(
+                    "string-split",
+                    Rc::try_unwrap(sv).unwrap_or_else(|x| (*x).clone()),
+                ))
+            }
         }
     }
 
@@ -1170,6 +1151,7 @@ mod builtin {
     ) -> Result<Rc<Value>, LispError> {
         if let Some(xs) = args.pop_front() {
             match *xs {
+                Value::Null => Ok(Rc::new(Value::Str(String::new()))),
                 Value::Pair(_, _) => {
                     let mut lst = list_of_pair(Rc::clone(&xs));
                     lst.pop(); // no null
@@ -1185,32 +1167,27 @@ mod builtin {
                             )),
                         })
                         .collect::<Result<Vec<String>, LispError>>()?;
-                    if let Some(sepv) = args.pop_front() {
-                        match *sepv {
-                            Value::Str(ref sep) => {
-                                Ok(Rc::new(Value::Str(strs.into_iter().join(sep))))
-                            }
-                            _ => Err(()),
-                        }.map_err(|_| {
-                            Some(LispError::ExpectedStr(
+                    match args.pop_front() {
+                        None => Ok(Rc::new(Value::Str(strs.into_iter().join("")))),
+                        Some(sepv) => match *sepv {
+                            Value::Str(_) => match *sepv {
+                                Value::Str(ref sep) => {
+                                    Ok(Rc::new(Value::Str(strs.into_iter().join(sep))))
+                                }
+                                _ => unreachable!(),
+                            },
+                            _ => Err(LispError::ExpectedStr(
                                 "string-join",
                                 Rc::try_unwrap(sepv).unwrap_or_else(|x| (*x).clone()),
-                            ))
-                        })
-                    } else {
-                        Ok(Rc::new(Value::Str(strs.into_iter().join(""))))
+                            )),
+                        },
                     }
                 }
-                Value::Null => Ok(Rc::new(Value::Str(String::new()))),
-                _ => Err(None),
-            }.map_err(|x| {
-                x.unwrap_or_else(|| {
-                    LispError::ExpectedList(
-                        "string-join",
-                        Rc::try_unwrap(xs).unwrap_or_else(|x| (*x).clone()),
-                    )
-                })
-            })
+                _ => Err(LispError::ExpectedList(
+                    "string-join",
+                    Rc::try_unwrap(xs).unwrap_or_else(|x| (*x).clone()),
+                )),
+            }
         } else {
             Err(LispError::BadArity("string-join"))
         }
