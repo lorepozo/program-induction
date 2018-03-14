@@ -1,9 +1,63 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::rc::Rc;
 
 use super::LispError;
 use super::sexp::Sexp;
+
+thread_local!(
+    static BUILTINS: HashMap<&'static str, Rc<Value>> = {
+        let lambda = Rc::new(Value::BuiltinSpecial(builtin::lambda));
+        let eq = Rc::new(Value::Builtin(builtin::eq));
+        vec![
+            ("null", Rc::new(Value::Null)),
+            ("if", Rc::new(Value::BuiltinSpecial(builtin::if_))),
+            ("lambda", Rc::clone(&lambda)),
+            ("λ", lambda),
+            ("and", Rc::new(Value::BuiltinSpecial(builtin::and))),
+            ("or", Rc::new(Value::BuiltinSpecial(builtin::or))),
+            ("+", Rc::new(Value::Builtin(builtin::add))),
+            ("-", Rc::new(Value::Builtin(builtin::sub))),
+            ("not", Rc::new(Value::Builtin(builtin::not))),
+            ("*", Rc::new(Value::Builtin(builtin::mul))),
+            ("/", Rc::new(Value::Builtin(builtin::div))),
+            ("quotient", Rc::new(Value::Builtin(builtin::quotient))),
+            ("remainder", Rc::new(Value::Builtin(builtin::remainder))),
+            ("modulo", Rc::new(Value::Builtin(builtin::modulo))),
+            ("cons", Rc::new(Value::Builtin(builtin::cons))),
+            ("car", Rc::new(Value::Builtin(builtin::car))),
+            ("cdr", Rc::new(Value::Builtin(builtin::cdr))),
+            ("=", Rc::clone(&eq)),
+            ("equal?", Rc::clone(&eq)),
+            ("eqv?", Rc::clone(&eq)),
+            ("eq?", eq),
+            (">", Rc::new(Value::Builtin(builtin::gt))),
+            (">=", Rc::new(Value::Builtin(builtin::gte))),
+            ("<", Rc::new(Value::Builtin(builtin::lt))),
+            ("<=", Rc::new(Value::Builtin(builtin::lte))),
+            ("!=", Rc::new(Value::Builtin(builtin::neq))),
+            ("pair?", Rc::new(Value::Builtin(builtin::is_pair))),
+            ("null?", Rc::new(Value::Builtin(builtin::is_null))),
+            ("identity", Rc::new(Value::Builtin(builtin::identity))),
+            ("list", Rc::new(Value::Builtin(builtin::list))),
+            ("list-ref", Rc::new(Value::Builtin(builtin::list_ref))),
+            ("append", Rc::new(Value::Builtin(builtin::append))),
+            ("append-map", Rc::new(Value::Builtin(builtin::appendmap))),
+            ("map", Rc::new(Value::Builtin(builtin::map))),
+            ("filter", Rc::new(Value::Builtin(builtin::filter))),
+            ("foldl", Rc::new(Value::Builtin(builtin::foldl))),
+            ("count", Rc::new(Value::Builtin(builtin::count))),
+            ("member", Rc::new(Value::Builtin(builtin::member))),
+            ("string-length", Rc::new(Value::Builtin(builtin::string_length))),
+            ("string-downcase", Rc::new(Value::Builtin(builtin::string_downcase))),
+            ("string-upcase", Rc::new(Value::Builtin(builtin::string_upcase))),
+            ("string-append", Rc::new(Value::Builtin(builtin::string_append))),
+            ("substring", Rc::new(Value::Builtin(builtin::substring))),
+            ("string-split", Rc::new(Value::Builtin(builtin::string_split))),
+            ("string-join", Rc::new(Value::Builtin(builtin::string_join))),
+        ].into_iter().collect()
+    }
+);
 
 #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
 #[derive(Clone)]
@@ -55,20 +109,19 @@ impl From<Sexp> for Value {
 /// the environment is a list of assignments to identifiers.
 pub struct Env(Vec<(String, Rc<Value>)>);
 impl Env {
-    fn new() -> Self {
-        Env(builtins())
-    }
-    fn get(&self, s: &str) -> Option<Rc<Value>> {
+    fn get(&self, s: &str) -> Result<Rc<Value>, LispError> {
         self.0
             .iter()
             .rev()
             .find(|&&(ref l, _)| l == s)
             .map(|&(_, ref v)| Rc::clone(v))
+            .or_else(|| BUILTINS.with(|h| h.get(s).map(|x| Rc::clone(x))))
+            .ok_or_else(|| LispError::IdentNotFound(String::from(s)))
     }
 }
 
 pub fn eval(sexp: &Sexp) -> Result<Rc<Value>, LispError> {
-    eval_sexp(sexp, &mut Env::new())
+    eval_sexp(sexp, &mut Env(Vec::new()))
 }
 
 fn eval_sexp(sexp: &Sexp, env: &mut Env) -> Result<Rc<Value>, LispError> {
@@ -80,8 +133,7 @@ fn eval_sexp(sexp: &Sexp, env: &mut Env) -> Result<Rc<Value>, LispError> {
             let f = eval_sexp(car, env)?;
             eval_call(&f, xs, env)
         }
-        Sexp::Ident(ref s) => env.get(s)
-            .ok_or_else(|| LispError::IdentNotFound(s.clone())),
+        Sexp::Ident(ref s) => env.get(s),
         _ => Ok(Rc::new(Value::from(sexp.clone()))),
     }
 }
@@ -127,75 +179,6 @@ fn read_list(sexp: &Sexp, env: &mut Env, v: &mut VecDeque<Sexp>) {
         }
         _ => v.push_back(sexp.clone()),
     }
-}
-
-fn builtins() -> Vec<(String, Rc<Value>)> {
-    let lambda = Rc::new(Value::BuiltinSpecial(builtin::lambda));
-    let eq = Rc::new(Value::Builtin(builtin::eq));
-    vec![
-        ("null", Rc::new(Value::Null)),
-        ("if", Rc::new(Value::BuiltinSpecial(builtin::if_))),
-        ("lambda", Rc::clone(&lambda)),
-        ("λ", lambda),
-        ("and", Rc::new(Value::BuiltinSpecial(builtin::and))),
-        ("or", Rc::new(Value::BuiltinSpecial(builtin::or))),
-        ("+", Rc::new(Value::Builtin(builtin::add))),
-        ("-", Rc::new(Value::Builtin(builtin::sub))),
-        ("not", Rc::new(Value::Builtin(builtin::not))),
-        ("*", Rc::new(Value::Builtin(builtin::mul))),
-        ("/", Rc::new(Value::Builtin(builtin::div))),
-        ("quotient", Rc::new(Value::Builtin(builtin::quotient))),
-        ("remainder", Rc::new(Value::Builtin(builtin::remainder))),
-        ("modulo", Rc::new(Value::Builtin(builtin::modulo))),
-        ("cons", Rc::new(Value::Builtin(builtin::cons))),
-        ("car", Rc::new(Value::Builtin(builtin::car))),
-        ("cdr", Rc::new(Value::Builtin(builtin::cdr))),
-        ("=", Rc::clone(&eq)),
-        ("equal?", Rc::clone(&eq)),
-        ("eqv?", Rc::clone(&eq)),
-        ("eq?", eq),
-        (">", Rc::new(Value::Builtin(builtin::gt))),
-        (">=", Rc::new(Value::Builtin(builtin::gte))),
-        ("<", Rc::new(Value::Builtin(builtin::lt))),
-        ("<=", Rc::new(Value::Builtin(builtin::lte))),
-        ("!=", Rc::new(Value::Builtin(builtin::neq))),
-        ("pair?", Rc::new(Value::Builtin(builtin::is_pair))),
-        ("null?", Rc::new(Value::Builtin(builtin::is_null))),
-        ("identity", Rc::new(Value::Builtin(builtin::identity))),
-        ("list", Rc::new(Value::Builtin(builtin::list))),
-        ("list-ref", Rc::new(Value::Builtin(builtin::list_ref))),
-        ("append", Rc::new(Value::Builtin(builtin::append))),
-        ("append-map", Rc::new(Value::Builtin(builtin::appendmap))),
-        ("map", Rc::new(Value::Builtin(builtin::map))),
-        ("filter", Rc::new(Value::Builtin(builtin::filter))),
-        ("foldl", Rc::new(Value::Builtin(builtin::foldl))),
-        ("count", Rc::new(Value::Builtin(builtin::count))),
-        ("member", Rc::new(Value::Builtin(builtin::member))),
-        (
-            "string-length",
-            Rc::new(Value::Builtin(builtin::string_length)),
-        ),
-        (
-            "string-downcase",
-            Rc::new(Value::Builtin(builtin::string_downcase)),
-        ),
-        (
-            "string-upcase",
-            Rc::new(Value::Builtin(builtin::string_upcase)),
-        ),
-        (
-            "string-append",
-            Rc::new(Value::Builtin(builtin::string_append)),
-        ),
-        ("substring", Rc::new(Value::Builtin(builtin::substring))),
-        (
-            "string-split",
-            Rc::new(Value::Builtin(builtin::string_split)),
-        ),
-        ("string-join", Rc::new(Value::Builtin(builtin::string_join))),
-    ].into_iter()
-        .map(|(name, v)| (String::from(name), v))
-        .collect()
 }
 
 mod builtin {
