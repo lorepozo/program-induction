@@ -37,7 +37,7 @@ pub enum LispError {
 ///
 /// ```toml
 /// [dependencies.programinduction]
-/// version = "0.1"
+/// version = "0.2"
 /// features = ["racket"]
 /// ```
 ///
