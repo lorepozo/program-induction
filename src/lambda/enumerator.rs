@@ -12,6 +12,7 @@ use super::{Expression, Language, LinkedList};
 const BUDGET_INCREMENT: f64 = 1.0;
 const MAX_DEPTH: u32 = 256;
 
+#[cfg(not(feature = "par_enum"))]
 pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
     let to_budget = |offset: f64| (offset, offset + BUDGET_INCREMENT);
     let ctx = Context::default();
@@ -27,9 +28,20 @@ pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Express
             .map(|(log_prior, _, expr)| (expr, log_prior)),
     )
 }
+#[cfg(feature = "par_enum")]
+pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
+    let to_budget = |offset: f64| (offset, offset + BUDGET_INCREMENT);
+    Box::new(
+        (0..)
+            .map(|n| BUDGET_INCREMENT * f64::from(n))
+            .map(to_budget)
+            .zip(iter::repeat((dsl.clone(), request)))
+            .flat_map(move |(budget, (dsl, request))| new_par(dsl, request, budget)),
+    )
+}
 
 /// enumerate expressions in parallel within the budget interval
-#[allow(dead_code)]
+#[cfg_attr(not(feature = "par_enum"), allow(dead_code))]
 fn new_par(dsl: Language, request: Type, budget: (f64, f64)) -> mpsc::IntoIter<(Expression, f64)> {
     let (tx, rx) = channel();
     rayon::spawn(move || {
@@ -51,7 +63,7 @@ fn new_par(dsl: Language, request: Type, budget: (f64, f64)) -> mpsc::IntoIter<(
     rx.into_iter()
 }
 
-#[allow(dead_code)]
+#[cfg_attr(not(feature = "par_enum"), allow(dead_code))]
 fn exponential_decay(budget: (f64, f64)) -> Vec<(f64, f64)> {
     // because depth values correspond to description length in nats, we
     // assume that for pieces to have the same total description coverage

@@ -21,3 +21,4 @@ workerpool = "1.1"
 
 [features]
 racket = []
+par_enum = []
