@@ -1054,7 +1054,7 @@ mod builtin {
         mut args: VecDeque<Rc<Value>>,
         _env: &mut Env,
     ) -> Result<Rc<Value>, LispError> {
-        if args.len() != 2 || args.len() != 3 {
+        if !(args.len() == 2 || args.len() == 3) {
             Err(LispError::BadArity("substring"))
         } else {
             let sv = args.pop_front().unwrap();
@@ -1104,7 +1104,7 @@ mod builtin {
         mut args: VecDeque<Rc<Value>>,
         env: &mut Env,
     ) -> Result<Rc<Value>, LispError> {
-        if args.len() != 1 || args.len() != 2 {
+        if !(args.len() == 1 || args.len() == 2) {
             Err(LispError::BadArity("substring"))
         } else {
             let sv = args.pop_front().unwrap();

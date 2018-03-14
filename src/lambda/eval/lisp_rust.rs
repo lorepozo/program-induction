@@ -304,7 +304,7 @@ mod tests {
                     .expect(&format!("sexp {}", stringify!($title)))
                     .eval()
                     .expect(&format!("value {}", stringify!($title)));
-                match Rc::try_unwrap(rv).unwrap() {
+                match Rc::try_unwrap(rv).unwrap_or_else(|x| (*x).clone()) {
                     $pat => $arm,
                     ref e => panic!("assertion failed: `{:?}` does not match `{}`",
                                     e, stringify!($pat))
