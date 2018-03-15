@@ -161,10 +161,11 @@ impl Language {
     /// use programinduction::{lambda, ECParams, EC};
     ///
     /// let dsl = circuits::dsl();
-    /// let tasks = circuits::make_tasks(250);
+    /// let tasks = circuits::make_tasks(100);
     /// let ec_params = ECParams {
     ///     frontier_limit: 5,
-    ///     search_limit: 1000,
+    ///     search_limit_timeout: Some(std::time::Duration::new(1, 0)),
+    ///     search_limit_description_length: None,
     /// };
     /// let params = lambda::CompressionParams::default();
     ///

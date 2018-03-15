@@ -23,7 +23,8 @@
 //!
 //! let ec_params = ECParams {
 //!     frontier_limit: 10,
-//!     search_limit: 2500,
+//!     search_limit_timeout: None,
+//!     search_limit_description_length: Some(12.0),
 //! };
 //! let frontiers = dsl.explore(&ec_params, &[task]);
 //! let solution = &frontiers[0].best_solution().unwrap().0;

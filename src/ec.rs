@@ -3,19 +3,28 @@
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::channel;
+use std::time::Duration;
+use std::thread;
 use polytype::Type;
 use rayon::prelude::*;
 
 use Task;
 
 /// Parameters for the EC algorithm.
+///
+/// The first of these limits/timeouts to be hit determines termination of enumeration. It is
+/// dangerous to have both search limits set to `None`!
 pub struct ECParams {
     /// The maximum frontier size; the number of task solutions to be hit before enumeration is
     /// stopped for a particular task.
     pub frontier_limit: usize,
-    /// search limit is a hard limit of the number of expressions that are enumerated for a task.
-    /// If this is reached, there may be fewer than `frontier_limit` many solutions.
-    pub search_limit: usize,
+    /// A timeout before enumeration is stopped, run independently per distinct `Type` being
+    /// enumerated. If this is reached, there may be fewer than `frontier_limit` many solutions.
+    pub search_limit_timeout: Option<Duration>,
+    /// An approximate limit on enumerated description length. If this is reached, there may be
+    /// fewer than `frontier_limit` many solutions.
+    pub search_limit_description_length: Option<f64>,
 }
 
 /// A kind of representation suitable for **exploration-compression**.
@@ -79,7 +88,8 @@ pub trait EC: Send + Sync + Sized {
     /// let tasks = circuits::make_tasks(250);
     /// let ec_params = ECParams {
     ///     frontier_limit: 10,
-    ///     search_limit: 1000,
+    ///     search_limit_timeout: None,
+    ///     search_limit_description_length: Some(8.0),
     /// };
     /// let params = lambda::CompressionParams::default();
     ///
@@ -172,7 +182,8 @@ pub trait EC: Send + Sync + Sized {
     /// );
     /// let ec_params = ECParams {
     ///     frontier_limit: 1,
-    ///     search_limit: 50,
+    ///     search_limit_timeout: Some(std::time::Duration::new(1, 0)),
+    ///     search_limit_description_length: None,
     /// };
     /// // task: the number 4
     /// let task = task_by_simple_evaluation(&simple_evaluator, &4, tp!(EXPR));
@@ -245,6 +256,7 @@ where
     X: Send + Sync + Clone,
     L: EC<Expression = X>,
 {
+    // initialization
     let mut frontiers = tasks
         .iter()
         .map(|&(j, _)| (j, ECFrontier::default()))
@@ -254,8 +266,24 @@ where
         .enumerate()
         .map(|(i, (_, t))| (i, t))
         .collect();
-    let mut searched = 0;
-    let mut update = |frontiers: &mut Vec<(usize, ECFrontier<L>)>, expr: X, log_prior: f64| {
+
+    // termination conditions
+    let mut timeout_complete: Box<Fn() -> bool> = Box::new(|| false);
+    let (tx, rx) = channel();
+    if let Some(duration) = params.search_limit_timeout {
+        thread::spawn(move || {
+            thread::sleep(duration);
+            tx.send(()).unwrap_or(());
+        });
+        timeout_complete = Box::new(move || rx.try_recv().is_ok());
+    }
+    let mut dl_complete: Box<Fn(f64) -> bool> = Box::new(|_| false);
+    if let Some(dl) = params.search_limit_description_length {
+        dl_complete = Box::new(move |logprior| -logprior > dl);
+    }
+
+    // update frontiers and check for termination
+    let mut update = |frontiers: &mut Vec<(usize, ECFrontier<L>)>, expr: X, logprior: f64| {
         let evaluations: Vec<_> = tasks
             .par_iter()
             .map(|&(i, t)| {
@@ -267,24 +295,20 @@ where
             .into_iter()
             .filter_map(|(i, t, l)| {
                 if l.is_finite() {
-                    frontiers[i].1.push(expr.clone(), log_prior, l);
-                    if frontiers[i].1.len() < params.frontier_limit {
-                        Some((i, t))
-                    } else {
+                    frontiers[i].1.push(expr.clone(), logprior, l);
+                    if frontiers[i].1.len() >= params.frontier_limit {
                         None
+                    } else {
+                        Some((i, t))
                     }
                 } else {
                     Some((i, t))
                 }
             })
             .collect();
-        if tasks.is_empty() {
-            false
-        } else {
-            searched += 1;
-            searched < params.search_limit
-        }
+        !(tasks.is_empty() || timeout_complete() || dl_complete(logprior))
     };
+
     for (expr, log_prior) in repr.enumerate(tp) {
         if !update(&mut frontiers, expr, log_prior) {
             break;

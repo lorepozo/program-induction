@@ -2,6 +2,8 @@
 extern crate polytype;
 extern crate programinduction;
 
+use std::time::Duration;
+
 use programinduction::{ECParams, EC};
 use programinduction::lambda;
 use programinduction::pcfg::{self, Grammar, Rule};
@@ -17,12 +19,28 @@ fn arith_evaluator(name: &str, inps: &[i32]) -> i32 {
 }
 
 #[test]
-fn ec_circuits() {
+fn ec_circuits_dl() {
     let dsl = circuits::dsl();
     let tasks = circuits::make_tasks(100);
     let ec_params = ECParams {
         frontier_limit: 10,
-        search_limit: 1000,
+        search_limit_timeout: None,
+        search_limit_description_length: Some(8.0),
+    };
+    let params = lambda::CompressionParams::default();
+
+    let (dsl, _frontiers) = dsl.ec(&ec_params, &params, &tasks);
+    assert!(!dsl.invented.is_empty());
+}
+
+#[test]
+fn ec_circuits_timeout() {
+    let dsl = circuits::dsl();
+    let tasks = circuits::make_tasks(100);
+    let ec_params = ECParams {
+        frontier_limit: 10,
+        search_limit_timeout: Some(Duration::new(1, 0)),
+        search_limit_description_length: None,
     };
     let params = lambda::CompressionParams::default();
 
@@ -42,7 +60,8 @@ fn explore_arith_pcfg() {
     );
     let ec_params = ECParams {
         frontier_limit: 1,
-        search_limit: 50,
+        search_limit_timeout: None,
+        search_limit_description_length: Some(8.0),
     };
     // task: the number 4
     let task = pcfg::task_by_simple_evaluation(&arith_evaluator, &4, tp!(EXPR));
@@ -61,10 +80,12 @@ fn explore_strings() {
     );
 
     let ec_params = ECParams {
-        frontier_limit: 10,
-        search_limit: 2500,
+        frontier_limit: 1,
+        search_limit_timeout: None,
+        search_limit_description_length: Some(12.0),
     };
     let frontiers = dsl.explore(&ec_params, &[task]);
+    assert!(frontiers[0].best_solution().is_some());
     let solution = &frontiers[0].best_solution().unwrap().0;
     assert_eq!(
         "(λ (join (char->str /) (split > $0)))",

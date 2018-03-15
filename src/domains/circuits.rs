@@ -12,12 +12,13 @@
 //! let tasks = circuits::make_tasks(250);
 //! let ec_params = ECParams {
 //!     frontier_limit: 100,
-//!     search_limit: 1000,
+//!     search_limit_timeout: None,
+//!     search_limit_description_length: Some(9.0),
 //! };
 //!
 //! let frontiers = dsl.explore(&ec_params, &tasks);
 //! let hits = frontiers.iter().filter_map(|f| f.best_solution()).count();
-//! assert!(50 < hits && hits < 150, "hits = {}", hits);
+//! assert!(50 < hits && hits < 100, "hits = {}", hits);
 //! ```
 
 use std::f64;
@@ -66,7 +67,8 @@ pub fn dsl() -> Language {
 /// );
 /// let ec_params = ECParams {
 ///     frontier_limit: 1,
-///     search_limit: 100,
+///     search_limit_timeout: None,
+///     search_limit_description_length: Some(5.0),
 /// };
 ///
 /// let frontiers = dsl.explore(&ec_params, &[task]);
