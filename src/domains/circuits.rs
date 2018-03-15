@@ -18,7 +18,7 @@
 //!
 //! let frontiers = dsl.explore(&ec_params, &tasks);
 //! let hits = frontiers.iter().filter_map(|f| f.best_solution()).count();
-//! assert!(50 < hits && hits < 100, "hits = {}", hits);
+//! assert!(40 < hits && hits < 80, "hits = {}", hits);
 //! ```
 
 use std::f64;

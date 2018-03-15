@@ -224,11 +224,13 @@ impl Language {
         for (i, prim) in self.primitives.iter_mut().enumerate() {
             let obs = u.actual_prims[i] + pseudocounts;
             let pot = u.possible_prims[i];
+            let pot = if pot == 0f64 { pseudocounts } else { pot };
             prim.2 = obs.ln() - pot.ln();
         }
         for (i, inv) in self.invented.iter_mut().enumerate() {
             let obs = u.actual_invented[i] + pseudocounts;
             let pot = u.possible_invented[i];
+            let pot = if pot == 0f64 { pseudocounts } else { pot };
             inv.2 = obs.ln() - pot.ln();
         }
     }
