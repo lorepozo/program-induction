@@ -1,26 +1,41 @@
 use std::collections::VecDeque;
 use std::iter;
+use std::env;
 use std::f64;
 use std::rc::Rc;
 use std::sync::mpsc::{self, channel};
+use num_cpus;
+use polytype::{Context, Type};
 use rayon::prelude::*;
 use rayon;
-use polytype::{Context, Type};
 
 use super::{Expression, Language, LinkedList};
+
+lazy_static! {
+    static ref PIECES: u32 = match env::var("RAYON_NUM_THREADS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+    {
+        Some(x) if x > 0 => x,
+        _ => num_cpus::get_physical() as u32,
+    };
+}
 
 const BUDGET_INCREMENT: f64 = 1.0;
 const MAX_DEPTH: u32 = 256;
 
+fn budget_interval(n: u32) -> (f64, f64) {
+    let offset = BUDGET_INCREMENT * f64::from(n);
+    (offset, offset + BUDGET_INCREMENT)
+}
+
 #[cfg(not(feature = "par_enum"))]
 pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
-    let to_budget = |offset: f64| (offset, offset + BUDGET_INCREMENT);
     let ctx = Context::default();
     let env = Rc::new(LinkedList::default());
     Box::new(
         (0..)
-            .map(|n| BUDGET_INCREMENT * f64::from(n))
-            .map(to_budget)
+            .map(budget_interval)
             .zip(iter::repeat(request))
             .flat_map(move |(budget, request)| {
                 enumerate(dsl, request, &ctx, env.clone(), budget, 0)
@@ -30,11 +45,9 @@ pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Express
 }
 #[cfg(feature = "par_enum")]
 pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
-    let to_budget = |offset: f64| (offset, offset + BUDGET_INCREMENT);
     Box::new(
         (0..)
-            .map(|n| BUDGET_INCREMENT * f64::from(n))
-            .map(to_budget)
+            .map(budget_interval)
             .zip(iter::repeat((dsl.clone(), request)))
             .flat_map(move |(budget, (dsl, request))| new_par(dsl, request, budget)),
     )
@@ -69,19 +82,10 @@ fn exponential_decay(budget: (f64, f64)) -> Vec<(f64, f64)> {
     // assume that for pieces to have the same total description coverage
     // (which should correspond roughly to enumerate time), their budget
     // widths follow exponential decay.
-    let pieces = match budget.1 {
-        x if x < 4. => 2,
-        x if x < 8. => 4,
-        x if x < 10. => 8,
-        x if x < 12. => 16,
-        x if x < 15. => 32,
-        x if x < 17. => 64,
-        _ => 256,
-    };
-    let step = (budget.1.exp() - budget.0.exp()) / (f64::from(pieces));
+    let step = (budget.1.exp() - budget.0.exp()) / (f64::from(*PIECES));
     let mut v = Vec::new();
     let mut prev = budget.0;
-    for x in (1..(pieces + 1))
+    for x in (1..(*PIECES + 1))
         .map(|i| budget.0.exp() + (f64::from(i)) * step)
         .map(f64::ln)
     {

@@ -120,20 +120,22 @@ mod tests {
     use super::{parse, Sexp};
 
     macro_rules! check_parse {
-        ($title:ident, $inp:expr, $pat:pat) => {
+        ($title: ident, $inp: expr, $pat: pat) => {
             check_parse!($title, $inp, $pat => ());
         };
-        ($title:ident, $inp:expr, $pat:pat => $arm:expr) => {
+        ($title: ident, $inp: expr, $pat: pat => $arm: expr) => {
             #[test]
             fn $title() {
-                match parse($inp).expect(&format!("sexp {}", stringify!($title)))
-                {
+                match parse($inp).expect(&format!("sexp {}", stringify!($title))) {
                     $pat => $arm,
-                    ref e => panic!("assertion failed: `{:?}` does not match `{}`",
-                                    e, stringify!($pat))
+                    ref e => panic!(
+                        "assertion failed: `{:?}` does not match `{}`",
+                        e,
+                        stringify!($pat)
+                    ),
                 }
             }
-        }
+        };
     }
 
     check_parse!(parse_bool_1, "#t", Sexp::Bool(true));

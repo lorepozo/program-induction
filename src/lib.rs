@@ -4,7 +4,10 @@
 
 extern crate itertools;
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate nom;
+extern crate num_cpus;
 #[macro_use]
 extern crate polytype;
 extern crate rand;

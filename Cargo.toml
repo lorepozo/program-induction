@@ -13,7 +13,9 @@ categories = ["algorithms", "science"]
 
 [dependencies]
 itertools = "0.7"
+lazy_static = "1.0"
 nom = "4.0.0-beta2"
+num_cpus = "1.8"
 polytype = "2.1"
 rand = "0.4"
 rayon = "1.0"

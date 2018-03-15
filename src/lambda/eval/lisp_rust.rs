@@ -294,10 +294,10 @@ mod tests {
     }
 
     macro_rules! check_eval {
-        ($title:ident, $inp:expr, $pat:pat) => {
+        ($title: ident, $inp: expr, $pat: pat) => {
             check_eval!($title, $inp, $pat => ());
         };
-        ($title:ident, $inp:expr, $pat:pat => $arm:expr) => {
+        ($title: ident, $inp: expr, $pat: pat => $arm: expr) => {
             #[test]
             fn $title() {
                 let rv = sexp::parse($inp)
@@ -306,11 +306,14 @@ mod tests {
                     .expect(&format!("value {}", stringify!($title)));
                 match Rc::try_unwrap(rv).unwrap_or_else(|x| (*x).clone()) {
                     $pat => $arm,
-                    ref e => panic!("assertion failed: `{:?}` does not match `{}`",
-                                    e, stringify!($pat))
+                    ref e => panic!(
+                        "assertion failed: `{:?}` does not match `{}`",
+                        e,
+                        stringify!($pat)
+                    ),
                 }
             }
-        }
+        };
     }
 
     check_eval!(literal_bool_1, "#t", Value::Bool(true));
