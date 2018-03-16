@@ -2,6 +2,7 @@
 //!
 //! Implements Bayesian program learning and genetic programming.
 
+extern crate crossbeam_channel;
 extern crate itertools;
 #[macro_use]
 extern crate lazy_static;

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::f64;
 use std::io::{self, BufRead, BufReader, Write};
 use std::process::{ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::mpsc::channel;
+use crossbeam_channel::bounded;
 use itertools::Itertools;
 use polytype::Type;
 use workerpool::{Pool, Worker};
@@ -125,7 +125,7 @@ impl LispEvaluator {
         } else {
             format!("(equal? {} {})", cmd, output)
         };
-        let (tx, rx) = channel();
+        let (tx, rx) = bounded(1);
         self.pool.execute_to(tx, op.clone());
         let response = rx.recv().expect("receive")?;
         match &*response {
@@ -183,7 +183,7 @@ impl LispEvaluator {
                 .map(|&(i, o)| format!("(equal? ({} {}) {})", cmd, i, o))
                 .join(" ")
         );
-        let (tx, rx) = channel();
+        let (tx, rx) = bounded(1);
         self.pool.execute_to(tx, op.clone());
         let response = rx.recv().expect("receive")?;
         match &*response {

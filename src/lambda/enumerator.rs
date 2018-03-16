@@ -3,7 +3,7 @@ use std::iter;
 use std::env;
 use std::f64;
 use std::rc::Rc;
-use std::sync::mpsc::{self, channel};
+use crossbeam_channel::{self, unbounded};
 use num_cpus;
 use polytype::{Context, Type};
 use rayon::prelude::*;
@@ -55,8 +55,12 @@ pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Express
 
 /// enumerate expressions in parallel within the budget interval
 #[cfg_attr(not(feature = "par_enum"), allow(dead_code))]
-fn new_par(dsl: Language, request: Type, budget: (f64, f64)) -> mpsc::IntoIter<(Expression, f64)> {
-    let (tx, rx) = channel();
+fn new_par(
+    dsl: Language,
+    request: Type,
+    budget: (f64, f64),
+) -> crossbeam_channel::IntoIter<(Expression, f64)> {
+    let (tx, rx) = unbounded();
     rayon::spawn(move || {
         rayon::iter::repeat(tx)
             .zip(exponential_decay(budget))

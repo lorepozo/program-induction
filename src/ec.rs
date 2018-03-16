@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::channel;
 use std::time::Duration;
 use std::thread;
+use crossbeam_channel::bounded;
 use polytype::Type;
 use rayon::prelude::*;
 
@@ -269,7 +269,7 @@ where
 
     // termination conditions
     let mut timeout_complete: Box<Fn() -> bool> = Box::new(|| false);
-    let (tx, rx) = channel();
+    let (tx, rx) = bounded(1);
     if let Some(duration) = params.search_limit_timeout {
         thread::spawn(move || {
             thread::sleep(duration);
