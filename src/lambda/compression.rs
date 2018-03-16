@@ -223,6 +223,9 @@ impl Language {
         let pseudocounts = pseudocounts as f64;
         let u = self.all_uses(frontiers);
         self.variable_logprob = (u.actual_vars + pseudocounts).ln() - u.possible_vars.ln();
+        if !self.variable_logprob.is_finite() {
+            self.variable_logprob = u.actual_vars.max(1f64).ln()
+        }
         for (i, prim) in self.primitives.iter_mut().enumerate() {
             let obs = u.actual_prims[i] + pseudocounts;
             let pot = u.possible_prims[i];
