@@ -1,6 +1,8 @@
 use std::collections::{HashMap, VecDeque};
 use std::f64;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use itertools::Itertools;
 use polytype::{Context, Type};
 use rayon::iter;
@@ -468,15 +470,11 @@ impl Language {
 
     /// Yields expressions that may have free variables.
     fn propose_inventions(&self, frontiers: &[RescoredFrontier], arity: u32) -> Vec<Expression> {
-        let mut findings = HashMap::new();
-        // TODO figure out how to properly parallelize
+        let findings = Arc::new(RwLock::new(HashMap::new()));
         frontiers
-            .iter()
-            .flat_map(|f| {
-                f.1
-                    .iter()
-                    .flat_map(|&(ref expr, _, _)| proposals::from_expression(expr, arity))
-            })
+            .par_iter()
+            .flat_map(|f| &f.1)
+            .flat_map(|&(ref expr, _, _)| proposals::from_expression(expr, arity))
             .filter(|fragment_expr| {
                 let expr = proposals::defragment(fragment_expr.clone());
                 self.invented
@@ -485,13 +483,26 @@ impl Language {
                     .is_none()
             })
             .for_each(|fragment_expr| {
-                let count = findings.entry(fragment_expr).or_insert(0u64);
-                *count += 1;
+                let did_update = {
+                    let h = findings.read().expect("hashmap was poisoned");
+                    h.get(&fragment_expr)
+                        .map(|x: &AtomicUsize| x.fetch_add(1, Ordering::Relaxed))
+                        .is_some()
+                };
+                if !did_update {
+                    let mut h = findings.write().expect("hashmap was poisoned");
+                    let count = h.entry(fragment_expr)
+                        .or_insert_with(|| AtomicUsize::new(0));
+                    count.fetch_add(1, Ordering::Relaxed);
+                }
             });
-        findings
+        Arc::try_unwrap(findings)
+            .unwrap()
+            .into_inner()
+            .unwrap()
             .into_iter()
             .filter_map(move |(fragment_expr, count)| {
-                if count >= 2 && self.infer(&fragment_expr).is_ok() {
+                if count.into_inner() >= 2 && self.infer(&fragment_expr).is_ok() {
                     Some(fragment_expr)
                 } else {
                     None
@@ -848,21 +859,17 @@ mod proposals {
     }
 
     /// main entry point for proposals
-    pub fn from_expression<'a>(
-        expr: &'a Expression,
-        arity: u32,
-    ) -> Box<Iterator<Item = Expression> + 'a> {
-        Box::new(
-            (0..arity + 1)
-                .flat_map(move |b| from_subexpression(expr, b))
-                .map(Fragment::canonicalize)
-                .filter(|fragment_expr| {
-                    // determine if nontrivial
-                    let (n_prims, n_free, n_bound) = expression_count_kinds(fragment_expr, 0);
-                    n_prims >= 1 && ((n_prims as f64) + 0.5 * ((n_free + n_bound) as f64) > 1.5)
-                })
-                .flat_map(to_inventions),
-        )
+    pub fn from_expression(expr: &Expression, arity: u32) -> Vec<Expression> {
+        (0..arity + 1)
+            .flat_map(move |b| from_subexpression(expr, b))
+            .map(Fragment::canonicalize)
+            .filter(|fragment_expr| {
+                // determine if nontrivial
+                let (n_prims, n_free, n_bound) = expression_count_kinds(fragment_expr, 0);
+                n_prims >= 1 && ((n_prims as f64) + 0.5 * ((n_free + n_bound) as f64) > 1.5)
+            })
+            .flat_map(to_inventions)
+            .collect()
     }
     fn from_subexpression<'a>(
         expr: &'a Expression,
