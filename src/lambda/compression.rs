@@ -1,9 +1,9 @@
 use std::collections::{HashMap, VecDeque};
 use std::f64;
-use std::iter;
 use std::rc::Rc;
 use itertools::Itertools;
 use polytype::{Context, Type};
+use rayon::iter;
 use rayon::prelude::*;
 
 use {ECFrontier, Task};
@@ -100,9 +100,9 @@ pub fn induce<O: Sync>(
                     .par_iter()
                     .map(|f| dsl.rescore_frontier(f, params.topk))
                     .collect();
-                let best_proposal = dsl.propose_inventions(&rescored_frontiers, params.arity)
-                    .zip(iter::repeat(dsl.clone()))
-                    .filter_map(|(fragment_expr, mut dsl)| {
+                let best_proposal = iter::repeat(dsl.clone())
+                    .zip(dsl.propose_inventions(&rescored_frontiers, params.arity))
+                    .filter_map(|(mut dsl, fragment_expr)| {
                         dsl.invent(fragment_expr, 0f64).unwrap();
                         let s = dsl.score(
                             &rescored_frontiers,
@@ -467,11 +467,7 @@ impl Language {
     }
 
     /// Yields expressions that may have free variables.
-    fn propose_inventions<'a>(
-        &'a self,
-        frontiers: &[RescoredFrontier],
-        arity: u32,
-    ) -> Box<Iterator<Item = Expression> + 'a> {
+    fn propose_inventions(&self, frontiers: &[RescoredFrontier], arity: u32) -> Vec<Expression> {
         let mut findings = HashMap::new();
         // TODO figure out how to properly parallelize
         frontiers
@@ -492,17 +488,16 @@ impl Language {
                 let count = findings.entry(fragment_expr).or_insert(0u64);
                 *count += 1;
             });
-        Box::new(
-            findings
-                .into_iter()
-                .filter_map(move |(fragment_expr, count)| {
-                    if count >= 2 && self.infer(&fragment_expr).is_ok() {
-                        Some(fragment_expr)
-                    } else {
-                        None
-                    }
-                }),
-        )
+        findings
+            .into_iter()
+            .filter_map(move |(fragment_expr, count)| {
+                if count >= 2 && self.infer(&fragment_expr).is_ok() {
+                    Some(fragment_expr)
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
