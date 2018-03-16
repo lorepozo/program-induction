@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 use std::f64;
 use std::rc::Rc;
@@ -276,29 +277,27 @@ impl Language {
     fn uses(&self, request: &Type, expr: &Expression) -> (f64, Uses) {
         let ctx = Context::default();
         let env = Rc::new(LinkedList::default());
-        let (l, _, u) = self.likelihood_uses(request, expr, &ctx, &env);
-        (l, u)
+        self.likelihood_uses(request, expr, &ctx, &env)
     }
 
     /// This is similar to `enumerator::likelihood_internal` but it does a lot more work to
     /// determine _outside_ counts.
-    fn likelihood_uses(
+    fn likelihood_uses<'a>(
         &self,
         request: &Type,
         expr: &Expression,
-        ctx: &Context,
+        ctx: &'a Context,
         env: &Rc<LinkedList<Type>>,
-    ) -> (f64, Context, Uses) {
+    ) -> (f64, Uses) {
         if let Type::Arrow(ref arrow) = *request {
             let env = LinkedList::prepend(env, arrow.arg.clone());
             if let Expression::Abstraction(ref body) = *expr {
                 self.likelihood_uses(&arrow.ret, body, ctx, &env)
             } else {
-                (f64::NEG_INFINITY, ctx.clone(), Uses::new(self)) // invalid expression
+                (f64::NEG_INFINITY, Uses::new(self)) // invalid expression
             }
         } else {
             let candidates = self.candidates(request, ctx, &env.as_vecdeque());
-            let mut ctx = ctx.clone();
             let mut possible_vars = 0f64;
             let mut possible_prims = vec![0f64; self.primitives.len()];
             let mut possible_invented = vec![0f64; self.invented.len()];
@@ -313,13 +312,13 @@ impl Language {
             let mut total_likelihood = f64::NEG_INFINITY;
             let mut weighted_uses: Vec<(f64, Uses)> = Vec::new();
             let mut f = expr;
-            let mut xs = VecDeque::new();
+            let mut xs: VecDeque<&Expression> = VecDeque::new();
             loop {
                 // if we're dealing with an Application, we reiterate for every applicable f/xs
                 // combination.
                 for &(mut l, ref expr, ref tp, ref cctx) in &candidates {
-                    ctx = cctx.clone();
-                    let mut tp = tp.clone();
+                    let mut ctx = Cow::Borrowed(cctx);
+                    let mut tp = Cow::Borrowed(tp);
                     let mut bindings = HashMap::new();
                     // skip this iteration if candidate expr and f don't match:
                     if let Expression::Index(_) = *expr {
@@ -327,39 +326,32 @@ impl Language {
                             continue;
                         }
                     } else if let Some(frag_tp) =
-                        TreeMatcher::do_match(self, &mut ctx, expr, f, &mut bindings, xs.len())
+                        TreeMatcher::do_match(self, ctx.to_mut(), expr, f, &mut bindings, xs.len())
                     {
                         let mut template: VecDeque<Type> =
-                            (0..xs.len()).map(|_| ctx.new_variable()).collect();
+                            (0..xs.len()).map(|_| ctx.to_mut().new_variable()).collect();
                         template.push_back(request.clone());
                         // unification cannot fail, so we can safely unwrap:
-                        ctx.unify(&frag_tp, &Type::from(template.clone()))
+                        ctx.to_mut()
+                            .unify(&frag_tp, &Type::from(template))
                             .expect(&format!(
-                            "likelihood unification failure against {} (type {} / {}) for {} (type {})",
-                            self.display(expr),
-                            tp,
-                            frag_tp,
-                            self.display(f),
-                            Type::from(template),
-                        ));
-                        tp = frag_tp.apply(&ctx);
+                                "likelihood unification failure against {} (type {} / {}) for {}",
+                                self.display(expr),
+                                tp,
+                                frag_tp,
+                                self.display(f),
+                            ));
+                        tp = Cow::Owned(frag_tp.apply(&ctx));
                     } else {
                         continue;
                     }
 
-                    let arg_tps: VecDeque<Type> = if let Type::Arrow(f_tp) = tp {
-                        f_tp.args().into_iter().cloned().collect()
+                    let arg_tps: VecDeque<&Type> = if let Type::Arrow(ref f_tp) = *tp {
+                        f_tp.args()
                     } else {
                         VecDeque::new()
                     };
-                    if xs.len() != arg_tps.len() {
-                        eprintln!(
-                            "warning: likelihood calculation xs.len() ({}) ≠ arg_tps.len() ({})",
-                            xs.len(),
-                            arg_tps.len()
-                        );
-                        continue;
-                    }
+                    debug_assert_eq!(xs.len(), arg_tps.len());
 
                     let mut u = Uses {
                         actual_vars: 0f64,
@@ -379,7 +371,7 @@ impl Language {
                     for (free_tp, free_expr) in bindings
                         .iter()
                         .map(|(_, &(ref tp, ref expr))| (tp, expr))
-                        .chain(arg_tps.iter().zip(&xs))
+                        .chain(arg_tps.into_iter().zip(xs.iter().map(|&x| x)))
                     {
                         let free_tp = free_tp.apply(&ctx);
                         let n = self.likelihood_uses(&free_tp, free_expr, &ctx, env);
@@ -388,8 +380,7 @@ impl Language {
                             break;
                         }
                         l += n.0;
-                        ctx = n.1; // ctx should become any of the new ones
-                        u.merge(n.2);
+                        u.merge(n.1);
                     }
 
                     if l.is_infinite() {
@@ -405,7 +396,7 @@ impl Language {
 
                 if let Expression::Application(ref ff, ref x) = *f {
                     f = ff;
-                    xs.push_front(*x.clone());
+                    xs.push_front(&*x);
                 } else {
                     break;
                 }
@@ -415,7 +406,7 @@ impl Language {
             if total_likelihood.is_finite() && !weighted_uses.is_empty() {
                 u.join_from(total_likelihood, weighted_uses)
             }
-            (total_likelihood, ctx, u)
+            (total_likelihood, u)
         }
     }
 
