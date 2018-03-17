@@ -34,7 +34,7 @@ fn ec_circuits_dl() {
 }
 
 #[test]
-fn ec_circuits_timeout() {
+fn explore_circuits_timeout() {
     let dsl = circuits::dsl();
     let tasks = circuits::make_tasks(100);
     let ec_params = ECParams {
@@ -42,10 +42,9 @@ fn ec_circuits_timeout() {
         search_limit_timeout: Some(Duration::new(1, 0)),
         search_limit_description_length: None,
     };
-    let params = lambda::CompressionParams::default();
 
-    let (dsl, _frontiers) = dsl.ec(&ec_params, &params, &tasks);
-    assert!(!dsl.invented.is_empty());
+    let frontiers = dsl.explore(&ec_params, &tasks);
+    assert!(frontiers.iter().any(|f| !f.is_empty()));
 }
 
 #[test]
