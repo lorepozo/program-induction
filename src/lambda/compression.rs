@@ -4,6 +4,7 @@ use std::f64;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use crossbeam_channel::bounded;
 use itertools::Itertools;
 use polytype::{Context, Type};
 use rayon::iter;
@@ -171,26 +172,6 @@ impl Language {
         RescoredFrontier(f.0, xs)
     }
 
-    fn joint_mdl(&self, frontiers: &[RescoredFrontier], recompute_prior: bool) -> f64 {
-        frontiers
-            .par_iter()
-            .map(|f| {
-                f.1
-                    .iter()
-                    .map(|s| {
-                        let loglikelihood = s.2;
-                        let logprior = if recompute_prior {
-                            self.uses(f.0, &s.0).0
-                        } else {
-                            s.1
-                        };
-                        logprior + loglikelihood
-                    })
-                    .fold(f64::NEG_INFINITY, f64::max)
-            })
-            .sum()
-    }
-
     fn score(
         &mut self,
         frontiers: &[RescoredFrontier],
@@ -199,8 +180,7 @@ impl Language {
         structure_penalty: f64,
     ) -> f64 {
         self.reset_uniform();
-        self.inside_outside(frontiers, pseudocounts);
-        let likelihood = self.joint_mdl(frontiers, true);
+        let likelihood = self.inside_outside(frontiers, pseudocounts);
         let nparams = self.primitives.len() + self.invented.len();
         let structure = (self.primitives.len() as f64)
             + self.invented
@@ -220,9 +200,9 @@ impl Language {
         self.variable_logprob = 0f64;
     }
 
-    fn inside_outside(&mut self, frontiers: &[RescoredFrontier], pseudocounts: u64) {
+    fn inside_outside(&mut self, frontiers: &[RescoredFrontier], pseudocounts: u64) -> f64 {
         let pseudocounts = pseudocounts as f64;
-        let u = self.all_uses(frontiers);
+        let (joint_mdl, u) = self.all_uses(frontiers);
         self.variable_logprob = (u.actual_vars + pseudocounts).ln() - u.possible_vars.ln();
         if !self.variable_logprob.is_finite() {
             self.variable_logprob = u.actual_vars.max(1f64).ln()
@@ -239,10 +219,12 @@ impl Language {
             let pot = if pot == 0f64 { pseudocounts } else { pot };
             inv.2 = obs.ln() - pot.ln();
         }
+        joint_mdl
     }
 
-    fn all_uses(&self, frontiers: &[RescoredFrontier]) -> Uses {
-        frontiers
+    fn all_uses(&self, frontiers: &[RescoredFrontier]) -> (f64, Uses) {
+        let (tx, rx) = bounded(frontiers.len());
+        let u = frontiers
             .par_iter()
             .flat_map(|f| {
                 let lu = f.1
@@ -253,6 +235,7 @@ impl Language {
                     })
                     .collect::<Vec<_>>();
                 let largest = lu.iter().fold(f64::NEG_INFINITY, |acc, &(l, _)| acc.max(l));
+                tx.send(largest).expect("send on closed channel");
                 let z = largest
                     + lu.iter()
                         .map(|&(l, _)| (l - largest).exp())
@@ -269,7 +252,9 @@ impl Language {
                     u.merge(nu);
                     u
                 },
-            )
+            );
+        let joint_mdl = rx.iter().take(frontiers.len()).sum();
+        (joint_mdl, u)
     }
 
     /// This is similar to `enumerator::likelihood` but it does a lot more work to determine
