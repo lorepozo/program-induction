@@ -3,7 +3,7 @@ use std::iter;
 use std::env;
 use std::f64;
 use std::rc::Rc;
-use crossbeam_channel::{self, unbounded};
+use crossbeam_channel::{self, bounded};
 use num_cpus;
 use polytype::{Context, Type};
 use rayon::prelude::*;
@@ -21,6 +21,7 @@ lazy_static! {
     };
 }
 
+const PAR_BUFFER_SIZE: usize = 512;
 const BUDGET_INCREMENT: f64 = 1.0;
 const MAX_DEPTH: u32 = 256;
 
@@ -60,7 +61,7 @@ fn new_par(
     request: Type,
     budget: (f64, f64),
 ) -> crossbeam_channel::IntoIter<(Expression, f64)> {
-    let (tx, rx) = unbounded();
+    let (tx, rx) = bounded(PAR_BUFFER_SIZE);
     rayon::spawn(move || {
         rayon::iter::repeat(tx)
             .zip(exponential_decay(budget))
