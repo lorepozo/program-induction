@@ -129,13 +129,13 @@ See the [documentation](https://docs.rs/programinduction) for more details.
 
 (you could be the one who does one of these!)
 
-[ ] PCFG compression is currently only estimating parameters, not actually
-    learning pieces of programs. An [adaptor
-    grammar](http://cocosci.berkeley.edu/tom/papers/adaptornips.pdf)
-    approach seems like a good direction to go, perhaps minus the Bayesian
-    non-parametrics.
-[ ] `impl GP for pcfg::Grammar` is not yet complete.
-[ ] Add more representations
-[ ] Add more domains
-[ ] Add task generation function in `domains::strings`
+- [ ] PCFG compression is currently only estimating parameters, not actually
+      learning pieces of programs. An [adaptor
+      grammar](http://cocosci.berkeley.edu/tom/papers/adaptornips.pdf)
+      approach seems like a good direction to go, perhaps minus the Bayesian
+      non-parametrics.
+- [ ] `impl GP for pcfg::Grammar` is not yet complete.
+- [ ] Add more representations
+- [ ] Add more domains
+- [ ] Add task generation function in `domains::strings`
 
