@@ -19,7 +19,7 @@ pub struct GPParams {
     pub n_delta: usize,
 }
 
-/// A kind of representation suitable for **genetic programming**.
+/// A kind of representation suitable for **genetic programming**. (WIP)
 ///
 /// Implementors of `GP` must provide methods for [`genesis`], [`mutate`], [`crossover`]. A
 /// [`Task`] provides a fitness function via its [`oracle`].

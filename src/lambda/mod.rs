@@ -154,6 +154,14 @@ impl Language {
     /// Update production probabilities and induce new primitives, with the guarantee that any
     /// changes to the language yield net lower prior probability for expressions in the frontier.
     ///
+    /// Primitives are induced using an approach similar to Cohn et. al. in the 2010 _JMLR_ paper
+    /// [Inducing Tree-Substitution Grammars] and in Tim O'Donnell's [Fragment Grammars] detailed
+    /// in his 2015 _MIT Press_ book, _Productivity and Reuse in Language: A Theory of Linguistic
+    /// Computation and Storage_. However, instead of using Bayesian non-parametrics, we fully
+    /// evaluate posteriors under each non-trivial fragment (because we already have a tractible
+    /// space of expressions — the frontiers). We repeatedly select the best fragment and
+    /// re-evaluate the posteriors until the DSL does not improve.
+    ///
     /// # Examples
     ///
     /// ```
@@ -176,6 +184,9 @@ impl Language {
     /// // there should have been inventions because we started with a non-expressive DSL:
     /// assert!(!dsl.invented.is_empty());
     /// ```
+    ///
+    /// [Inducing Tree-Substitution Grammars]: http://jmlr.csail.mit.edu/papers/volume11/cohn10b/cohn10b.pdf
+    /// [Fragment Grammars]: https://dspace.mit.edu/bitstream/handle/1721.1/44963/MIT-CSAIL-TR-2009-013.pdf
     pub fn compress<O: Sync>(
         &self,
         params: &CompressionParams,

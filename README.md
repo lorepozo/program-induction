@@ -20,6 +20,14 @@ programinduction = "0.2"
 polytype = "1.2"
 ```
 
+The documentation requires a custom HTML header to include KaTeX for math
+support. This isn't supported by `cargo doc`, so to build the documentation
+you may use:
+
+```sh
+cargo rustdoc -- --html-in-header rustdoc-include-katex-header.html
+```
+
 ## Usage
 
 Specify a probabilistic context-free grammar (PCFG; see `pcfg::Grammar`) and
@@ -117,11 +125,17 @@ features = ["racket"]
 
 See the [documentation](https://docs.rs/programinduction) for more details.
 
-## Tips
+## TODO
 
-For more on the Exploration-Compression algorithm, see _Dechter, Eyal et al.
-"Bootstrap Learning via Modular Concept Discovery." IJCAI (2013)._
-[link](http://edechter.github.io/publications/DBLP_conf_ijcai_DechterMAT13.pdf)
+(you could be the one who does one of these!)
 
-For more on genetic programming, see _Poli, Riccardo et al. “A Field Guide
-to Genetic Programming.” (2008)._ [link](http://www.gp-field-guide.org.uk)
+[ ] PCFG compression is currently only estimating parameters, not actually
+    learning pieces of programs. An [adaptor
+    grammar](http://cocosci.berkeley.edu/tom/papers/adaptornips.pdf)
+    approach seems like a good direction to go, perhaps minus the Bayesian
+    non-parametrics.
+[ ] `impl GP for pcfg::Grammar` is not yet complete.
+[ ] Add more representations
+[ ] Add more domains
+[ ] Add task generation function in `domains::strings`
+

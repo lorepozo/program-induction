@@ -11,6 +11,9 @@ description = "A library for program induction and learning representations."
 keywords = ["language", "inference", "bayesian", "genetic", "learning"]
 categories = ["algorithms", "science"]
 
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", ".cargo/registry/src/github.com-1ecc6299db9ec823/program-induction-0.2.5/rustdoc-include-katex-header.html"]
+
 [dependencies]
 crossbeam-channel = "0.1"
 itertools = "0.7"

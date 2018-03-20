@@ -29,12 +29,15 @@ pub struct ECParams {
 
 /// A kind of representation suitable for **exploration-compression**.
 ///
+/// For details on the EC algorithm, see the module-level documentation [here].
+///
 /// Implementors of `EC` need only provide an [`enumerate`] and [`compress`] methods. By doing so,
 /// we provide the [`ec`], [`ec_with_recognition`], and [`explore`] methods.
 ///
 /// Typically, you will interact with this trait via existing implementations, such as with
 /// [`lambda::Language`] or [`pcfg::Grammar`].
 ///
+/// [here]: index.html#bayesian-program-learning-with-the-ec-algorithm
 /// [`enumerate`]: #tymethod.enumerate
 /// [`compress`]: #tymethod.compress
 /// [`ec`]: #method.ec
