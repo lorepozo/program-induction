@@ -2,14 +2,13 @@
 //! Evaluation only happens by calling primitives provided by a simple evaluator.
 
 use std::collections::VecDeque;
-use std::fmt::Debug;
 use std::rc::Rc;
 use polytype::Type;
 
 use lambda::{Expression, Language};
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum ReducedExpression<'a, V: Clone + PartialEq + Debug> {
+#[derive(Clone, PartialEq)]
+pub enum ReducedExpression<'a, V: Clone + PartialEq> {
     Value(V),
     Primitive(&'a str, &'a Type),
     Application(Vec<ReducedExpression<'a, V>>),
@@ -19,7 +18,7 @@ pub enum ReducedExpression<'a, V: Clone + PartialEq + Debug> {
 }
 impl<'a, V> ReducedExpression<'a, V>
 where
-    V: Clone + PartialEq + Debug,
+    V: Clone + PartialEq,
 {
     pub fn new(dsl: &'a Language, expr: &Expression) -> Self {
         Self::from_expr(dsl, &dsl.strip_invented(expr))

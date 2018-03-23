@@ -44,7 +44,7 @@ pub use self::parser::ParseError;
 
 use std::collections::{HashMap, VecDeque};
 use std::f64;
-use std::fmt::{self, Debug};
+use std::fmt;
 use std::rc::Rc;
 use polytype::{Context, Type, UnificationError};
 
@@ -236,7 +236,7 @@ impl Language {
     pub fn eval<V, F>(&self, expr: &Expression, evaluator: &F, inps: &[V]) -> Option<V>
     where
         F: Fn(&str, &[V]) -> V,
-        V: Clone + PartialEq + Debug,
+        V: Clone + PartialEq,
     {
         eval::simple_eval(self, expr, evaluator, inps)
     }
@@ -627,7 +627,7 @@ pub fn task_by_simple_evaluation<'a, V, F>(
     examples: &'a [(Vec<V>, V)],
 ) -> Task<'a, Language, Expression, &'a [(Vec<V>, V)]>
 where
-    V: PartialEq + Clone + Sync + Debug + 'a,
+    V: PartialEq + Clone + Sync + 'a,
     F: Fn(&str, &[V]) -> V + Sync + 'a,
 {
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {

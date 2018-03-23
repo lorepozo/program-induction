@@ -24,7 +24,7 @@ use super::{Expression, Language};
 pub fn simple_eval<V, F>(dsl: &Language, expr: &Expression, evaluator: &F, inps: &[V]) -> Option<V>
 where
     F: Fn(&str, &[V]) -> V,
-    V: Clone + PartialEq + ::std::fmt::Debug,
+    V: Clone + PartialEq,
 {
     ReducedExpression::new(dsl, expr).eval_inps(evaluator, inps)
 }
