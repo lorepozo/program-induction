@@ -29,7 +29,7 @@ use rand;
 use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
 
 use Task;
-use lambda::{Expression, Language};
+use lambda::{EvaluatorFunc, Expression, Language};
 
 /// The circuit representation, a [`lambda::Language`], only defines the binary `nand` operation.
 ///
@@ -170,7 +170,8 @@ pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Expression, Vec<boo
                 let success = truth_table(n_inputs)
                     .zip(&oracle_outputs)
                     .all(|(inps, out)| {
-                        if let Some(o) = dsl.eval(expr, &simple_evaluator, &inps) {
+                        if let Some(o) = dsl.eval(expr, &EvaluatorFunc::of(simple_evaluator), &inps)
+                        {
                             o == *out
                         } else {
                             false

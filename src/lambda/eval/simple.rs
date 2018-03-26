@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use polytype::Type;
 
-use lambda::{Expression, Language};
+use lambda::{Evaluator, Expression, Language};
 
 #[derive(Clone, PartialEq)]
 pub enum ReducedExpression<'a, V: Clone + PartialEq> {
@@ -24,9 +24,9 @@ where
         Self::from_expr(dsl, &dsl.strip_invented(expr))
     }
     /// Evaluation here is "simple". For more complex evaluation, see self::lisp.
-    pub fn eval_inps<F>(&self, evaluator: &F, inps: &[V]) -> Option<V>
+    pub fn eval_inps<'e, E>(&self, evaluator: &E, inps: &[V]) -> Option<V>
     where
-        F: Fn(&str, &[V]) -> V,
+        E: Evaluator<'e, Space = V>,
     {
         let expr = self.clone().with_args(inps);
         let env = &Rc::new(VecDeque::new());
@@ -44,13 +44,13 @@ where
             _ => None,
         }
     }
-    fn eval<F>(
+    fn eval<'e, E>(
         &self,
-        evaluator: &F,
+        evaluator: &E,
         env: &Rc<VecDeque<ReducedExpression<'a, V>>>,
     ) -> ReducedExpression<'a, V>
     where
-        F: Fn(&str, &[V]) -> V,
+        E: Evaluator<'e, Space = V>,
     {
         match *self {
             ReducedExpression::Application(ref xs) => {
@@ -74,7 +74,7 @@ where
                                         _ => unreachable!(),
                                     })
                                     .collect();
-                                let v = ReducedExpression::Value(evaluator(name, &args));
+                                let v = ReducedExpression::Value(evaluator.evaluate(name, &args));
                                 if xs.is_empty() {
                                     v
                                 } else {
@@ -127,7 +127,7 @@ where
                 if let Type::Arrow(_) = *tp {
                     ReducedExpression::Primitive(name, tp)
                 } else {
-                    ReducedExpression::Value(evaluator(name, &[]))
+                    ReducedExpression::Value(evaluator.evaluate(name, &[]))
                 }
             }
             ReducedExpression::Index(i) => match env.get(i) {

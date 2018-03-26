@@ -39,7 +39,7 @@ mod eval;
 mod compression;
 mod parser;
 pub use self::compression::CompressionParams;
-pub use self::eval::{LispError, LispEvaluator};
+pub use self::eval::{Evaluator, EvaluatorFunc, LispError, LispEvaluator};
 pub use self::parser::ParseError;
 
 use std::collections::{HashMap, VecDeque};
@@ -233,12 +233,12 @@ impl Language {
     /// assert_eq!(evaluated, 8);
     /// # }
     /// ```
-    pub fn eval<V, F>(&self, expr: &Expression, evaluator: &F, inps: &[V]) -> Option<V>
+    pub fn eval<'e, E, V>(&self, expr: &Expression, evaluator: &E, inps: &[V]) -> Option<V>
     where
-        F: Fn(&str, &[V]) -> V,
+        E: Evaluator<'e, Space = V>,
         V: Clone + PartialEq,
     {
-        eval::simple_eval(self, expr, evaluator, inps)
+        eval::eval(self, expr, evaluator, inps)
     }
 
     /// Get the log-likelihood of an expression normalized with other expressions with the given
@@ -621,18 +621,18 @@ impl Expression {
 /// assert!((task.oracle)(&dsl, &expr).is_finite())
 /// # }
 /// ```
-pub fn task_by_simple_evaluation<'a, V, F>(
-    simple_evaluator: &'a F,
+pub fn task_by_evaluation<'a, 'e, E, V>(
+    evaluator: &'a E,
     tp: Type,
     examples: &'a [(Vec<V>, V)],
 ) -> Task<'a, Language, Expression, &'a [(Vec<V>, V)]>
 where
+    E: Evaluator<'e, Space = V> + Sync + 'a,
     V: PartialEq + Clone + Sync + 'a,
-    F: Fn(&str, &[V]) -> V + Sync + 'a,
 {
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
         let success = examples.iter().all(|&(ref inps, ref out)| {
-            if let Some(ref o) = dsl.eval(expr, simple_evaluator, inps) {
+            if let Some(ref o) = dsl.eval(expr, evaluator, inps) {
                 o == out
             } else {
                 false
