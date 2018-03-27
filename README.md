@@ -120,6 +120,7 @@ _strings_.
 
 - [x] First-class function evaluation within Rust (and remove lisp
       interpreters).
+- [ ] Faster lambda calculus evaluation.
 - [ ] PCFG compression is currently only estimating parameters, not actually
       learning pieces of programs. An [adaptor
       grammar](http://cocosci.berkeley.edu/tom/papers/adaptornips.pdf)
