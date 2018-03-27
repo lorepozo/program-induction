@@ -1,5 +1,4 @@
-//! Only works with systems that don't have first order functions.
-//! Evaluation only happens by calling primitives provided by a simple evaluator.
+//! Evaluation happens by calling primitives provided by an evaluator.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -24,7 +23,6 @@ where
     pub fn new(dsl: &Language, expr: &Expression) -> Self {
         Self::from_expr(dsl, &dsl.strip_invented(expr))
     }
-    /// Evaluation here is "simple". For more complex evaluation, see self::lisp.
     pub fn eval_inps_with_env<E>(
         &self,
         evaluator: Arc<E>,

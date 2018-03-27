@@ -3,24 +3,6 @@ use std::sync::Arc;
 
 mod simple;
 
-// lisp through racket
-#[cfg(feature = "racket")]
-mod lisp_racket;
-#[cfg(feature = "racket")]
-use self::lisp_racket as lisp;
-
-// lisp through rust
-#[cfg(not(feature = "racket"))]
-mod interp;
-#[cfg(not(feature = "racket"))]
-mod lisp_rust;
-#[cfg(not(feature = "racket"))]
-mod sexp;
-#[cfg(not(feature = "racket"))]
-use self::lisp_rust as lisp;
-
-pub use self::lisp::{LispError, LispEvaluator};
-
 use self::simple::ReducedExpression;
 use super::{Expression, Language};
 

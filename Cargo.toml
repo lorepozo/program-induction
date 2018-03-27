@@ -23,7 +23,6 @@ num_cpus = "1.8"
 polytype = "2.1"
 rand = "0.4"
 rayon = "1.0"
-workerpool = "1.1"
 
 [dev-dependencies]
 serde = "1.0"
@@ -31,5 +30,4 @@ serde_json = "1.0"
 serde_derive = "1.0"
 
 [features]
-racket = []
 par_enum = []

@@ -119,7 +119,6 @@ extern crate num_cpus;
 extern crate polytype;
 extern crate rand;
 extern crate rayon;
-extern crate workerpool;
 
 pub mod domains;
 mod ec;

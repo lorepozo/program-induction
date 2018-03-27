@@ -112,18 +112,7 @@ fn main() {
 
 You may have noted the above use of `domains::circuits`. Some domains are
 already implemented for you. Currently, this only consists of _circuits_ and
-_strings_. The _strings_ domain uses a rich set of primitives and thus
-depends on `lambda::LispEvaluator`. If you find this evaluator to be slow,
-you may install [racket](https://racket-lang.org) and enable the `racket`
-feature in your `Cargo.toml`:
-
-```toml
-[dependencies.programinduction]
-version = "0.2"
-features = ["racket"]
-```
-
-See the [documentation](https://docs.rs/programinduction) for more details.
+_strings_.
 
 ## TODO
 

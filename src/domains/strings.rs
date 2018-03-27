@@ -98,33 +98,3 @@ pub fn dsl() -> Language {
         ("|", tp!(char)),
     ])
 }
-
-/// Primitives for evaluation with [`lambda::LispEvaluator::new`].
-///
-/// [`lambda::LispEvaluator::new`]: ../../lambda/struct.LispEvaluator.html#method.new
-pub fn lisp_prims() -> Vec<(&'static str, &'static str)> {
-    vec![
-        ("+1", "(λ (x) (+ x 1))"),
-        ("-1", "(λ (x) (- x 1))"),
-        ("len", "string-length"),
-        ("empty_str", "\"\""),
-        ("lower", "string-downcase"),
-        ("upper", "string-upcase"),
-        ("concat", "string-append"),
-        ("slice", "(λ (x y s) (substring s x y))"),
-        ("nth", "(λ (n s) (list-ref s n))"),
-        ("strip", "string-trim"),
-        ("split", "(λ (c s) (string-split s c))"),
-        ("join", "(λ (s ss) (string-join ss s))"),
-        ("char->str", "identity"),
-        ("space", "\" \""),
-        (".", "\".\""),
-        (",", "\",\""),
-        ("<", "\"<\""),
-        (">", "\">\""),
-        ("/", "\"/\""),
-        ("@", "\"@\""),
-        ("-", "\"-\""),
-        ("|", "\"|\""),
-    ]
-}

@@ -39,7 +39,7 @@ mod eval;
 mod compression;
 mod parser;
 pub use self::compression::CompressionParams;
-pub use self::eval::{LiftedFunction, Evaluator, EvaluatorFunc, LispError, LispEvaluator};
+pub use self::eval::{Evaluator, EvaluatorFunc, LiftedFunction};
 pub use self::parser::ParseError;
 
 use std::collections::{HashMap, VecDeque};
@@ -236,12 +236,7 @@ impl Language {
     /// assert_eq!(evaluated, 8);
     /// # }
     /// ```
-    pub fn eval<E, V>(
-        &self,
-        expr: &Expression,
-        evaluator: Arc<E>,
-        inps: &[V],
-    ) -> Option<V>
+    pub fn eval<E, V>(&self, expr: &Expression, evaluator: Arc<E>, inps: &[V]) -> Option<V>
     where
         E: Evaluator<Space = V>,
         V: Clone + PartialEq + Send + Sync,
