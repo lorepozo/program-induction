@@ -6,6 +6,7 @@ use std::sync::Arc;
 use polytype::Type;
 
 use lambda::{Evaluator, Expression, Language};
+use super::LiftedFunction;
 
 #[derive(Clone, PartialEq)]
 pub enum ReducedExpression<V: Clone + PartialEq + Sync> {
@@ -24,9 +25,9 @@ where
         Self::from_expr(dsl, &dsl.strip_invented(expr))
     }
     /// Evaluation here is "simple". For more complex evaluation, see self::lisp.
-    pub fn eval_inps_with_env<'e, E>(
+    pub fn eval_inps_with_env<E>(
         &self,
-        evaluator: &'e E,
+        evaluator: Arc<E>,
         env: Arc<VecDeque<ReducedExpression<V>>>,
         inps: &[V],
     ) -> Option<V>
@@ -34,9 +35,9 @@ where
         E: Evaluator<Space = V>,
     {
         let expr = self.clone().with_args(inps);
-        let mut evaluated = expr.eval(evaluator, env.clone());
+        let mut evaluated = expr.eval(evaluator.clone(), env.clone());
         loop {
-            let next = evaluated.eval(evaluator, env.clone());
+            let next = evaluated.eval(evaluator.clone(), env.clone());
             if next == evaluated {
                 break;
             } else {
@@ -48,16 +49,16 @@ where
             _ => None,
         }
     }
-    pub fn eval_inps<'e, E>(&self, evaluator: &'e E, inps: &[V]) -> Option<V>
+    pub fn eval_inps<E>(&self, evaluator: Arc<E>, inps: &[V]) -> Option<V>
     where
         E: Evaluator<Space = V>,
     {
         let env = Arc::new(VecDeque::new());
         self.eval_inps_with_env(evaluator, env, inps)
     }
-    fn eval<'e, E>(
+    fn eval<E>(
         &self,
-        evaluator: &'e E,
+        evaluator: Arc<E>,
         env: Arc<VecDeque<ReducedExpression<V>>>,
     ) -> ReducedExpression<V>
     where
@@ -68,7 +69,7 @@ where
                 let f = &xs[0];
                 let mut xs: Vec<_> = xs[1..]
                     .iter()
-                    .map(|x| x.eval(evaluator, env.clone()))
+                    .map(|x| x.eval(evaluator.clone(), env.clone()))
                     .collect();
                 match *f {
                     ReducedExpression::Primitive(ref name, ref tp) => {
@@ -84,16 +85,17 @@ where
                                 let mut args = xs;
                                 let mut xs = args.split_off(arity);
                                 let args: Vec<V> = args.into_iter()
-                                    .map(move |x| match x {
+                                    .map(|x| match x {
                                         ReducedExpression::Value(v) => v,
                                         ReducedExpression::Abstraction(_, _) => {
                                             let env = env.clone();
-                                            let f = move |xs: &[V]| -> V {
-                                                x.eval_inps_with_env(evaluator, env.clone(), xs)
-                                                    .expect("nested evaluation failed")
-                                            };
                                             evaluator
-                                                .lift(f)
+                                                .clone()
+                                                .lift(LiftedFunction(
+                                                    Arc::new(x),
+                                                    evaluator.clone(),
+                                                    env.clone(),
+                                                ))
                                                 .expect("evaluator could not lift an abstraction")
                                         }
                                         _ => unreachable!(),

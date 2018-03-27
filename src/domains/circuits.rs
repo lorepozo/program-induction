@@ -21,12 +21,12 @@
 //! assert!(40 < hits && hits < 80, "hits = {}", hits);
 //! ```
 
-use std::f64;
-use std::iter;
 use itertools::Itertools;
 use polytype::Type;
 use rand;
 use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
+use std::f64;
+use std::iter;
 
 use Task;
 use lambda::{EvaluatorFunc, Expression, Language};
@@ -166,12 +166,12 @@ pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Expression, Vec<boo
                 .map(|ins| circuit.eval(&ins))
                 .collect();
             let oracle_outputs = outputs.clone();
+            let evaluator = ::std::sync::Arc::new(EvaluatorFunc::of(simple_evaluator));
             let oracle = Box::new(move |dsl: &Language, expr: &Expression| -> f64 {
                 let success = truth_table(n_inputs)
                     .zip(&oracle_outputs)
                     .all(|(inps, out)| {
-                        if let Some(o) = dsl.eval(expr, &EvaluatorFunc::of(simple_evaluator), &inps)
-                        {
+                        if let Some(o) = dsl.eval(expr, evaluator.clone(), &inps) {
                             o == *out
                         } else {
                             false

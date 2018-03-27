@@ -39,13 +39,16 @@ mod eval;
 mod compression;
 mod parser;
 pub use self::compression::CompressionParams;
-pub use self::eval::{Evaluator, EvaluatorFunc, LispError, LispEvaluator};
+pub use self::eval::{LiftedFunction, Evaluator, EvaluatorFunc, LispError, LispEvaluator};
 pub use self::parser::ParseError;
 
 use std::collections::{HashMap, VecDeque};
+use std::error::Error;
 use std::f64;
 use std::fmt;
+use std::ops::Index;
 use std::rc::Rc;
+use std::sync::Arc;
 use polytype::{Context, Type, UnificationError};
 
 use {ECFrontier, Task, EC};
@@ -236,7 +239,7 @@ impl Language {
     pub fn eval<E, V>(
         &self,
         expr: &Expression,
-        evaluator: &E,
+        evaluator: Arc<E>,
         inps: &[V],
     ) -> Option<V>
     where
@@ -627,17 +630,18 @@ impl Expression {
 /// # }
 /// ```
 pub fn task_by_evaluation<'a, E, V>(
-    evaluator: &'a E,
+    evaluator: E,
     tp: Type,
     examples: &'a [(Vec<V>, V)],
 ) -> Task<'a, Language, Expression, &'a [(Vec<V>, V)]>
 where
-    E: Evaluator<Space = V> + Sync + 'a,
+    E: Evaluator<Space = V> + Send + 'a,
     V: PartialEq + Clone + Send + Sync + 'a,
 {
+    let evaluator = Arc::new(evaluator);
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
         let success = examples.iter().all(|&(ref inps, ref out)| {
-            if let Some(ref o) = dsl.eval(expr, evaluator, inps) {
+            if let Some(ref o) = dsl.eval(expr, evaluator.clone(), inps) {
                 o == out
             } else {
                 false
@@ -694,7 +698,7 @@ impl<T: Clone> Default for LinkedList<T> {
         LinkedList(None)
     }
 }
-impl<T: Clone> ::std::ops::Index<usize> for LinkedList<T> {
+impl<T: Clone> Index<usize> for LinkedList<T> {
     type Output = T;
     fn index(&self, i: usize) -> &Self::Output {
         let mut lst: &Rc<LinkedList<T>>;
@@ -735,7 +739,7 @@ impl fmt::Display for InferenceError {
         }
     }
 }
-impl ::std::error::Error for InferenceError {
+impl Error for InferenceError {
     fn description(&self) -> &str {
         "could not infer type"
     }

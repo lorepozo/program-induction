@@ -1,3 +1,6 @@
+use std::collections::VecDeque;
+use std::sync::Arc;
+
 mod simple;
 
 // lisp through racket
@@ -21,18 +24,32 @@ pub use self::lisp::{LispError, LispEvaluator};
 use self::simple::ReducedExpression;
 use super::{Expression, Language};
 
-pub fn eval<E, V>(
-    dsl: &Language,
-    expr: &Expression,
-    evaluator: &E,
-    inps: &[V],
-) -> Option<V>
+pub fn eval<E, V>(dsl: &Language, expr: &Expression, evaluator: Arc<E>, inps: &[V]) -> Option<V>
 where
     E: Evaluator<Space = V>,
     V: Clone + PartialEq + Send + Sync,
 {
     ReducedExpression::new(dsl, expr).eval_inps(evaluator, inps)
-} 
+}
+
+#[derive(Clone)]
+pub struct LiftedFunction<V: Clone + PartialEq + Send + Sync, E: Evaluator<Space = V>>(
+    Arc<ReducedExpression<V>>,
+    Arc<E>,
+    Arc<VecDeque<ReducedExpression<V>>>,
+);
+impl<V, E> LiftedFunction<V, E>
+where
+    E: Evaluator<Space = V>,
+    V: Clone + PartialEq + Send + Sync,
+{
+    pub fn eval(&self, xs: &[V]) -> V {
+        self.0
+            .eval_inps_with_env(self.1.clone(), self.2.clone(), xs)
+            .expect("nested evaluation failed")
+    }
+}
+
 /// A specification for evaluating lambda calculus expressions in a domain.
 ///
 /// In many simple domains, using [`EvaluatorFunc::of`] where you need an `Evaluator` should
@@ -200,15 +217,12 @@ where
 /// [`Space`]: #associatedtype.Space
 /// [`lift`]: #method.lift
 /// [`evaluate`]: #tymethod.evaluate
-pub trait Evaluator: Sync + Sized {
+pub trait Evaluator: Sized + Sync {
     /// The value space of a domain. The inputs of every primitive and the result of every
     /// evaluation must be of this type.
     type Space: Clone + PartialEq + Send + Sync;
     fn evaluate(&self, name: &str, inps: &[Self::Space]) -> Self::Space;
-    fn lift<F: Fn(&[Self::Space]) -> Self::Space + Send + Sync>(
-        &self,
-        _: F,
-    ) -> Result<Self::Space, ()> {
+    fn lift(&self, _: LiftedFunction<Self::Space, Self>) -> Result<Self::Space, ()> {
         Err(())
     }
 }
