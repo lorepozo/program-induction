@@ -233,10 +233,15 @@ impl Language {
     /// assert_eq!(evaluated, 8);
     /// # }
     /// ```
-    pub fn eval<'e, E, V>(&self, expr: &Expression, evaluator: &E, inps: &[V]) -> Option<V>
+    pub fn eval<E, V>(
+        &self,
+        expr: &Expression,
+        evaluator: &E,
+        inps: &[V],
+    ) -> Option<V>
     where
-        E: Evaluator<'e, Space = V>,
-        V: Clone + PartialEq,
+        E: Evaluator<Space = V>,
+        V: Clone + PartialEq + Send + Sync,
     {
         eval::eval(self, expr, evaluator, inps)
     }
@@ -621,14 +626,14 @@ impl Expression {
 /// assert!((task.oracle)(&dsl, &expr).is_finite())
 /// # }
 /// ```
-pub fn task_by_evaluation<'a, 'e, E, V>(
+pub fn task_by_evaluation<'a, E, V>(
     evaluator: &'a E,
     tp: Type,
     examples: &'a [(Vec<V>, V)],
 ) -> Task<'a, Language, Expression, &'a [(Vec<V>, V)]>
 where
-    E: Evaluator<'e, Space = V> + Sync + 'a,
-    V: PartialEq + Clone + Sync + 'a,
+    E: Evaluator<Space = V> + Sync + 'a,
+    V: PartialEq + Clone + Send + Sync + 'a,
 {
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
         let success = examples.iter().all(|&(ref inps, ref out)| {

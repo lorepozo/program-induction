@@ -182,11 +182,11 @@ fn read_list(sexp: &Sexp, env: &mut Env, v: &mut VecDeque<Sexp>) {
 }
 
 mod builtin {
-    use std::f64::EPSILON;
+    use itertools::Itertools;
     use std::collections::VecDeque;
+    use std::f64::EPSILON;
     use std::iter;
     use std::rc::Rc;
-    use itertools::Itertools;
 
     use super::super::LispError;
     use super::super::sexp::Sexp;

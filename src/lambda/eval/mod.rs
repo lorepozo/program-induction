@@ -8,9 +8,9 @@ use self::lisp_racket as lisp;
 
 // lisp through rust
 #[cfg(not(feature = "racket"))]
-mod lisp_rust;
-#[cfg(not(feature = "racket"))]
 mod interp;
+#[cfg(not(feature = "racket"))]
+mod lisp_rust;
 #[cfg(not(feature = "racket"))]
 mod sexp;
 #[cfg(not(feature = "racket"))]
@@ -21,14 +21,18 @@ pub use self::lisp::{LispError, LispEvaluator};
 use self::simple::ReducedExpression;
 use super::{Expression, Language};
 
-pub fn eval<'e, E, V>(dsl: &Language, expr: &Expression, evaluator: &E, inps: &[V]) -> Option<V>
+pub fn eval<E, V>(
+    dsl: &Language,
+    expr: &Expression,
+    evaluator: &E,
+    inps: &[V],
+) -> Option<V>
 where
-    E: Evaluator<'e, Space = V>,
-    V: Clone + PartialEq,
+    E: Evaluator<Space = V>,
+    V: Clone + PartialEq + Send + Sync,
 {
     ReducedExpression::new(dsl, expr).eval_inps(evaluator, inps)
-}
-
+} 
 /// A specification for evaluating lambda calculus expressions in a domain.
 ///
 /// In many simple domains, using [`EvaluatorFunc::of`] where you need an `Evaluator` should
@@ -196,18 +200,19 @@ where
 /// [`Space`]: #associatedtype.Space
 /// [`lift`]: #method.lift
 /// [`evaluate`]: #tymethod.evaluate
-pub trait Evaluator<'e>: Sized {
+pub trait Evaluator: Sync + Sized {
     /// The value space of a domain. The inputs of every primitive and the result of every
     /// evaluation must be of this type.
-    type Space: Clone + PartialEq;
+    type Space: Clone + PartialEq + Send + Sync;
     fn evaluate(&self, name: &str, inps: &[Self::Space]) -> Self::Space;
-    fn lift<F: Fn(&[Self::Space]) -> Self::Space + Send + Sync + 'e>(
+    fn lift<F: Fn(&[Self::Space]) -> Self::Space + Send + Sync>(
+        &self,
         _: F,
     ) -> Result<Self::Space, ()> {
         Err(())
     }
 }
-impl<'e, V: PartialEq + Clone> Evaluator<'e> for fn(&str, &[V]) -> V {
+impl<V: Clone + PartialEq + Send + Sync> Evaluator for fn(&str, &[V]) -> V {
     type Space = V;
     fn evaluate(&self, name: &str, inps: &[Self::Space]) -> Self::Space {
         self(name, inps)
@@ -224,7 +229,7 @@ pub struct EvaluatorFunc<F, V>(F, ::std::marker::PhantomData<V>);
 impl<F, V> EvaluatorFunc<F, V>
 where
     F: Fn(&str, &[V]) -> V,
-    V: PartialEq + Clone,
+    V: PartialEq + Clone + Send + Sync,
 {
     /// Create an `EvaluatorFunc` out of a function that takes a primitive name and a list of
     /// arguments.
@@ -248,10 +253,10 @@ where
         EvaluatorFunc(f, ::std::marker::PhantomData)
     }
 }
-impl<'e, F, V> Evaluator<'e> for EvaluatorFunc<F, V>
+impl<F, V> Evaluator for EvaluatorFunc<F, V>
 where
-    F: Fn(&str, &[V]) -> V,
-    V: PartialEq + Clone,
+    F: Fn(&str, &[V]) -> V + Sync,
+    V: PartialEq + Clone + Send + Sync,
 {
     type Space = V;
     fn evaluate(&self, name: &str, inps: &[Self::Space]) -> Self::Space {

@@ -1,13 +1,13 @@
-use std::collections::VecDeque;
-use std::iter;
-use std::env;
-use std::f64;
-use std::rc::Rc;
 use crossbeam_channel::{self, bounded};
 use num_cpus;
 use polytype::{Context, Type};
-use rayon::prelude::*;
 use rayon;
+use rayon::prelude::*;
+use std::collections::VecDeque;
+use std::env;
+use std::f64;
+use std::iter;
+use std::rc::Rc;
 
 use super::{Expression, Language, LinkedList};
 

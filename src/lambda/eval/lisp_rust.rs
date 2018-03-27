@@ -1,12 +1,12 @@
+use itertools::Itertools;
+use polytype::Type;
 use std::collections::HashMap;
 use std::f64;
 use std::rc::Rc;
-use itertools::Itertools;
-use polytype::Type;
 
+use super::{interp, sexp};
 use Task;
 use lambda::{Expression, Language};
-use super::{interp, sexp};
 
 #[derive(Debug)]
 pub enum LispError {
@@ -279,8 +279,8 @@ mod tests {
     use std::f64::EPSILON;
     use std::rc::Rc;
 
-    use super::sexp::{self, Sexp};
     use super::interp::Value;
+    use super::sexp::{self, Sexp};
 
     fn list_of_pair(v: Value) -> Vec<Rc<Value>> {
         let mut lst = Vec::new();

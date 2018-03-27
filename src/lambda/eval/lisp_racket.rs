@@ -1,13 +1,13 @@
+use super::super::Task;
+use super::{Expression, Language};
+use crossbeam_channel::bounded;
+use itertools::Itertools;
+use polytype::Type;
 use std::collections::HashMap;
 use std::f64;
 use std::io::{self, BufRead, BufReader, Write};
 use std::process::{ChildStdin, ChildStdout, Command, Stdio};
-use crossbeam_channel::bounded;
-use itertools::Itertools;
-use polytype::Type;
 use workerpool::{Pool, Worker};
-use super::super::Task;
-use super::{Expression, Language};
 
 pub type LispError = io::Error;
 

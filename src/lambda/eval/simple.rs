@@ -2,37 +2,41 @@
 //! Evaluation only happens by calling primitives provided by a simple evaluator.
 
 use std::collections::VecDeque;
-use std::rc::Rc;
+use std::sync::Arc;
 use polytype::Type;
 
 use lambda::{Evaluator, Expression, Language};
 
 #[derive(Clone, PartialEq)]
-pub enum ReducedExpression<'a, V: Clone + PartialEq> {
+pub enum ReducedExpression<V: Clone + PartialEq + Sync> {
     Value(V),
-    Primitive(&'a str, &'a Type),
-    Application(Vec<ReducedExpression<'a, V>>),
+    Primitive(String, Type),
+    Application(Vec<ReducedExpression<V>>),
     /// store depth (never zero) for nested abstractions.
-    Abstraction(usize, Box<ReducedExpression<'a, V>>),
+    Abstraction(usize, Box<ReducedExpression<V>>),
     Index(usize),
 }
-impl<'a, V> ReducedExpression<'a, V>
+impl<V> ReducedExpression<V>
 where
-    V: Clone + PartialEq,
+    V: Clone + PartialEq + Send + Sync,
 {
-    pub fn new(dsl: &'a Language, expr: &Expression) -> Self {
+    pub fn new(dsl: &Language, expr: &Expression) -> Self {
         Self::from_expr(dsl, &dsl.strip_invented(expr))
     }
     /// Evaluation here is "simple". For more complex evaluation, see self::lisp.
-    pub fn eval_inps<'e, E>(&self, evaluator: &E, inps: &[V]) -> Option<V>
+    pub fn eval_inps_with_env<'e, E>(
+        &self,
+        evaluator: &'e E,
+        env: Arc<VecDeque<ReducedExpression<V>>>,
+        inps: &[V],
+    ) -> Option<V>
     where
-        E: Evaluator<'e, Space = V>,
+        E: Evaluator<Space = V>,
     {
         let expr = self.clone().with_args(inps);
-        let env = &Rc::new(VecDeque::new());
-        let mut evaluated = expr.eval(evaluator, env);
+        let mut evaluated = expr.eval(evaluator, env.clone());
         loop {
-            let next = evaluated.eval(evaluator, env);
+            let next = evaluated.eval(evaluator, env.clone());
             if next == evaluated {
                 break;
             } else {
@@ -44,33 +48,54 @@ where
             _ => None,
         }
     }
+    pub fn eval_inps<'e, E>(&self, evaluator: &'e E, inps: &[V]) -> Option<V>
+    where
+        E: Evaluator<Space = V>,
+    {
+        let env = Arc::new(VecDeque::new());
+        self.eval_inps_with_env(evaluator, env, inps)
+    }
     fn eval<'e, E>(
         &self,
-        evaluator: &E,
-        env: &Rc<VecDeque<ReducedExpression<'a, V>>>,
-    ) -> ReducedExpression<'a, V>
+        evaluator: &'e E,
+        env: Arc<VecDeque<ReducedExpression<V>>>,
+    ) -> ReducedExpression<V>
     where
-        E: Evaluator<'e, Space = V>,
+        E: Evaluator<Space = V>,
     {
         match *self {
             ReducedExpression::Application(ref xs) => {
                 let f = &xs[0];
-                let mut xs: Vec<_> = xs[1..].iter().map(|x| x.eval(evaluator, env)).collect();
+                let mut xs: Vec<_> = xs[1..]
+                    .iter()
+                    .map(|x| x.eval(evaluator, env.clone()))
+                    .collect();
                 match *f {
-                    ReducedExpression::Primitive(name, tp) => {
+                    ReducedExpression::Primitive(ref name, ref tp) => {
                         // when applying a primitive, check if all arity-many args are concrete
-                        // values and evaluate if possible.
+                        // values, try lifting abstractions, and evaluate if possible.
                         if let Type::Arrow(ref arrow) = *tp {
                             let arity = arrow.args().len();
                             if arity <= xs.len() && xs.iter().take(arity).all(|x| match *x {
                                 ReducedExpression::Value(_) => true,
+                                ReducedExpression::Abstraction(_, _) => true,
                                 _ => false,
                             }) {
                                 let mut args = xs;
                                 let mut xs = args.split_off(arity);
                                 let args: Vec<V> = args.into_iter()
-                                    .map(|x| match x {
+                                    .map(move |x| match x {
                                         ReducedExpression::Value(v) => v,
+                                        ReducedExpression::Abstraction(_, _) => {
+                                            let env = env.clone();
+                                            let f = move |xs: &[V]| -> V {
+                                                x.eval_inps_with_env(evaluator, env.clone(), xs)
+                                                    .expect("nested evaluation failed")
+                                            };
+                                            evaluator
+                                                .lift(f)
+                                                .expect("evaluator could not lift an abstraction")
+                                        }
                                         _ => unreachable!(),
                                     })
                                     .collect();
@@ -94,7 +119,7 @@ where
                         if xs.is_empty() {
                             ReducedExpression::Abstraction(*depth, body.clone())
                         } else {
-                            let mut env = (**env).clone();
+                            let mut env = (*env).clone();
                             let mut depth: usize = *depth;
                             xs.reverse();
                             while !xs.is_empty() && depth > 0 {
@@ -103,7 +128,7 @@ where
                                 depth -= 1;
                             }
                             xs.reverse();
-                            let v = body.eval(evaluator, &Rc::new(env));
+                            let v = body.eval(evaluator, Arc::new(env));
                             if depth > 0 {
                                 ReducedExpression::Abstraction(depth, Box::new(v))
                             } else if xs.is_empty() {
@@ -123,11 +148,11 @@ where
                     }
                 }
             }
-            ReducedExpression::Primitive(name, tp) => {
+            ReducedExpression::Primitive(ref name, ref tp) => {
                 if let Type::Arrow(_) = *tp {
-                    ReducedExpression::Primitive(name, tp)
+                    ReducedExpression::Primitive(name.clone(), tp.clone())
                 } else {
-                    ReducedExpression::Value(evaluator.evaluate(name, &[]))
+                    ReducedExpression::Value(evaluator.evaluate(&name, &[]))
                 }
             }
             ReducedExpression::Index(i) => match env.get(i) {
@@ -152,11 +177,12 @@ where
             }
         }
     }
-    fn from_expr(dsl: &'a Language, expr: &Expression) -> Self {
+    fn from_expr(dsl: &Language, expr: &Expression) -> Self {
         match *expr {
-            Expression::Primitive(num) => {
-                ReducedExpression::Primitive(&dsl.primitives[num].0, &dsl.primitives[num].1)
-            }
+            Expression::Primitive(num) => ReducedExpression::Primitive(
+                dsl.primitives[num].0.clone(),
+                dsl.primitives[num].1.clone(),
+            ),
             Expression::Application(ref f, ref x) => {
                 let mut v = vec![Self::from_expr(dsl, x)];
                 let mut f: &Expression = f;

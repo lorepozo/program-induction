@@ -1,6 +1,6 @@
-use std::rc::Rc;
-use nom::{digit, multispace};
 use nom::types::CompleteStr;
+use nom::{digit, multispace};
+use std::rc::Rc;
 
 use super::LispError;
 use super::interp;

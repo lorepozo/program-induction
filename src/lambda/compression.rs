@@ -1,17 +1,17 @@
-use std::borrow::Cow;
-use std::collections::{HashMap, VecDeque};
-use std::f64;
-use std::rc::Rc;
-use std::sync::{Arc, RwLock};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use crossbeam_channel::bounded;
 use itertools::Itertools;
 use polytype::{Context, Type};
 use rayon::iter;
 use rayon::prelude::*;
+use std::borrow::Cow;
+use std::collections::{HashMap, VecDeque};
+use std::f64;
+use std::rc::Rc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, RwLock};
 
-use {ECFrontier, Task};
 use super::{Expression, Language, LinkedList};
+use {ECFrontier, Task};
 
 const BOUND_VAR_COST: f64 = 0.1;
 const FREE_VAR_COST: f64 = 0.01;
@@ -749,10 +749,10 @@ mod proposals {
     //! Proposals, or "fragment expressions" (written `fragment_expr` where applicable) are
     //! expressions with free variables.
 
+    use super::expression_count_kinds;
+    use super::super::Expression;
     use std::collections::HashMap;
     use std::iter;
-    use super::super::Expression;
-    use super::expression_count_kinds;
 
     #[derive(Debug)]
     enum Fragment {
