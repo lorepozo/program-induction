@@ -120,6 +120,7 @@ _strings_.
 
 - [x] First-class function evaluation within Rust (and remove lisp
       interpreters).
+- [ ] Fallible evaluation (e.g. see how `domains::strings` handles `slice`).
 - [ ] Faster lambda calculus evaluation.
 - [ ] PCFG compression is currently only estimating parameters, not actually
       learning pieces of programs. An [adaptor
