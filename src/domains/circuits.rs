@@ -24,7 +24,7 @@
 use itertools::Itertools;
 use polytype::Type;
 use rand;
-use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
+use rand::distributions::{Distribution, Weighted, WeightedChoice};
 use std::f64;
 use std::iter;
 
@@ -252,11 +252,11 @@ pub fn make_tasks_advanced(
     let mut rng = rand::thread_rng();
     (0..count)
         .map(move |_| {
-            let mut n_inputs = n_input_distribution.ind_sample(&mut rng);
-            let mut n_gates = n_gate_distribution.ind_sample(&mut rng);
+            let mut n_inputs = n_input_distribution.sample(&mut rng);
+            let mut n_gates = n_gate_distribution.sample(&mut rng);
             while n_inputs / n_gates >= 3 {
-                n_inputs = n_input_distribution.ind_sample(&mut rng);
-                n_gates = n_gate_distribution.ind_sample(&mut rng);
+                n_inputs = n_input_distribution.sample(&mut rng);
+                n_gates = n_gate_distribution.sample(&mut rng);
             }
             let tp = Type::from(vec![tp!(bool); n_inputs + 1]);
             let circuit = Circuit::new(&mut rng, &gate_distribution, n_inputs as u32, n_gates);
@@ -293,7 +293,7 @@ pub fn make_tasks_advanced(
 use self::gates::{Circuit, Gate};
 mod gates {
     use rand::Rng;
-    use rand::distributions::{IndependentSample, WeightedChoice};
+    use rand::distributions::{Distribution, WeightedChoice};
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum Gate {
@@ -343,7 +343,7 @@ mod gates {
             };
             loop {
                 while circuit.operations.len() < n_gates {
-                    let gate = gate_distribution.ind_sample(rng);
+                    let gate = gate_distribution.sample(rng);
                     match gate {
                         Gate::Mux2 | Gate::Mux4 if n_inputs < gate.n_inputs() => continue,
                         _ => (),

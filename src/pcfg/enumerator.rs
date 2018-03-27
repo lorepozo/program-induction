@@ -6,7 +6,7 @@ use std::f64;
 use std::iter;
 use itertools::Itertools;
 use polytype::Type;
-use rand::distributions::{IndependentSample, Range};
+use rand::distributions::Range;
 use rand::Rng;
 
 use super::{AppliedRule, Grammar};
@@ -77,7 +77,7 @@ fn enumerate_many<'a>(
 }
 
 pub fn sample<R: Rng>(g: &Grammar, tp: &Type, rng: &mut R) -> AppliedRule {
-    let mut t = Range::new(0f64, 1.0).ind_sample(rng);
+    let mut t = Range::sample_single(0f64, 1.0, rng);
     for (i, r) in g.rules[tp].iter().enumerate() {
         t -= r.logprob.exp();
         if t < 0f64 {

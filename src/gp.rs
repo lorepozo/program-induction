@@ -103,7 +103,7 @@ pub trait GP: Send + Sync + Sized {
     ) {
         let mut new_exprs = Vec::with_capacity(gpparams.n_delta);
         while new_exprs.len() < gpparams.n_delta {
-            if rng.gen_range(0f64, 1f64) < gpparams.mutation_prob {
+            if rng.gen_bool(gpparams.mutation_prob) {
                 let parent = self.tournament(rng, gpparams.tournament_size, population);
                 let child = self.mutate(params, rng, parent);
                 let fitness = (task.oracle)(self, &child);

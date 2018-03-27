@@ -49,7 +49,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use itertools::Itertools;
 use polytype::Type;
 use rand::Rng;
-use rand::distributions::{IndependentSample, Range};
+use rand::distributions::Range;
 use rayon::prelude::*;
 
 use {ECFrontier, Task, EC, GP};
@@ -401,8 +401,7 @@ impl GP for Grammar {
         prog: &Self::Expression,
     ) -> Self::Expression {
         let tot = params.mutation_point + params.mutation_subtree + params.mutation_reproduction;
-        let _ = rng;
-        match Range::new(0f64, tot).ind_sample(rng) {
+        match Range::sample_single(0f64, tot, rng) {
             x if x < params.mutation_point => mutate_random_node(prog.clone(), rng, |ar, rng| {
                 let rule = &self.rules[&ar.0][ar.1];
                 let mut candidates: Vec<_> = self.rules[&ar.0]
