@@ -163,9 +163,9 @@ pub trait EC: Send + Sync + Sized {
     /// # extern crate polytype;
     /// # extern crate programinduction;
     /// use programinduction::{EC, ECParams};
-    /// use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluation};
+    /// use programinduction::pcfg::{Grammar, Rule, task_by_evaluation};
     ///
-    /// fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
+    /// fn evaluator(name: &str, inps: &[i32]) -> i32 {
     ///     match name {
     ///         "0" => 0,
     ///         "1" => 1,
@@ -189,7 +189,7 @@ pub trait EC: Send + Sync + Sized {
     ///     search_limit_description_length: None,
     /// };
     /// // task: the number 4
-    /// let task = task_by_simple_evaluation(&simple_evaluator, &4, tp!(EXPR));
+    /// let task = task_by_evaluation(&evaluator, &4, tp!(EXPR));
     ///
     /// let frontiers = g.explore(&ec_params, &[task]);
     /// assert!(frontiers[0].best_solution().is_some());

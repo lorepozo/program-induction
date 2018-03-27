@@ -6,9 +6,9 @@
 //! # #[macro_use]
 //! # extern crate polytype;
 //! # extern crate programinduction;
-//! use programinduction::pcfg::{task_by_simple_evaluation, Grammar, Rule};
+//! use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
 //!
-//! fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
+//! fn evaluator(name: &str, inps: &[i32]) -> i32 {
 //!     match name {
 //!         "0" => 0,
 //!         "1" => 1,
@@ -28,7 +28,7 @@
 //! );
 //!
 //! // task: the number 4
-//! let task = task_by_simple_evaluation(&simple_evaluator, &4, tp!(EXPR));
+//! let task = task_by_evaluation(&evaluator, &4, tp!(EXPR));
 //!
 //! // solution:
 //! let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
@@ -160,7 +160,7 @@ impl Grammar {
         }
         self.normalize();
     }
-    /// Evaluate a sentence using a simple evaluator.
+    /// Evaluate a sentence using a evaluator.
     ///
     /// # Examples
     ///
@@ -168,9 +168,9 @@ impl Grammar {
     /// # #[macro_use]
     /// # extern crate polytype;
     /// # extern crate programinduction;
-    /// use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluation};
+    /// use programinduction::pcfg::{Grammar, Rule, task_by_evaluation};
     ///
-    /// fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
+    /// fn evaluator(name: &str, inps: &[i32]) -> i32 {
     ///     match name {
     ///         "0" => 0,
     ///         "1" => 1,
@@ -190,18 +190,15 @@ impl Grammar {
     /// );
     ///
     /// let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
-    /// assert_eq!(4, g.eval(&expr, &simple_evaluator));
+    /// assert_eq!(4, g.eval(&expr, &evaluator));
     /// # }
     /// ```
-    pub fn eval<V, F>(&self, ar: &AppliedRule, simple_evaluator: &F) -> V
+    pub fn eval<V, F>(&self, ar: &AppliedRule, evaluator: &F) -> V
     where
         F: Fn(&str, &[V]) -> V,
     {
-        let args: Vec<V> = ar.2
-            .iter()
-            .map(|ar| self.eval(ar, simple_evaluator))
-            .collect();
-        simple_evaluator(self.rules[&ar.0][ar.1].name, &args)
+        let args: Vec<V> = ar.2.iter().map(|ar| self.eval(ar, evaluator)).collect();
+        evaluator(self.rules[&ar.0][ar.1].name, &args)
     }
     /// Sample a statement of the PCFG.
     ///
@@ -499,7 +496,7 @@ fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicU
 /// `V` will often be an enum corresponding to each nonterminal in the PCFG. All outputs and
 /// evaluated sentences must be representable by `V`.
 ///
-/// A `simple_evaluator` takes the name of a production and a vector corresponding to evaluated results
+/// An `evaluator` takes the name of a production and a vector corresponding to evaluated results
 /// of each child node of the production in a particular derivation.
 ///
 /// The resulting task is "all-or-nothing": the oracle returns either `0` if all examples are
@@ -511,9 +508,9 @@ fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicU
 /// # #[macro_use]
 /// # extern crate polytype;
 /// # extern crate programinduction;
-/// use programinduction::pcfg::{Grammar, Rule, task_by_simple_evaluation};
+/// use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
 ///
-/// fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
+/// fn evaluator(name: &str, inps: &[i32]) -> i32 {
 ///     match name {
 ///         "0" => 0,
 ///         "1" => 1,
@@ -534,14 +531,14 @@ fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicU
 ///
 /// let output = 4;
 /// let tp = tp!(EXPR);
-/// let task = task_by_simple_evaluation(&simple_evaluator, &output, tp);
+/// let task = task_by_evaluation(&evaluator, &output, tp);
 ///
 /// let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
 /// assert!((task.oracle)(&g, &expr).is_finite())
 /// # }
 /// ```
-pub fn task_by_simple_evaluation<'a, V, F>(
-    simple_evaluator: &'a F,
+pub fn task_by_evaluation<'a, V, F>(
+    evaluator: &'a F,
     output: &'a V,
     tp: Type,
 ) -> Task<'a, Grammar, AppliedRule, &'a V>
@@ -550,7 +547,7 @@ where
     F: Fn(&str, &[V]) -> V + Sync + 'a,
 {
     let oracle = Box::new(move |g: &Grammar, ar: &AppliedRule| {
-        if output == &g.eval(ar, simple_evaluator) {
+        if output == &g.eval(ar, evaluator) {
             0f64
         } else {
             f64::NEG_INFINITY

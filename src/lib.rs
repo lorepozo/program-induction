@@ -31,7 +31,7 @@
 //! \\begin{aligned}
 //! 	J(\\mathcal{D},\\theta) &\\triangleq
 //!         \\mathbb{P}[\\mathcal{D},\\theta]
-//!         \\prod_{x\\in X} \\sum_p \\mathbb{P}[x|p]\\mathbb{P}[p|\\mathcal{D},\\theta] \\\\
+//!         \\prod\_{x\\in X} \\sum\_p \\mathbb{P}[x|p]\\mathbb{P}[p|\\mathcal{D},\\theta] \\\\
 //!     \\mathcal{D}\^\* &= \\underset{\\mathcal{D}}{\\text{arg}\\,\\text{max}}
 //!         \\int J(\\mathcal{D},\\theta)\\;\\mathrm{d}\\theta \\\\
 //!     \\theta\^\* &= \\underset{\\theta}{\\text{arg}\\,\\text{max}}
@@ -44,7 +44,7 @@
 //! \\mathcal{F}\_x\\) and establish an intuitive lower bound:
 //! \\[
 //!  J\\geq \\mathscr{L}\\triangleq \\mathbb{P}[\mathcal{D},\\theta]
-//!     \\prod_{x\\in X} \\sum_{p\\in \\mathcal{F}_x}
+//!     \\prod\_{x\\in X} \\sum\_{p\\in \\mathcal{F}\_x}
 //!         \\mathbb{P}[x|p]\\mathbb{P}[p|\\mathcal{D},\\theta]
 //! \\]
 //! We find programs and induce a DSL by alternating maximization with respect to the frontiers
@@ -113,6 +113,8 @@ extern crate itertools;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
+extern crate maplit;
+#[macro_use]
 extern crate nom;
 extern crate num_cpus;
 #[macro_use]
@@ -133,14 +135,11 @@ use polytype::Type;
 
 /// A task which is solved by an expression under some representation.
 ///
-/// A task can be made from a simple evaluator and examples with
-/// [`lambda::task_by_simple_evaluation`] or [`pcfg::task_by_simple_evaluation`].
-/// Tasks which require more complex (and expensive) evaluation can be made with a
-/// [`lambda::LispEvaluator`]
+/// A task can be made from an evaluator and examples with [`lambda::task_by_evaluation`] or
+/// [`pcfg::task_by_evaluation`].
 ///
-/// [`lambda::task_by_simple_evaluation`]: lambda/fn.task_by_simple_evaluation.html
-/// [`pcfg::task_by_simple_evaluation`]: pcfg/fn.task_by_simple_evaluation.html
-/// [`lambda::LispEvaluator`]: lambda/struct.LispEvaluator.html
+/// [`lambda::task_by_evaluation`]: lambda/fn.task_by_simple_evaluation.html
+/// [`pcfg::task_by_evaluation`]: pcfg/fn.task_by_simple_evaluation.html
 pub struct Task<'a, R: Send + Sync + Sized, X: Clone + Send + Sync, O: Sync> {
     /// Evaluate an expression by getting its log-likelihood.
     pub oracle: Box<Fn(&R, &X) -> f64 + Send + Sync + 'a>,

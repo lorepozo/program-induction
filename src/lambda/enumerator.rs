@@ -41,6 +41,10 @@ pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Express
             .flat_map(move |(budget, request)| {
                 enumerate(dsl, request, &ctx, env.clone(), budget, 0)
             })
+            // .map(move |(log_prior, log_likelihood, expr)| {
+            //     println!("{} {}", log_prior, dsl.display(&expr));
+            //     (log_prior, log_likelihood, expr)
+            // })
             .map(|(log_prior, _, expr)| (expr, log_prior)),
     )
 }

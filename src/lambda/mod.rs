@@ -5,9 +5,9 @@
 //! ```
 //! # #[macro_use] extern crate polytype;
 //! # extern crate programinduction;
-//! use programinduction::lambda::{task_by_simple_evaluation, Language};
+//! use programinduction::lambda::{task_by_evaluation, Language, SimpleEvaluator};
 //!
-//! fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
+//! fn evaluate(name: &str, inps: &[i32]) -> i32 {
 //!     match name {
 //!         "0" => 0,
 //!         "1" => 1,
@@ -26,7 +26,7 @@
 //! // task: sum 1 with two numbers
 //! let tp = arrow![tp!(int), tp!(int), tp!(int)];
 //! let examples = vec![(vec![2, 5], 8), (vec![1, 2], 4)];
-//! let task = task_by_simple_evaluation(&simple_evaluator, tp, &examples);
+//! let task = task_by_evaluation(SimpleEvaluator::of(evaluate), tp, &examples);
 //!
 //! // solution:
 //! let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
@@ -39,7 +39,7 @@ mod eval;
 mod compression;
 mod parser;
 pub use self::compression::CompressionParams;
-pub use self::eval::{Evaluator, EvaluatorFunc, LiftedFunction};
+pub use self::eval::{Evaluator, LiftedFunction, SimpleEvaluator};
 pub use self::parser::ParseError;
 
 use std::collections::{HashMap, VecDeque};
@@ -175,7 +175,7 @@ impl Language {
     /// let tasks = circuits::make_tasks(100);
     /// let ec_params = ECParams {
     ///     frontier_limit: 5,
-    ///     search_limit_timeout: Some(std::time::Duration::new(1, 0)),
+    ///     search_limit_timeout: Some(std::time::Duration::new(2, 0)),
     ///     search_limit_description_length: None,
     /// };
     /// let params = lambda::CompressionParams::default();
@@ -203,19 +203,15 @@ impl Language {
     ///
     /// Inputs are given as a sequence representing sequentially applied arguments.
     ///
-    /// This is not capable of dealing with first order functions. For now, if you need that kind
-    /// of behavior, you must implement your own evaluator (e.g. call scheme and run appropriate
-    /// code).
-    ///
     /// # Examples
     ///
     /// ```
     /// # #[macro_use]
     /// # extern crate polytype;
     /// # extern crate programinduction;
-    /// use programinduction::lambda::Language;
+    /// use programinduction::lambda::{Language, SimpleEvaluator};
     ///
-    /// fn evaluator(name: &str, inps: &[i32]) -> i32 {
+    /// fn evaluate(name: &str, inps: &[i32]) -> i32 {
     ///     match name {
     ///         "0" => 0,
     ///         "1" => 1,
@@ -230,13 +226,25 @@ impl Language {
     ///     ("1", tp!(int)),
     ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
     /// ]);
+    /// let eval = SimpleEvaluator::of(evaluate);
     /// let expr = dsl.parse("(λ (λ (+ (+ 1 $0) $1)))").unwrap();
     /// let inps = vec![2, 5];
-    /// let evaluated = dsl.eval(&expr, &evaluator, &inps).unwrap();
+    /// let evaluated = dsl.eval(&expr, eval, &inps).unwrap();
     /// assert_eq!(evaluated, 8);
     /// # }
     /// ```
-    pub fn eval<E, V>(&self, expr: &Expression, evaluator: Arc<E>, inps: &[V]) -> Option<V>
+    pub fn eval<E, V>(&self, expr: &Expression, evaluator: E, inps: &[V]) -> Option<V>
+    where
+        E: Evaluator<Space = V>,
+        V: Clone + PartialEq + Send + Sync,
+    {
+        eval::eval(self, expr, &Arc::new(evaluator), inps)
+    }
+
+    /// Like [`eval`], but useful in settings with a shared evaluator.
+    ///
+    /// [`eval`]: #method.eval
+    pub fn eval_arc<E, V>(&self, expr: &Expression, evaluator: &Arc<E>, inps: &[V]) -> Option<V>
     where
         E: Evaluator<Space = V>,
         V: Clone + PartialEq + Send + Sync,
@@ -599,9 +607,9 @@ impl Expression {
 /// # #[macro_use]
 /// # extern crate polytype;
 /// # extern crate programinduction;
-/// use programinduction::lambda::{task_by_simple_evaluation, Language};
+/// use programinduction::lambda::{task_by_evaluation, Language, SimpleEvaluator};
 ///
-/// fn evaluator(name: &str, inps: &[i32]) -> i32 {
+/// fn evaluate(name: &str, inps: &[i32]) -> i32 {
 ///     match name {
 ///         "0" => 0,
 ///         "1" => 1,
@@ -613,7 +621,7 @@ impl Expression {
 /// # fn main() {
 /// let examples = vec![(vec![2, 5], 8), (vec![1, 2], 4)];
 /// let tp = arrow![tp!(int), tp!(int), tp!(int)];
-/// let task = task_by_simple_evaluation(&evaluator, tp, &examples);
+/// let task = task_by_evaluation(SimpleEvaluator::of(evaluate), tp, &examples);
 ///
 /// let dsl = Language::uniform(vec![
 ///     ("0", tp!(int)),
@@ -636,7 +644,7 @@ where
     let evaluator = Arc::new(evaluator);
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
         let success = examples.iter().all(|&(ref inps, ref out)| {
-            if let Some(ref o) = dsl.eval(expr, evaluator.clone(), inps) {
+            if let Some(ref o) = dsl.eval_arc(expr, &evaluator, inps) {
                 o == out
             } else {
                 false

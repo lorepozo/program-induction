@@ -39,9 +39,9 @@ extern crate polytype;
 extern crate programinduction;
 
 use programinduction::{ECParams, EC};
-use programinduction::pcfg::{task_by_simple_evaluation, Grammar, Rule};
+use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
 
-fn simple_evaluator(name: &str, inps: &[i32]) -> i32 {
+fn evaluate(name: &str, inps: &[i32]) -> i32 {
     match name {
         "0" => 0,
         "1" => 1,
@@ -64,7 +64,7 @@ fn main() {
         search_limit: 50,
     };
     // task: the number 4
-    let task = task_by_simple_evaluation(&simple_evaluator, &4, tp!(EXPR));
+    let task = task_by_evaluation(&evaluate, &4, tp!(EXPR));
 
     let frontiers = g.explore(&ec_params, &[task]);
     let sol = &frontiers[0].best_solution().unwrap().0;
@@ -118,6 +118,8 @@ _strings_.
 
 (you could be the one who does one of these!)
 
+- [x] First-class function evaluation within Rust (and remove lisp
+      interpreters).
 - [ ] PCFG compression is currently only estimating parameters, not actually
       learning pieces of programs. An [adaptor
       grammar](http://cocosci.berkeley.edu/tom/papers/adaptornips.pdf)

@@ -29,7 +29,7 @@ use std::f64;
 use std::iter;
 
 use Task;
-use lambda::{EvaluatorFunc, Expression, Language};
+use lambda::{Evaluator as EvaluatorT, Expression, Language};
 
 /// The circuit representation, a [`lambda::Language`], only defines the binary `nand` operation.
 ///
@@ -42,8 +42,10 @@ pub fn dsl() -> Language {
     Language::uniform(vec![("nand", arrow![tp!(bool), tp!(bool), tp!(bool)])])
 }
 
-/// Evaluate an expression in this domain in accordance with the argument of
-/// [`lambda::task_by_simple_evaluation`].
+/// All values in the circuits domain can be represented in this `Space`.
+pub type Space = bool;
+
+/// An [`Evaluator`] for the circuits domain.
 ///
 /// # Examples
 ///
@@ -60,8 +62,8 @@ pub fn dsl() -> Language {
 ///     (vec![false], true),
 ///     (vec![true], false),
 /// ];
-/// let task = lambda::task_by_simple_evaluation(
-///     &circuits::simple_evaluator,
+/// let task = lambda::task_by_evaluation(
+///     circuits::Evaluator,
 ///     arrow![tp!(bool), tp!(bool)],
 ///     &examples,
 /// );
@@ -77,11 +79,16 @@ pub fn dsl() -> Language {
 /// # }
 /// ```
 ///
-/// [`lambda::task_by_simple_evaluation`]: ../../lambda/fn.task_by_simple_evaluation.html
-pub fn simple_evaluator(primitive: &str, inp: &[bool]) -> bool {
-    match primitive {
-        "nand" => !(inp[0] & inp[1]),
-        _ => unreachable!(),
+/// [`Evaluator`]: ../../lambda/trait.Evaluator.html
+#[derive(Copy, Clone)]
+pub struct Evaluator;
+impl EvaluatorT for Evaluator {
+    type Space = Space;
+    fn evaluate(&self, primitive: &str, inp: &[Self::Space]) -> Self::Space {
+        match primitive {
+            "nand" => !(inp[0] & inp[1]),
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -94,6 +101,12 @@ fn truth_table(dim: usize) -> Box<Iterator<Item = Vec<bool>>> {
 }
 
 /// Randomly sample a number of circuits into [`Task`]s.
+///
+/// For a circuit, the number of inputs is sampled from 1 to 6 with weights 1, 2, 3, 4, 4, and 4
+/// respectively. The number of gates is sampled from 1 to 3 with weights 1, 2, and 2 respectively.
+/// The gates themselves are sampled from NOT, AND, OR, and MUX2 with weights 1, 2, 2, and 4,
+/// respectively. All circuits are connected: every input is used and every gate's output is either
+/// wired to another gate or to the circuits final output.
 ///
 /// The task observations are outputs of the truth table in sequence, for example
 ///
@@ -111,41 +124,126 @@ fn truth_table(dim: usize) -> Box<Iterator<Item = Vec<bool>>> {
 ///
 /// [`Task`]: ../../struct.Task.html
 pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Expression, Vec<bool>>> {
+    make_tasks_advanced(
+        count,
+        [1, 2, 3, 4, 4, 4, 0, 0],
+        [1, 2, 2, 0, 0, 0, 0, 0],
+        1,
+        2,
+        2,
+        4,
+        0,
+    )
+}
+
+/// Like [`make_tasks`], but with a configurable circuit distribution.
+///
+/// The `n_input_dist` and `n_gate_dist` arguments specify the relative distributions for the
+/// number of inputs and the number of gates from 1 to 8. The `gate_` arguments are relative
+/// weights for sampling the respective gate.
+///
+/// [`make_tasks`]: fn.make_tasks.html
+#[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+pub fn make_tasks_advanced(
+    count: u32,
+    n_input_dist: [u32; 8],
+    n_gate_dist: [u32; 8],
+    gate_not: u32,
+    gate_and: u32,
+    gate_or: u32,
+    gate_mux2: u32,
+    gate_mux4: u32,
+) -> Vec<Task<'static, Language, Expression, Vec<bool>>> {
     let mut n_input_weights = vec![
-        Weighted { weight: 1, item: 1 },
-        Weighted { weight: 2, item: 2 },
-        Weighted { weight: 3, item: 3 },
-        Weighted { weight: 4, item: 4 },
-        Weighted { weight: 4, item: 5 },
-        Weighted { weight: 4, item: 6 },
+        Weighted {
+            weight: n_input_dist[0],
+            item: 1,
+        },
+        Weighted {
+            weight: n_input_dist[1],
+            item: 2,
+        },
+        Weighted {
+            weight: n_input_dist[2],
+            item: 3,
+        },
+        Weighted {
+            weight: n_input_dist[3],
+            item: 4,
+        },
+        Weighted {
+            weight: n_input_dist[4],
+            item: 5,
+        },
+        Weighted {
+            weight: n_input_dist[5],
+            item: 6,
+        },
+        Weighted {
+            weight: n_input_dist[6],
+            item: 7,
+        },
+        Weighted {
+            weight: n_input_dist[7],
+            item: 8,
+        },
     ];
     let n_input_distribution = WeightedChoice::new(&mut n_input_weights);
     let mut n_gate_weights = vec![
-        Weighted { weight: 1, item: 1 },
-        Weighted { weight: 2, item: 2 },
-        Weighted { weight: 2, item: 3 },
+        Weighted {
+            weight: n_gate_dist[0],
+            item: 1,
+        },
+        Weighted {
+            weight: n_gate_dist[1],
+            item: 2,
+        },
+        Weighted {
+            weight: n_gate_dist[2],
+            item: 3,
+        },
+        Weighted {
+            weight: n_gate_dist[3],
+            item: 4,
+        },
+        Weighted {
+            weight: n_gate_dist[4],
+            item: 5,
+        },
+        Weighted {
+            weight: n_gate_dist[5],
+            item: 6,
+        },
+        Weighted {
+            weight: n_gate_dist[6],
+            item: 7,
+        },
+        Weighted {
+            weight: n_gate_dist[7],
+            item: 8,
+        },
     ];
     let n_gate_distribution = WeightedChoice::new(&mut n_gate_weights);
 
     let mut gate_weights = vec![
         Weighted {
-            weight: 1,
+            weight: gate_not,
             item: Gate::Not,
         },
         Weighted {
-            weight: 2,
+            weight: gate_and,
             item: Gate::And,
         },
         Weighted {
-            weight: 2,
+            weight: gate_or,
             item: Gate::Or,
         },
         Weighted {
-            weight: 4,
+            weight: gate_mux2,
             item: Gate::Mux2,
         },
         Weighted {
-            weight: 0,
+            weight: gate_mux4,
             item: Gate::Mux4,
         },
     ];
@@ -166,12 +264,12 @@ pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Expression, Vec<boo
                 .map(|ins| circuit.eval(&ins))
                 .collect();
             let oracle_outputs = outputs.clone();
-            let evaluator = ::std::sync::Arc::new(EvaluatorFunc::of(simple_evaluator));
+            let evaluator = ::std::sync::Arc::new(Evaluator);
             let oracle = Box::new(move |dsl: &Language, expr: &Expression| -> f64 {
                 let success = truth_table(n_inputs)
                     .zip(&oracle_outputs)
                     .all(|(inps, out)| {
-                        if let Some(o) = dsl.eval(expr, evaluator.clone(), &inps) {
+                        if let Some(o) = dsl.eval_arc(expr, &evaluator, &inps) {
                             o == *out
                         } else {
                             false
