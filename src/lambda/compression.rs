@@ -311,7 +311,7 @@ impl Language {
                         if expr != f {
                             continue;
                         }
-                    } else if let Some(frag_tp) =
+                    } else if let Some(mut frag_tp) =
                         TreeMatcher::do_match(self, ctx.to_mut(), expr, f, &mut bindings, xs.len())
                     {
                         let mut template: VecDeque<Type> =
@@ -327,7 +327,8 @@ impl Language {
                                 frag_tp,
                                 self.display(f),
                             ));
-                        tp = Cow::Owned(frag_tp.apply(&ctx));
+                        frag_tp.apply_mut(&ctx);
+                        tp = Cow::Owned(frag_tp);
                     } else {
                         continue;
                     }
@@ -355,7 +356,8 @@ impl Language {
                         .map(|(_, &(ref tp, ref expr))| (tp, expr))
                         .chain(arg_tps.into_iter().zip(xs.iter().map(|&x| x)))
                     {
-                        let free_tp = free_tp.apply(&ctx);
+                        let mut free_tp = free_tp.clone();
+                        free_tp.apply_mut(&ctx);
                         let n = self.likelihood_uses(&free_tp, free_expr, &ctx, env);
                         if n.0.is_infinite() {
                             l = f64::NEG_INFINITY;
@@ -598,7 +600,9 @@ impl<'a> TreeMatcher<'a> {
             (&Expression::Index(i), _) if i < env.len() => {
                 // bound variable
                 if fragment == concrete {
-                    Some(env[i].apply(self.ctx))
+                    let mut tp = env[i].clone();
+                    tp.apply_mut(self.ctx);
+                    Some(tp)
                 } else {
                     None
                 }

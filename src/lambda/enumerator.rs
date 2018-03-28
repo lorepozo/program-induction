@@ -206,8 +206,8 @@ fn enumerate_application<'a>(
     budget: (f64, f64),
     depth: u32,
 ) -> Box<Iterator<Item = (f64, Context, Expression)> + 'a> {
-    if let Some(arg_tp) = arg_tps.pop_front() {
-        let arg_tp = arg_tp.apply(ctx);
+    if let Some(mut arg_tp) = arg_tps.pop_front() {
+        arg_tp.apply_mut(ctx);
         Box::new(
             enumerate(dsl, arg_tp, ctx, env.clone(), (0f64, budget.1), depth).flat_map(
                 move |(arg_ll, ctx, arg)| {

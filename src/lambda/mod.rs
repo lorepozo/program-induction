@@ -358,14 +358,17 @@ impl Language {
             .chain(invented)
             .filter_map(|(p, tp, expr)| {
                 let mut ctx = ctx.clone();
-                let tp = &tp.instantiate(&mut ctx);
-                let ret = if let Some(ret) = tp.returns() {
-                    ret
-                } else {
-                    tp
+                let mut tp = tp.instantiate(&mut ctx);
+                let unification_result = {
+                    let ret = if let Some(ret) = tp.returns() {
+                        ret
+                    } else {
+                        &tp
+                    };
+                    ctx.unify(ret, request).ok()
                 };
-                ctx.unify(ret, request).ok().map(|_| {
-                    let tp = tp.apply(&ctx);
+                unification_result.map(|_| {
+                    tp.apply_mut(&ctx);
                     (p, expr, tp, ctx)
                 })
             })
@@ -381,7 +384,8 @@ impl Language {
                     &tp
                 };
                 ctx.unify(ret, request).ok().map(|_| {
-                    let tp = tp.apply(&ctx);
+                    let mut tp = tp.clone();
+                    tp.apply_mut(&ctx);
                     (self.variable_logprob, expr, tp, ctx)
                 })
             })
@@ -473,16 +477,22 @@ impl Expression {
                 let mut env = env.clone();
                 env.push_front(arg_tp.clone());
                 let ret_tp = body.infer(dsl, &mut ctx, &env, indices)?;
-                Ok(Type::arrow(arg_tp, ret_tp).apply(ctx))
+                let mut tp = Type::arrow(arg_tp, ret_tp);
+                tp.apply_mut(ctx);
+                Ok(tp)
             }
             Expression::Index(i) => {
                 if (i as usize) < env.len() {
-                    Ok(env[i as usize].apply(ctx))
+                    let mut tp = env[i as usize].clone();
+                    tp.apply_mut(ctx);
+                    Ok(tp)
                 } else {
-                    Ok(indices
+                    let mut tp = indices
                         .entry(i - env.len())
                         .or_insert_with(|| ctx.new_variable())
-                        .apply(ctx))
+                        .clone();
+                    tp.apply_mut(ctx);
+                    Ok(tp)
                 }
             }
             Expression::Invented(num) => if let Some(inv) = dsl.invented.get(num as usize) {
