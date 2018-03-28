@@ -7,7 +7,7 @@ extern crate serde_derive;
 extern crate serde_json;
 
 use std::f64;
-use polytype::Type;
+use polytype::TypeSchema;
 use programinduction::{lambda, ECFrontier, Task};
 use rayon::prelude::*;
 
@@ -79,7 +79,7 @@ impl From<ExternalCompressionInput> for CompressionInput {
             .map(|p| {
                 (
                     p.name,
-                    Type::parse(&p.tp).expect("invalid primitive type"),
+                    TypeSchema::parse(&p.tp).expect("invalid primitive type"),
                     p.logp,
                 )
             })
@@ -105,7 +105,7 @@ impl From<ExternalCompressionInput> for CompressionInput {
         let (tasks, frontiers) = eci.frontiers
             .into_par_iter()
             .map(|f| {
-                let tp = Type::parse(&f.task_tp).expect("invalid task type");
+                let tp = TypeSchema::parse(&f.task_tp).expect("invalid task type");
                 let task = Task {
                     oracle: Box::new(noop_oracle),
                     observation: (),

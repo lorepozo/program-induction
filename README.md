@@ -16,8 +16,8 @@ following to your `Cargo.toml`:
 ```toml
 [dependencies]
 programinduction = "0.2"
-# many examples also depend on polytype for the tp! and arrow! macros:
-polytype = "2.1"
+# many examples also depend on polytype for the tp! and ptp! macros:
+polytype = "4.0"
 ```
 
 The documentation requires a custom HTML header to include KaTeX for math
@@ -56,7 +56,7 @@ fn main() {
         vec![
             Rule::new("0", tp!(EXPR), 1.0),
             Rule::new("1", tp!(EXPR), 1.0),
-            Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
+            Rule::new("plus", tp!(@arrow[tp!(EXPR), tp!(EXPR), tp!(EXPR)]), 1.0),
         ],
     );
     let ec_params = ECParams {
@@ -88,7 +88,7 @@ fn main() {
     // circuit DSL
     let dsl = lambda::Language::uniform(vec![
         // NAND takes two bools and returns a bool
-        ("nand", arrow![tp!(bool), tp!(bool), tp!(bool)]),
+        ("nand", ptp!(@arrow[tp!(bool), tp!(bool), tp!(bool)])),
     ]);
     // parameters
     let lambda_params = lambda::CompressionParams::default();

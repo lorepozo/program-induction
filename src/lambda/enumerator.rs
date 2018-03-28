@@ -1,6 +1,6 @@
 use crossbeam_channel::{self, bounded};
 use num_cpus;
-use polytype::{Context, Type};
+use polytype::{Context, Type, TypeSchema};
 use rayon;
 use rayon::prelude::*;
 use std::collections::VecDeque;
@@ -31,15 +31,19 @@ fn budget_interval(n: u32) -> (f64, f64) {
 }
 
 #[cfg(not(feature = "par_enum"))]
-pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
-    let ctx = Context::default();
+pub fn new<'a>(
+    dsl: &'a Language,
+    request: TypeSchema,
+) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
+    let mut ctx = Context::default();
+    let tp = request.instantiate(&mut ctx);
     let env = Rc::new(LinkedList::default());
     Box::new(
         (0..)
             .map(budget_interval)
-            .zip(iter::repeat(request))
-            .flat_map(move |(budget, request)| {
-                enumerate(dsl, request, &ctx, env.clone(), budget, 0)
+            .zip(iter::repeat(tp))
+            .flat_map(move |(budget, tp)| {
+                enumerate(dsl, tp, &ctx, env.clone(), budget, 0)
             })
             // .map(move |(log_prior, log_likelihood, expr)| {
             //     println!("{} {}", log_prior, dsl.display(&expr));
@@ -104,10 +108,11 @@ fn exponential_decay(budget: (f64, f64)) -> Vec<(f64, f64)> {
     v
 }
 
-pub fn likelihood<'a>(dsl: &'a Language, request: &Type, expr: &Expression) -> f64 {
-    let ctx = Context::default();
+pub fn likelihood<'a>(dsl: &'a Language, request: &TypeSchema, expr: &Expression) -> f64 {
+    let mut ctx = Context::default();
     let env = Rc::new(LinkedList::default());
-    likelihood_internal(dsl, request, &ctx, &env, expr).0
+    let t = request.instantiate(&mut ctx);
+    likelihood_internal(dsl, &t, &ctx, &env, expr).0
 }
 fn likelihood_internal<'a>(
     dsl: &'a Language,
@@ -116,10 +121,10 @@ fn likelihood_internal<'a>(
     env: &Rc<LinkedList<Type>>,
     mut expr: &Expression,
 ) -> (f64, Context) {
-    if let Type::Arrow(ref arrow) = *request {
-        let env = LinkedList::prepend(env, arrow.arg.clone());
+    if let Some((arg, ret)) = request.as_arrow() {
+        let env = LinkedList::prepend(env, arg.clone());
         if let Expression::Abstraction(ref body) = *expr {
-            likelihood_internal(dsl, &arrow.ret, ctx, &env, body)
+            likelihood_internal(dsl, ret, ctx, &env, body)
         } else {
             (f64::NEG_INFINITY, ctx.clone()) // invalid expression
         }
@@ -135,8 +140,7 @@ fn likelihood_internal<'a>(
             .find(|&(_, ref c_expr, _, _)| expr == c_expr)
         {
             Some((f_l, _, f_tp, ctx)) => {
-                if let Type::Arrow(f_tp) = f_tp {
-                    let arg_tps = f_tp.args();
+                if let Some(arg_tps) = f_tp.args() {
                     xs.into_iter()
                         .zip(arg_tps)
                         .fold((f_l, ctx), |(l, ctx), (x, x_tp)| {
@@ -171,9 +175,9 @@ fn enumerate<'a>(
 ) -> Box<Iterator<Item = (f64, Context, Expression)> + 'a> {
     if budget.1 <= 0f64 || depth > MAX_DEPTH {
         Box::new(iter::empty())
-    } else if let Type::Arrow(arrow) = request {
-        let env = LinkedList::prepend(&env, arrow.arg.clone());
-        let it = enumerate(dsl, arrow.ret, ctx, env, budget, depth)
+    } else if let Some((arg, ret)) = request.as_arrow() {
+        let env = LinkedList::prepend(&env, arg.clone());
+        let it = enumerate(dsl, ret.clone(), ctx, env, budget, depth)
             .map(|(ll, ctx, body)| (ll, ctx, Expression::Abstraction(Box::new(body))));
         Box::new(it)
     } else {
@@ -182,11 +186,9 @@ fn enumerate<'a>(
                 .into_iter()
                 .filter(move |&(ll, _, _, _)| -ll <= budget.1)
                 .flat_map(move |(ll, expr, tp, ctx)| {
-                    let arg_tps: VecDeque<Type> = if let Type::Arrow(f_tp) = tp {
-                        f_tp.args().into_iter().cloned().collect()
-                    } else {
-                        VecDeque::new()
-                    };
+                    let arg_tps: VecDeque<Type> = tp.args()
+                        .map(|args| args.into_iter().cloned().collect())
+                        .unwrap_or_else(VecDeque::new);
                     let budget = (budget.0 + ll, budget.1 + ll);
                     enumerate_application(dsl, &ctx, env.clone(), expr, arg_tps, budget, depth + 1)
                         .map(move |(l, c, x)| (l + ll, c, x))

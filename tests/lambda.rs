@@ -6,7 +6,9 @@ use programinduction::lambda::*;
 
 #[test]
 fn lambda_expression_parse_primitive() {
-    let dsl = Language::uniform(vec![("singleton", arrow![tp!(0), tp!(list(tp!(0)))])]);
+    let dsl = Language::uniform(vec![
+        ("singleton", ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))])),
+    ]);
     let expr = dsl.parse("singleton").unwrap();
     assert_eq!(expr, Expression::Primitive(0));
 
@@ -17,8 +19,8 @@ fn lambda_expression_parse_primitive() {
 #[test]
 fn lambda_expression_parse_application() {
     let dsl = Language::uniform(vec![
-        ("singleton", arrow![tp!(0), tp!(list(tp!(0)))]),
-        ("thing", arrow![tp!(int), tp!(int)]),
+        ("singleton", ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))])),
+        ("thing", ptp!(@arrow[tp!(int), tp!(int)])),
     ]);
     assert_eq!(
         dsl.parse("(singleton singleton)").unwrap(),
@@ -52,7 +54,9 @@ fn lambda_expression_parse_application() {
 
 #[test]
 fn lambda_expression_parse_index() {
-    let dsl = Language::uniform(vec![("singleton", arrow![tp!(0), tp!(list(tp!(0)))])]);
+    let dsl = Language::uniform(vec![
+        ("singleton", ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))])),
+    ]);
     assert_eq!(
         dsl.parse("(singleton $0)").unwrap(),
         Expression::Application(
@@ -68,8 +72,8 @@ fn lambda_expression_parse_index() {
 #[test]
 fn lambda_expression_parse_invented() {
     let mut dsl = Language::uniform(vec![
-        ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-        ("1", tp!(int)),
+        ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+        ("1", ptp!(int)),
     ]);
     dsl.invent(
         Expression::Application(
@@ -91,8 +95,8 @@ fn lambda_expression_parse_invented() {
 #[test]
 fn lambda_expression_parse_abstraction() {
     let mut dsl = Language::uniform(vec![
-        ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-        ("1", tp!(int)),
+        ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+        ("1", ptp!(int)),
     ]);
     dsl.invent(
         Expression::Abstraction(Box::new(Expression::Application(
@@ -152,11 +156,11 @@ fn lambda_expression_parse_abstraction() {
 #[test]
 fn lambda_expression_infer() {
     let mut dsl = Language::uniform(vec![
-        ("singleton", arrow![tp!(0), tp!(list(tp!(0)))]),
-        (">=", arrow![tp!(int), tp!(int), tp!(bool)]),
-        ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-        ("0", tp!(int)),
-        ("1", tp!(int)),
+        ("singleton", ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))])),
+        (">=", ptp!(@arrow[tp!(int), tp!(int), tp!(bool)])),
+        ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+        ("0", ptp!(int)),
+        ("1", ptp!(int)),
     ]);
     dsl.invent(
         Expression::Application(
@@ -181,7 +185,7 @@ fn lambda_expression_infer() {
             )),
         )),
     );
-    assert_eq!(dsl.infer(&expr).unwrap(), tp!(list(tp!(bool))));
+    assert_eq!(dsl.infer(&expr).unwrap(), ptp!(list(tp!(bool))));
     assert_eq!(
         dsl.display(&expr),
         "(singleton ((λ (>= $0 1)) (#(+ 1) 0)))"
@@ -191,9 +195,9 @@ fn lambda_expression_infer() {
 #[test]
 fn lambda_eval_simplest() {
     let dsl = Language::uniform(vec![
-        ("0", tp!(int)),
-        ("1", tp!(int)),
-        ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+        ("0", ptp!(int)),
+        ("1", ptp!(int)),
+        ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
     ]);
 
     fn evaluate(primitive: &str, inps: &[i32]) -> i32 {
@@ -212,11 +216,11 @@ fn lambda_eval_simplest() {
 #[test]
 fn lambda_eval_somewhat_simple() {
     let dsl = Language::uniform(vec![
-        ("0", tp!(int)),
-        ("1", tp!(int)),
-        ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-        ("eq", arrow![tp!(int), tp!(int), tp!(bool)]),
-        ("not", arrow![tp!(bool), tp!(bool)]),
+        ("0", ptp!(int)),
+        ("1", ptp!(int)),
+        ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+        ("eq", ptp!(@arrow[tp!(int), tp!(int), tp!(bool)])),
+        ("not", ptp!(@arrow[tp!(bool), tp!(bool)])),
     ]);
 
     #[derive(Clone, PartialEq, Debug)]
@@ -315,14 +319,21 @@ fn lambda_eval_firstclass() {
     }
 
     let dsl = Language::uniform(vec![
-        ("0", tp!(int)),
-        ("1", tp!(int)),
-        ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-        ("singleton", arrow![tp!(int), tp!(intlist)]),
-        ("chain", arrow![tp!(intlist), tp!(intlist), tp!(intlist)]),
+        ("0", ptp!(int)),
+        ("1", ptp!(int)),
+        ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+        ("singleton", ptp!(@arrow[tp!(int), tp!(list(tp!(int)))])),
+        (
+            "chain",
+            ptp!(@arrow[tp!(list(tp!(int))), tp!(list(tp!(int))), tp!(list(tp!(int)))]),
+        ),
         (
             "map",
-            arrow![arrow![tp!(int), tp!(int)], tp!(intlist), tp!(intlist)],
+            ptp!(@arrow[
+                tp!(@arrow[tp!(int), tp!(int)]),
+                tp!(list(tp!(int))),
+                tp!(list(tp!(int)))
+            ]),
         ),
     ]);
     let examples = vec![
@@ -336,7 +347,7 @@ fn lambda_eval_firstclass() {
         ),
     ];
     // task: add-k
-    let tp = arrow![tp!(intlist), tp!(int), tp!(intlist)];
+    let tp = ptp!(@arrow[tp!(list(tp!(int))), tp!(int), tp!(list(tp!(int)))]);
     let task = task_by_evaluation(ListEvaluator, tp, &examples);
 
     // good solution:

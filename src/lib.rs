@@ -131,7 +131,7 @@ pub use ec::*;
 pub use gp::*;
 
 use std::f64;
-use polytype::Type;
+use polytype::TypeSchema;
 
 /// A task which is solved by an expression under some representation.
 ///
@@ -146,6 +146,6 @@ pub struct Task<'a, R: Send + Sync + Sized, X: Clone + Send + Sync, O: Sync> {
     /// Some program induction methods can take advantage of observations. This may often
     /// practically be the unit type `()`.
     pub observation: O,
-    /// An expression that is considered valid for the `oracle` is one of this Type.
-    pub tp: Type,
+    /// An expression that is considered valid for the `oracle` is one of this type.
+    pub tp: TypeSchema,
 }

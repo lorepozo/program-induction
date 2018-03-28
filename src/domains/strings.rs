@@ -20,7 +20,7 @@
 //! ];
 //! let task = lambda::task_by_evaluation(
 //!     strings::Evaluator,
-//!     arrow![tp!(str), tp!(str)],
+//!     ptp!(@arrow[tp!(str), tp!(str)]),
 //!     &examples,
 //! );
 //!
@@ -45,62 +45,75 @@ use lambda::{Evaluator as EvaluatorT, Language, LiftedFunction};
 /// The string editing [`lambda::Language`] defines the following operations:
 ///
 /// ```ignore
-/// "0":         tp!(int)
-/// "+1":        arrow![tp!(int), tp!(int)]
-/// "-1":        arrow![tp!(int), tp!(int)]
-/// "len":       arrow![tp!(str), tp!(int)]
-/// "empty_str": tp!(str)
-/// "lower":     arrow![tp!(str), tp!(str)]
-/// "upper":     arrow![tp!(str), tp!(str)]
-/// "concat":    arrow![tp!(str), tp!(str), tp!(str)]
-/// "slice":     arrow![tp!(int), tp!(int), tp!(str), tp!(str)]
-/// "nth":       arrow![tp!(int), tp!(list(tp!(str))), tp!(str)]
-/// "map":       arrow![arrow![tp!(0), tp!(1)], tp!(list(tp!(0))), tp!(list(tp!(1)))]
-/// "strip":     arrow![tp!(str), tp!(str)]
-/// "split":     arrow![tp!(char), tp!(str), tp!(list(tp!(str)))]
-/// "join":      arrow![tp!(str), tp!(list(tp!(str))), tp!(str)]
-/// "char->str": arrow![tp!(char), tp!(str)]
-/// "space":     tp!(char)
-/// ".":         tp!(char)
-/// ",":         tp!(char)
-/// "<":         tp!(char)
-/// ">":         tp!(char)
-/// "/":         tp!(char)
-/// "@":         tp!(char)
-/// "-":         tp!(char)
-/// "|":         tp!(char)
+/// "0":         ptp!(int)
+/// "+1":        ptp!(@arrow[tp!(int), tp!(int)])
+/// "-1":        ptp!(@arrow[tp!(int), tp!(int)])
+/// "len":       ptp!(@arrow[tp!(str), tp!(int)])
+/// "empty_str": ptp!(str)
+/// "lower":     ptp!(@arrow[tp!(str), tp!(str)])
+/// "upper":     ptp!(@arrow[tp!(str), tp!(str)])
+/// "concat":    ptp!(@arrow[tp!(str), tp!(str), tp!(str)])
+/// "slice":     ptp!(@arrow[tp!(int), tp!(int), tp!(str), tp!(str)])
+/// "nth":       ptp!(@arrow[tp!(int), tp!(list(tp!(str))), tp!(str)])
+/// "map":       ptp!(0, 1; @arrow[
+///                  tp!(@arrow[tp!(0), tp!(1)]),
+///                  tp!(list(tp!(0))),
+///                  tp!(list(tp!(1))),
+///              ])
+/// "strip":     ptp!(@arrow[tp!(str), tp!(str)])
+/// "split":     ptp!(@arrow[tp!(char), tp!(str), tp!(list(tp!(str)))])
+/// "join":      ptp!(@arrow[tp!(str), tp!(list(tp!(str))), tp!(str)])
+/// "char->str": ptp!(@arrow[tp!(char), tp!(str)])
+/// "space":     ptp!(char)
+/// ".":         ptp!(char)
+/// ",":         ptp!(char)
+/// "<":         ptp!(char)
+/// ">":         ptp!(char)
+/// "/":         ptp!(char)
+/// "@":         ptp!(char)
+/// "-":         ptp!(char)
+/// "|":         ptp!(char)
 /// ```
 ///
 /// [`lambda::Language`]: ../../lambda/struct.Language.html
 pub fn dsl() -> Language {
     Language::uniform(vec![
-        ("0", tp!(int)),
-        ("+1", arrow![tp!(int), tp!(int)]),
-        ("-1", arrow![tp!(int), tp!(int)]),
-        ("len", arrow![tp!(str), tp!(int)]),
-        ("empty_str", tp!(str)),
-        ("lower", arrow![tp!(str), tp!(str)]),
-        ("upper", arrow![tp!(str), tp!(str)]),
-        ("concat", arrow![tp!(str), tp!(str), tp!(str)]),
-        ("slice", arrow![tp!(int), tp!(int), tp!(str), tp!(str)]),
-        ("nth", arrow![tp!(int), tp!(list(tp!(str))), tp!(str)]),
+        ("0", ptp!(int)),
+        ("+1", ptp!(@arrow[tp!(int), tp!(int)])),
+        ("-1", ptp!(@arrow[tp!(int), tp!(int)])),
+        ("len", ptp!(@arrow[tp!(str), tp!(int)])),
+        ("empty_str", ptp!(str)),
+        ("lower", ptp!(@arrow[tp!(str), tp!(str)])),
+        ("upper", ptp!(@arrow[tp!(str), tp!(str)])),
+        ("concat", ptp!(@arrow[tp!(str), tp!(str), tp!(str)])),
+        (
+            "slice",
+            ptp!(@arrow[tp!(int), tp!(int), tp!(str), tp!(str)]),
+        ),
+        ("nth", ptp!(@arrow[tp!(int), tp!(list(tp!(str))), tp!(str)])),
         (
             "map",
-            arrow![arrow![tp!(0), tp!(1)], tp!(list(tp!(0))), tp!(list(tp!(1)))],
+            ptp!(0, 1; @arrow[tp!(@arrow[tp!(0), tp!(1)]), tp!(list(tp!(0))), tp!(list(tp!(1)))]),
         ),
-        ("strip", arrow![tp!(str), tp!(str)]),
-        ("split", arrow![tp!(char), tp!(str), tp!(list(tp!(str)))]),
-        ("join", arrow![tp!(str), tp!(list(tp!(str))), tp!(str)]),
-        ("char->str", arrow![tp!(char), tp!(str)]),
-        ("space", tp!(char)),
-        (".", tp!(char)),
-        (",", tp!(char)),
-        ("<", tp!(char)),
-        (">", tp!(char)),
-        ("/", tp!(char)),
-        ("@", tp!(char)),
-        ("-", tp!(char)),
-        ("|", tp!(char)),
+        ("strip", ptp!(@arrow[tp!(str), tp!(str)])),
+        (
+            "split",
+            ptp!(@arrow[tp!(char), tp!(str), tp!(list(tp!(str)))]),
+        ),
+        (
+            "join",
+            ptp!(@arrow[tp!(str), tp!(list(tp!(str))), tp!(str)]),
+        ),
+        ("char->str", ptp!(@arrow[tp!(char), tp!(str)])),
+        ("space", ptp!(char)),
+        (".", ptp!(char)),
+        (",", ptp!(char)),
+        ("<", ptp!(char)),
+        (">", ptp!(char)),
+        ("/", ptp!(char)),
+        ("@", ptp!(char)),
+        ("-", ptp!(char)),
+        ("|", ptp!(char)),
     ])
 }
 

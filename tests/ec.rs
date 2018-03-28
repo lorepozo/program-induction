@@ -54,7 +54,7 @@ fn explore_arith_pcfg() {
         vec![
             Rule::new("0", tp!(EXPR), 1.0),
             Rule::new("1", tp!(EXPR), 1.0),
-            Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
+            Rule::new("plus", tp!(@arrow[tp!(EXPR), tp!(EXPR), tp!(EXPR)]), 1.0),
         ],
     );
     let ec_params = ECParams {
@@ -79,8 +79,11 @@ fn explore_strings() {
             strings::Space::Str("OFJQc/BLVP/eMS".to_string()),
         ),
     ];
-    let task =
-        lambda::task_by_evaluation(strings::Evaluator, arrow![tp!(str), tp!(str)], &examples);
+    let task = lambda::task_by_evaluation(
+        strings::Evaluator,
+        ptp!(@arrow[tp!(str), tp!(str)]),
+        &examples,
+    );
 
     let ec_params = ECParams {
         frontier_limit: 1,
@@ -131,7 +134,9 @@ fn ec_strings() {
     ];
     let tasks = examples
         .iter()
-        .map(|ex| lambda::task_by_evaluation(strings::Evaluator, arrow![tp!(str), tp!(str)], ex))
+        .map(|ex| {
+            lambda::task_by_evaluation(strings::Evaluator, ptp!(@arrow[tp!(str), tp!(str)]), ex)
+        })
         .collect::<Vec<_>>();
 
     let ec_params = ECParams {

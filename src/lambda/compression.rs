@@ -1,6 +1,6 @@
 use crossbeam_channel::bounded;
 use itertools::Itertools;
-use polytype::{Context, Type};
+use polytype::{Context, Type, TypeSchema};
 use rayon::iter;
 use rayon::prelude::*;
 use std::borrow::Cow;
@@ -68,7 +68,7 @@ impl Default for CompressionParams {
 
 /// A convenient frontier representation.
 #[derive(Debug, Clone)]
-struct RescoredFrontier<'a>(&'a Type, Vec<(Expression, f64, f64)>);
+struct RescoredFrontier<'a>(&'a TypeSchema, Vec<(Expression, f64, f64)>);
 impl<'a> From<RescoredFrontier<'a>> for ECFrontier<Language> {
     fn from(rescored_frontier: RescoredFrontier) -> ECFrontier<Language> {
         ECFrontier(rescored_frontier.1)
@@ -259,10 +259,11 @@ impl Language {
 
     /// This is similar to `enumerator::likelihood` but it does a lot more work to determine
     /// _outside_ counts.
-    fn uses(&self, request: &Type, expr: &Expression) -> (f64, Uses) {
-        let ctx = Context::default();
+    fn uses(&self, request: &TypeSchema, expr: &Expression) -> (f64, Uses) {
+        let mut ctx = Context::default();
+        let tp = request.instantiate(&mut ctx);
         let env = Rc::new(LinkedList::default());
-        self.likelihood_uses(request, expr, &ctx, &env)
+        self.likelihood_uses(&tp, expr, &ctx, &env)
     }
 
     /// This is similar to `enumerator::likelihood_internal` but it does a lot more work to
@@ -274,10 +275,10 @@ impl Language {
         ctx: &'a Context,
         env: &Rc<LinkedList<Type>>,
     ) -> (f64, Uses) {
-        if let Type::Arrow(ref arrow) = *request {
-            let env = LinkedList::prepend(env, arrow.arg.clone());
+        if let Some((arg, ret)) = request.as_arrow() {
+            let env = LinkedList::prepend(env, arg.clone());
             if let Expression::Abstraction(ref body) = *expr {
-                self.likelihood_uses(&arrow.ret, body, ctx, &env)
+                self.likelihood_uses(ret, body, ctx, &env)
             } else {
                 (f64::NEG_INFINITY, Uses::new(self)) // invalid expression
             }
@@ -331,11 +332,7 @@ impl Language {
                         continue;
                     }
 
-                    let arg_tps: VecDeque<&Type> = if let Type::Arrow(ref f_tp) = *tp {
-                        f_tp.args()
-                    } else {
-                        VecDeque::new()
-                    };
+                    let arg_tps: VecDeque<&Type> = tp.args().unwrap_or_else(VecDeque::new);
                     debug_assert_eq!(xs.len(), arg_tps.len());
 
                     let mut u = Uses {
@@ -570,7 +567,7 @@ impl<'a> TreeMatcher<'a> {
                 let ft = self.execute(f_f, c_f, env, n_args)?;
                 let xt = self.execute(f_x, c_x, env, n_args)?;
                 let ret = self.ctx.new_variable();
-                if self.ctx.unify(&ft, &arrow![xt, ret.clone()]).is_ok() {
+                if self.ctx.unify(&ft, &Type::arrow(xt, ret.clone())).is_ok() {
                     Some(ret.apply(self.ctx))
                 } else {
                     None
@@ -578,12 +575,12 @@ impl<'a> TreeMatcher<'a> {
             }
             (&Expression::Primitive(f_num), &Expression::Primitive(c_num)) if f_num == c_num => {
                 let tp = &self.dsl.primitives[f_num].1;
-                Some(tp.instantiate_indep(self.ctx))
+                Some(tp.instantiate(self.ctx))
             }
             (&Expression::Invented(f_num), &Expression::Invented(c_num)) => {
                 if f_num == c_num {
                     let tp = &self.dsl.invented[f_num].1;
-                    Some(tp.instantiate_indep(self.ctx))
+                    Some(tp.instantiate(self.ctx))
                 } else {
                     None
                 }
@@ -596,7 +593,7 @@ impl<'a> TreeMatcher<'a> {
                 let arg = self.ctx.new_variable();
                 let env = LinkedList::prepend(env, arg.clone());
                 let ret = self.execute(f_body, c_body, &env, 0)?;
-                Some(arrow![arg, ret])
+                Some(Type::arrow(arg, ret))
             }
             (&Expression::Index(i), _) if i < env.len() => {
                 // bound variable

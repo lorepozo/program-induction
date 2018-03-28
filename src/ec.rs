@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::thread;
 use crossbeam_channel::bounded;
-use polytype::Type;
+use polytype::TypeSchema;
 use rayon::prelude::*;
 
 use Task;
@@ -19,7 +19,7 @@ pub struct ECParams {
     /// The maximum frontier size; the number of task solutions to be hit before enumeration is
     /// stopped for a particular task.
     pub frontier_limit: usize,
-    /// A timeout before enumeration is stopped, run independently per distinct `Type` being
+    /// A timeout before enumeration is stopped, run independently per distinct `TypeSchema` being
     /// enumerated. If this is reached, there may be fewer than `frontier_limit` many solutions.
     pub search_limit_timeout: Option<Duration>,
     /// An approximate limit on enumerated description length. If this is reached, there may be
@@ -58,7 +58,10 @@ pub trait EC: Send + Sync + Sized {
     /// This will in most cases iterate infinitely, giving increasingly complex expressions.
     ///
     /// [`Expression`]: #associatedtype.Expression
-    fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Self::Expression, f64)> + 'a>;
+    fn enumerate<'a>(
+        &'a self,
+        tp: TypeSchema,
+    ) -> Box<Iterator<Item = (Self::Expression, f64)> + 'a>;
     /// Update the representation based on findings of expressions that solve [`Task`]s.
     ///
     /// The `frontiers` argument, and similar return value, must always be of the same size as
@@ -180,7 +183,7 @@ pub trait EC: Send + Sync + Sized {
     ///     vec![
     ///         Rule::new("0", tp!(EXPR), 1.0),
     ///         Rule::new("1", tp!(EXPR), 1.0),
-    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
+    ///         Rule::new("plus", tp!(@arrow[tp!(EXPR), tp!(EXPR), tp!(EXPR)]), 1.0),
     ///     ],
     /// );
     /// let ec_params = ECParams {
@@ -252,7 +255,7 @@ pub trait EC: Send + Sync + Sized {
 fn enumerate_solutions<L, X, O: Sync>(
     repr: &L,
     params: &ECParams,
-    tp: Type,
+    tp: TypeSchema,
     tasks: Vec<(usize, &Task<L, X, O>)>,
 ) -> Vec<(usize, ECFrontier<L>)>
 where

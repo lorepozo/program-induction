@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 use itertools::Itertools;
-use polytype::Type;
+use polytype::TypeSchema;
 use rand::{seq, Rng};
 
 use Task;
@@ -41,7 +41,7 @@ pub trait GP: Send + Sync + Sized {
         params: &Self::Params,
         rng: &mut R,
         pop_size: usize,
-        tp: &Type,
+        tp: &TypeSchema,
     ) -> Vec<Self::Expression>;
 
     /// Mutate a single program.

@@ -18,13 +18,13 @@
 //!
 //! # fn main() {
 //! let dsl = Language::uniform(vec![
-//!     ("0", tp!(int)),
-//!     ("1", tp!(int)),
-//!     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+//!     ("0", ptp!(int)),
+//!     ("1", ptp!(int)),
+//!     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
 //! ]);
 //!
 //! // task: sum 1 with two numbers
-//! let tp = arrow![tp!(int), tp!(int), tp!(int)];
+//! let tp = ptp!(@arrow[tp!(int), tp!(int), tp!(int)]);
 //! let examples = vec![(vec![2, 5], 8), (vec![1, 2], 4)];
 //! let task = task_by_evaluation(SimpleEvaluator::of(evaluate), tp, &examples);
 //!
@@ -49,7 +49,7 @@ use std::fmt;
 use std::ops::Index;
 use std::rc::Rc;
 use std::sync::Arc;
-use polytype::{Context, Type, UnificationError};
+use polytype::{Context, Type, TypeSchema, UnificationError};
 
 use {ECFrontier, Task, EC};
 
@@ -57,14 +57,14 @@ use {ECFrontier, Task, EC};
 /// polymorphically-typed lambda calculus with corresponding production log-probabilities.
 #[derive(Debug, Clone)]
 pub struct Language {
-    pub primitives: Vec<(String, Type, f64)>,
-    pub invented: Vec<(Expression, Type, f64)>,
+    pub primitives: Vec<(String, TypeSchema, f64)>,
+    pub invented: Vec<(Expression, TypeSchema, f64)>,
     pub variable_logprob: f64,
 }
 impl Language {
     /// A uniform distribution over primitives and invented expressions, as well as the abstraction
     /// operation.
-    pub fn uniform(primitives: Vec<(&str, Type)>) -> Self {
+    pub fn uniform(primitives: Vec<(&str, TypeSchema)>) -> Self {
         let primitives = primitives
             .into_iter()
             .map(|(s, t)| (String::from(s), t, 0f64))
@@ -86,11 +86,11 @@ impl Language {
     /// # fn main() {
     /// # use programinduction::lambda::{Expression, Language};
     /// let mut dsl = Language::uniform(vec![
-    ///         ("singleton", arrow![tp!(0), tp!(list(tp!(0)))]),
-    ///         (">=", arrow![tp!(int), tp!(int), tp!(bool)]),
-    ///         ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-    ///         ("0", tp!(int)),
-    ///         ("1", tp!(int)),
+    ///         ("singleton", ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))])),
+    ///         (">=", ptp!(@arrow[tp!(int), tp!(int), tp!(bool)])),
+    ///         ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+    ///         ("0", ptp!(int)),
+    ///         ("1", ptp!(int)),
     /// ]);
     /// dsl.invent(
     ///     Expression::Application( // (+ 1)
@@ -101,16 +101,17 @@ impl Language {
     /// );
     /// let expr = dsl.parse("(singleton ((λ (>= $0 1)) (#(+ 1) 0)))")
     ///     .unwrap();
-    /// assert_eq!(dsl.infer(&expr).unwrap(), tp!(list(tp!(bool))));
+    /// assert_eq!(dsl.infer(&expr).unwrap(), ptp!(list(tp!(bool))));
     /// # }
     /// ```
     ///
     /// [`Expression`]: enum.Expression.html
-    pub fn infer(&self, expr: &Expression) -> Result<Type, InferenceError> {
+    pub fn infer(&self, expr: &Expression) -> Result<TypeSchema, InferenceError> {
         let mut ctx = Context::default();
         let env = VecDeque::new();
         let mut indices = HashMap::new();
         expr.infer(self, &mut ctx, &env, &mut indices)
+            .map(|t| t.generalize(&Context::default()))
     }
 
     /// Enumerate expressions for a request type (including log-probabilities and appropriately
@@ -125,12 +126,12 @@ impl Language {
     /// use programinduction::lambda::{Expression, Language};
     ///
     /// let dsl = Language::uniform(vec![
-    ///     ("0", tp!(int)),
-    ///     ("1", tp!(int)),
-    ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-    ///     (">", arrow![tp!(int), tp!(int), tp!(bool)]),
+    ///     ("0", ptp!(int)),
+    ///     ("1", ptp!(int)),
+    ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+    ///     (">", ptp!(@arrow[tp!(int), tp!(int), tp!(bool)])),
     /// ]);
-    /// let exprs: Vec<Expression> = dsl.enumerate(tp!(int))
+    /// let exprs: Vec<Expression> = dsl.enumerate(ptp!(int))
     ///     .take(8)
     ///     .map(|(expr, _log_prior)| expr)
     ///     .collect();
@@ -150,7 +151,7 @@ impl Language {
     /// );
     /// # }
     /// ```
-    pub fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
+    pub fn enumerate<'a>(&'a self, tp: TypeSchema) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
         enumerator::new(self, tp)
     }
 
@@ -222,9 +223,9 @@ impl Language {
     ///
     /// # fn main() {
     /// let dsl = Language::uniform(vec![
-    ///     ("0", tp!(int)),
-    ///     ("1", tp!(int)),
-    ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+    ///     ("0", ptp!(int)),
+    ///     ("1", ptp!(int)),
+    ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
     /// ]);
     /// let eval = SimpleEvaluator::of(evaluate);
     /// let expr = dsl.parse("(λ (λ (+ (+ 1 $0) $1)))").unwrap();
@@ -264,11 +265,11 @@ impl Language {
     /// # use programinduction::lambda::Language;
     /// # fn main() {
     /// let dsl = Language::uniform(vec![
-    ///     ("0", tp!(int)),
-    ///     ("1", tp!(int)),
-    ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+    ///     ("0", ptp!(int)),
+    ///     ("1", ptp!(int)),
+    ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
     /// ]);
-    /// let req = arrow![tp!(int), tp!(int), tp!(int)];
+    /// let req = ptp!(@arrow[tp!(int), tp!(int), tp!(int)]);
     ///
     /// let expr = dsl.parse("(λ (λ (+ $0 $1)))").unwrap();
     /// assert_eq!(dsl.likelihood(&req, &expr), -5.545177444479561);
@@ -277,7 +278,7 @@ impl Language {
     /// assert_eq!(dsl.likelihood(&req, &expr), -8.317766166719343);
     /// # }
     /// ```
-    pub fn likelihood(&self, request: &Type, expr: &Expression) -> f64 {
+    pub fn likelihood(&self, request: &TypeSchema, expr: &Expression) -> f64 {
         enumerator::likelihood(self, request, expr)
     }
 
@@ -291,15 +292,15 @@ impl Language {
     /// # fn main() {
     /// # use programinduction::lambda::{Expression, Language};
     /// let mut dsl = Language::uniform(vec![
-    ///     ("0", tp!(int)),
-    ///     ("1", tp!(int)),
-    ///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+    ///     ("0", ptp!(int)),
+    ///     ("1", ptp!(int)),
+    ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
     /// ]);
     /// let expr = dsl.parse("(+ 1)").unwrap();
     /// dsl.invent(expr.clone(), -0.5).unwrap();
     /// assert_eq!(
     ///     dsl.invented.get(0),
-    ///     Some(&(expr, arrow![tp!(int), tp!(int)], -0.5))
+    ///     Some(&(expr, ptp!(@arrow[tp!(int), tp!(int)]), -0.5))
     /// );
     /// # }
     /// ```
@@ -348,30 +349,20 @@ impl Language {
         let prims = self.primitives
             .iter()
             .enumerate()
-            .map(|(i, &(_, ref tp, p))| (p, tp, true, Expression::Primitive(i)));
+            .map(|(i, &(_, ref tp, p))| (p, tp, Expression::Primitive(i)));
         let invented = self.invented
             .iter()
             .enumerate()
-            .map(|(i, &(_, ref tp, p))| (p, tp, true, Expression::Invented(i)));
-        let indices = env.iter()
-            .enumerate()
-            .map(|(i, tp)| (self.variable_logprob, tp, false, Expression::Index(i)));
+            .map(|(i, &(_, ref tp, p))| (p, tp, Expression::Invented(i)));
         let mut cands: Vec<_> = prims
             .chain(invented)
-            .chain(indices)
-            .filter_map(|(p, tp, instantiate, expr)| {
+            .filter_map(|(p, tp, expr)| {
                 let mut ctx = ctx.clone();
-                let itp;
-                let tp = if instantiate {
-                    itp = tp.instantiate_indep(&mut ctx);
-                    &itp
+                let tp = &tp.instantiate(&mut ctx);
+                let ret = if let Some(ret) = tp.returns() {
+                    ret
                 } else {
                     tp
-                };
-                let ret = if let Type::Arrow(ref arrow) = *tp {
-                    arrow.returns()
-                } else {
-                    &tp
                 };
                 ctx.unify(ret, request).ok().map(|_| {
                     let tp = tp.apply(&ctx);
@@ -379,25 +370,36 @@ impl Language {
                 })
             })
             .collect();
-        // update probabilities for variables (indices)
-        let log_n_indexed = (cands
-            .iter()
-            .filter(|&&(_, ref expr, _, _)| match *expr {
-                Expression::Index(_) => true,
-                _ => false,
+        let mut index_cands: Vec<_> = env.iter()
+            .enumerate()
+            .filter_map(|(i, tp)| {
+                let expr = Expression::Index(i);
+                let mut ctx = ctx.clone();
+                let ret = if let Some(ret) = tp.returns() {
+                    ret
+                } else {
+                    &tp
+                };
+                ctx.unify(ret, request).ok().map(|_| {
+                    let tp = tp.apply(&ctx);
+                    (self.variable_logprob, expr, tp, ctx)
+                })
             })
-            .count() as f64)
-            .ln();
-        for mut c in &mut cands {
-            if let Expression::Index(_) = c.1 {
-                c.0 -= log_n_indexed
-            }
+            .collect();
+        // update probabilities for variables (indices)
+        let log_n_indexed = (index_cands.len() as f64).ln();
+        for mut c in &mut index_cands {
+            c.0 -= log_n_indexed
         }
         // normalize
-        let p_largest = cands
+        let mut p_largest = cands
             .iter()
             .map(|&(p, _, _, _)| p)
             .fold(f64::NEG_INFINITY, f64::max);
+        if log_n_indexed.is_finite() {
+            p_largest = p_largest.max(self.variable_logprob);
+        }
+        cands.append(&mut index_cands);
         let z = p_largest
             + cands
                 .iter()
@@ -413,7 +415,7 @@ impl Language {
 impl EC for Language {
     type Expression = Expression;
     type Params = CompressionParams;
-    fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
+    fn enumerate<'a>(&'a self, tp: TypeSchema) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
         self.enumerate(tp)
     }
     fn compress<O: Sync>(
@@ -452,7 +454,7 @@ impl Expression {
     ) -> Result<Type, InferenceError> {
         match *self {
             Expression::Primitive(num) => if let Some(prim) = dsl.primitives.get(num as usize) {
-                Ok(prim.1.instantiate_indep(ctx))
+                Ok(prim.1.instantiate(ctx))
             } else {
                 Err(InferenceError::BadExpression(format!(
                     "primitive does not exist: {}",
@@ -463,7 +465,7 @@ impl Expression {
                 let f_tp = f.infer(dsl, &mut ctx, env, indices)?;
                 let x_tp = x.infer(dsl, &mut ctx, env, indices)?;
                 let ret_tp = ctx.new_variable();
-                ctx.unify(&f_tp, &arrow![x_tp, ret_tp.clone()])?;
+                ctx.unify(&f_tp, &Type::arrow(x_tp, ret_tp.clone()))?;
                 Ok(ret_tp.apply(ctx))
             }
             Expression::Abstraction(ref body) => {
@@ -471,7 +473,7 @@ impl Expression {
                 let mut env = env.clone();
                 env.push_front(arg_tp.clone());
                 let ret_tp = body.infer(dsl, &mut ctx, &env, indices)?;
-                Ok(arrow![arg_tp, ret_tp].apply(ctx))
+                Ok(Type::arrow(arg_tp, ret_tp).apply(ctx))
             }
             Expression::Index(i) => {
                 if (i as usize) < env.len() {
@@ -484,7 +486,7 @@ impl Expression {
                 }
             }
             Expression::Invented(num) => if let Some(inv) = dsl.invented.get(num as usize) {
-                Ok(inv.1.instantiate_indep(ctx))
+                Ok(inv.1.instantiate(ctx))
             } else {
                 Err(InferenceError::BadExpression(format!(
                     "invention does not exist: {}",
@@ -493,7 +495,7 @@ impl Expression {
             },
         }
     }
-    fn strip_invented(&self, invented: &[(Expression, Type, f64)]) -> Expression {
+    fn strip_invented(&self, invented: &[(Expression, TypeSchema, f64)]) -> Expression {
         match *self {
             Expression::Application(ref f, ref x) => Expression::Application(
                 Box::new(f.strip_invented(invented)),
@@ -620,13 +622,13 @@ impl Expression {
 ///
 /// # fn main() {
 /// let examples = vec![(vec![2, 5], 8), (vec![1, 2], 4)];
-/// let tp = arrow![tp!(int), tp!(int), tp!(int)];
+/// let tp = ptp!(@arrow[tp!(int), tp!(int), tp!(int)]);
 /// let task = task_by_evaluation(SimpleEvaluator::of(evaluate), tp, &examples);
 ///
 /// let dsl = Language::uniform(vec![
-///     ("0", tp!(int)),
-///     ("1", tp!(int)),
-///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+///     ("0", ptp!(int)),
+///     ("1", ptp!(int)),
+///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
 /// ]);
 /// let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
 /// assert!((task.oracle)(&dsl, &expr).is_finite())
@@ -634,7 +636,7 @@ impl Expression {
 /// ```
 pub fn task_by_evaluation<'a, E, V>(
     evaluator: E,
-    tp: Type,
+    tp: TypeSchema,
     examples: &'a [(Vec<V>, V)],
 ) -> Task<'a, Language, Expression, &'a [(Vec<V>, V)]>
 where

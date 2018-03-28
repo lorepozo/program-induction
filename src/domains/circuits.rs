@@ -22,7 +22,7 @@
 //! ```
 
 use itertools::Itertools;
-use polytype::Type;
+use polytype::{Type, TypeSchema};
 use rand;
 use rand::distributions::{Distribution, Weighted, WeightedChoice};
 use std::f64;
@@ -34,12 +34,14 @@ use lambda::{Evaluator as EvaluatorT, Expression, Language};
 /// The circuit representation, a [`lambda::Language`], only defines the binary `nand` operation.
 ///
 /// ```ignore
-/// "nand": arrow![tp!(bool), tp!(bool), tp!(bool)]
+/// "nand": ptp!(@arrow[tp!(bool), tp!(bool), tp!(bool)])
 /// ```
 ///
 /// [`lambda::Language`]: ../../lambda/struct.Language.html
 pub fn dsl() -> Language {
-    Language::uniform(vec![("nand", arrow![tp!(bool), tp!(bool), tp!(bool)])])
+    Language::uniform(vec![
+        ("nand", ptp!(@arrow[tp!(bool), tp!(bool), tp!(bool)])),
+    ])
 }
 
 /// All values in the circuits domain can be represented in this `Space`.
@@ -64,7 +66,7 @@ pub type Space = bool;
 /// ];
 /// let task = lambda::task_by_evaluation(
 ///     circuits::Evaluator,
-///     arrow![tp!(bool), tp!(bool)],
+///     ptp!(@arrow[tp!(bool), tp!(bool)]),
 ///     &examples,
 /// );
 /// let ec_params = ECParams {
@@ -258,7 +260,7 @@ pub fn make_tasks_advanced(
                 n_inputs = n_input_distribution.sample(&mut rng);
                 n_gates = n_gate_distribution.sample(&mut rng);
             }
-            let tp = Type::from(vec![tp!(bool); n_inputs + 1]);
+            let tp = TypeSchema::Monotype(Type::from(vec![tp!(bool); n_inputs + 1]));
             let circuit = Circuit::new(&mut rng, &gate_distribution, n_inputs as u32, n_gates);
             let outputs: Vec<_> = truth_table(n_inputs)
                 .map(|ins| circuit.eval(&ins))

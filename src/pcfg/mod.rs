@@ -23,7 +23,7 @@
 //!     vec![
 //!         Rule::new("0", tp!(EXPR), 1.0),
 //!         Rule::new("1", tp!(EXPR), 1.0),
-//!         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
+//!         Rule::new("plus", tp!(@arrow[tp!(EXPR), tp!(EXPR), tp!(EXPR)]), 1.0),
 //!     ],
 //! );
 //!
@@ -47,7 +47,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use itertools::Itertools;
-use polytype::Type;
+use polytype::{Type, TypeSchema};
 use rand::Rng;
 use rand::distributions::Range;
 use rayon::prelude::*;
@@ -72,8 +72,8 @@ impl Grammar {
     pub fn new(start: Type, all_rules: Vec<Rule>) -> Self {
         let mut rules = HashMap::new();
         for mut rule in all_rules {
-            let nt = if let Type::Arrow(ref arrow) = rule.production {
-                arrow.returns().clone()
+            let nt = if let Some(ret) = rule.production.returns() {
+                ret.clone()
             } else {
                 rule.production.clone()
             };
@@ -100,7 +100,7 @@ impl Grammar {
     ///     vec![
     ///         Rule::new("0", tp!(EXPR), 1.0),
     ///         Rule::new("1", tp!(EXPR), 1.0),
-    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
+    ///         Rule::new("plus", tp!(@arrow[tp!(EXPR), tp!(EXPR), tp!(EXPR)]), 1.0),
     ///     ],
     /// );
     /// let exprs: Vec<AppliedRule> = g.enumerate()
@@ -185,7 +185,7 @@ impl Grammar {
     ///     vec![
     ///         Rule::new("0", tp!(EXPR), 1.0),
     ///         Rule::new("1", tp!(EXPR), 1.0),
-    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
+    ///         Rule::new("plus", tp!(@arrow[tp!(EXPR), tp!(EXPR), tp!(EXPR)]), 1.0),
     ///     ],
     /// );
     ///
@@ -215,7 +215,7 @@ impl Grammar {
     ///     vec![
     ///         Rule::new("0", tp!(EXPR), 1.0),
     ///         Rule::new("1", tp!(EXPR), 1.0),
-    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
+    ///         Rule::new("plus", tp!(@arrow[tp!(EXPR), tp!(EXPR), tp!(EXPR)]), 1.0),
     ///     ],
     /// );
     /// let ar = g.sample(&tp!(EXPR), &mut rand::thread_rng());
@@ -241,10 +241,10 @@ impl Grammar {
     ///     vec![
     ///         Rule::new("0", tp!(EXPR), 1.0),
     ///         Rule::new("1", tp!(EXPR), 1.0),
-    ///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
-    ///         Rule::new("zero?", arrow![tp!(EXPR), tp!(BOOL)], 1.0),
-    ///         Rule::new("if", arrow![tp!(BOOL), tp!(EXPR), tp!(EXPR)], 1.0),
-    ///         Rule::new("nand", arrow![tp!(BOOL), tp!(BOOL), tp!(BOOL)], 1.0),
+    ///         Rule::new("plus", tp!(@arrow[tp!(EXPR), tp!(EXPR), tp!(EXPR)]), 1.0),
+    ///         Rule::new("zero?", tp!(@arrow[tp!(EXPR), tp!(BOOL)]), 1.0),
+    ///         Rule::new("if", tp!(@arrow[tp!(BOOL), tp!(EXPR), tp!(EXPR)]), 1.0),
+    ///         Rule::new("nand", tp!(@arrow[tp!(BOOL), tp!(BOOL), tp!(BOOL)]), 1.0),
     ///     ]
     /// );
     ///
@@ -280,7 +280,7 @@ impl Grammar {
     /// [`parse`]: #method.parse
     pub fn display(&self, ar: &AppliedRule) -> String {
         let r = &self.rules[&ar.0][ar.1];
-        if let Type::Arrow(_) = r.production {
+        if r.production.as_arrow().is_some() {
             let args = ar.2.iter().map(|ar| self.display(ar)).join(",");
             format!("{}({})", r.name, args)
         } else {
@@ -326,8 +326,14 @@ impl EC for Grammar {
     type Expression = AppliedRule;
     type Params = EstimationParams;
 
-    fn enumerate<'a>(&'a self, tp: Type) -> Box<Iterator<Item = (Self::Expression, f64)> + 'a> {
-        self.enumerate_nonterminal(tp)
+    fn enumerate<'a>(
+        &'a self,
+        tp: TypeSchema,
+    ) -> Box<Iterator<Item = (Self::Expression, f64)> + 'a> {
+        match tp {
+            TypeSchema::Monotype(tp) => self.enumerate_nonterminal(tp),
+            _ => panic!("PCFGs can't handle polytypes"),
+        }
     }
     /// This is exactly the same as [`Grammar::update_parameters`], but optimized to deal with
     /// frontiers.
@@ -390,8 +396,12 @@ impl GP for Grammar {
         _params: &Self::Params,
         rng: &mut R,
         pop_size: usize,
-        tp: &Type,
+        tp: &TypeSchema,
     ) -> Vec<Self::Expression> {
+        let tp = match *tp {
+            TypeSchema::Monotype(ref tp) => tp,
+            _ => panic!("PCFGs can't handle polytypes"),
+        };
         (0..pop_size).map(|_| self.sample(tp, rng)).collect()
     }
     fn mutate<R: Rng>(
@@ -524,7 +534,7 @@ fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicU
 ///     vec![
 ///         Rule::new("0", tp!(EXPR), 1.0),
 ///         Rule::new("1", tp!(EXPR), 1.0),
-///         Rule::new("plus", arrow![tp!(EXPR), tp!(EXPR), tp!(EXPR)], 1.0),
+///         Rule::new("plus", tp!(@arrow[tp!(EXPR), tp!(EXPR), tp!(EXPR)]), 1.0),
 ///     ],
 /// );
 ///
@@ -555,7 +565,7 @@ where
     Task {
         oracle,
         observation: output,
-        tp,
+        tp: TypeSchema::Monotype(tp),
     }
 }
 

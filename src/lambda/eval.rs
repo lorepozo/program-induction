@@ -1,7 +1,7 @@
 //! Evaluation happens by calling primitives provided by an evaluator.
 use std::collections::VecDeque;
 use std::sync::Arc;
-use polytype::Type;
+use polytype::TypeSchema;
 
 use lambda::{Expression, Language};
 
@@ -47,9 +47,9 @@ where
 ///
 /// # fn early_let() {
 /// let dsl = Language::uniform(vec![
-///     ("0", tp!(int)),
-///     ("1", tp!(int)),
-///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
+///     ("0", ptp!(int)),
+///     ("1", ptp!(int)),
+///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
 /// ]);
 /// # }
 ///
@@ -77,11 +77,11 @@ where
 ///
 /// # fn early_let() {
 /// let dsl = Language::uniform(vec![
-///     ("0", tp!(int)),
-///     ("1", tp!(int)),
-///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-///     ("eq", arrow![tp!(int), tp!(int), tp!(bool)]),
-///     ("not", arrow![tp!(bool), tp!(bool)]),
+///     ("0", ptp!(int)),
+///     ("1", ptp!(int)),
+///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+///     ("eq", ptp!(@arrow[tp!(int), tp!(int), tp!(bool)])),
+///     ("not", ptp!(@arrow[tp!(bool), tp!(bool)])),
 /// ]);
 /// # }
 ///
@@ -127,13 +127,22 @@ where
 ///
 /// # fn early_let() {
 /// let dsl = Language::uniform(vec![
-///     ("0", tp!(int)),
-///     ("1", tp!(int)),
-///     ("+", arrow![tp!(int), tp!(int), tp!(int)]),
-///     ("singleton", arrow![tp!(int), tp!(intlist)]),
-///     ("chain", arrow![tp!(intlist), tp!(intlist), tp!(intlist)]),
-///     ("map", arrow![arrow![tp!(int), tp!(int)], tp!(intlist), tp!(intlist)]),
+///     ("0", ptp!(int)),
+///     ("1", ptp!(int)),
+///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+///     ("singleton", ptp!(@arrow[tp!(int), tp!(list(tp!(int)))])),
+///     ("chain", ptp!(0; @arrow[
+///         tp!(list(tp!(0))),
+///         tp!(list(tp!(0))),
+///         tp!(list(tp!(0))),
+///     ])),
+///     ("map", ptp!(0, 1; @arrow[
+///         tp!(@arrow[tp!(0), tp!(1)]),
+///         tp!(list(tp!(0))),
+///         tp!(list(tp!(0))),
+///     ])),
 /// ]);
+/// // note: the only constructable lists in this dsl are of ints.
 /// # }
 ///
 /// #[derive(Clone)]
@@ -313,7 +322,7 @@ use self::ReducedExpression::*;
 #[derive(Clone, PartialEq)]
 pub enum ReducedExpression<V: Clone + PartialEq + Send + Sync> {
     Value(V),
-    Primitive(String, Type),
+    Primitive(String, TypeSchema),
     Application(Vec<ReducedExpression<V>>),
     /// store depth (never zero) for nested abstractions.
     Abstraction(usize, Box<ReducedExpression<V>>),
@@ -373,44 +382,42 @@ where
                     Primitive(ref name, ref tp) => {
                         // when applying a primitive, check if all arity-many args are concrete
                         // values, try lifting abstractions, and evaluate if possible.
-                        if let Type::Arrow(ref arrow) = *tp {
-                            let arity = arrow.args().len();
-                            if arity <= xs.len() && xs.iter().take(arity).all(|x| match *x {
-                                Value(_) | Abstraction(_, _) => true,
-                                _ => false,
-                            }) {
-                                let mut args = xs;
-                                let mut xs = args.split_off(arity);
-                                let args: Vec<V> = args.into_iter()
-                                    .map(|x| match x {
-                                        Value(v) => v,
-                                        Abstraction(_, _) => {
-                                            let env = env.clone();
-                                            evaluator
-                                                .clone()
-                                                .lift(LiftedFunction(
-                                                    Arc::new(x),
-                                                    evaluator.clone(),
-                                                    env.clone(),
-                                                ))
-                                                .expect("evaluator could not lift an abstraction")
-                                        }
-                                        _ => unreachable!(),
-                                    })
-                                    .collect();
-                                let v = Value(evaluator.evaluate(name, &args));
-                                if xs.is_empty() {
-                                    v
-                                } else {
-                                    xs.insert(0, v);
-                                    Application(xs)
-                                }
+                        let arity = arity(tp);
+                        if arity == 0 {
+                            panic!("tried to apply a primitive that wasn't a function")
+                        } else if arity > xs.len() || !xs.iter().take(arity).any(|x| match *x {
+                            Value(_) | Abstraction(_, _) => true, // evaluatable
+                            _ => false,
+                        }) {
+                            xs.insert(0, f.eval(evaluator, env));
+                            Application(xs)
+                        } else {
+                            let mut args = xs;
+                            let mut xs = args.split_off(arity);
+                            let args: Vec<V> = args.into_iter()
+                                .map(|x| match x {
+                                    Value(v) => v,
+                                    Abstraction(_, _) => {
+                                        let env = env.clone();
+                                        evaluator
+                                            .clone()
+                                            .lift(LiftedFunction(
+                                                Arc::new(x),
+                                                evaluator.clone(),
+                                                env.clone(),
+                                            ))
+                                            .expect("evaluator could not lift an abstraction")
+                                    }
+                                    _ => unreachable!(),
+                                })
+                                .collect();
+                            let v = Value(evaluator.evaluate(name, &args));
+                            if xs.is_empty() {
+                                v
                             } else {
-                                xs.insert(0, f.eval(evaluator, env));
+                                xs.insert(0, v);
                                 Application(xs)
                             }
-                        } else {
-                            panic!("tried to apply a primitive that wasn't a function")
                         }
                     }
                     Abstraction(ref depth, ref body) => {
@@ -448,7 +455,7 @@ where
                 }
             }
             Primitive(ref name, ref tp) => {
-                if let Type::Arrow(_) = *tp {
+                if is_arrow(tp) {
                     Primitive(name.clone(), tp.clone())
                 } else {
                     Value(evaluator.evaluate(name, &[]))
@@ -505,6 +512,30 @@ where
             }
             Expression::Index(i) => Index(i),
             Expression::Invented(_) => unreachable!(/* invented was stripped */),
+        }
+    }
+}
+
+fn arity(mut tp: &TypeSchema) -> usize {
+    let mut tp = loop {
+        match *tp {
+            TypeSchema::Monotype(ref t) => break t,
+            TypeSchema::Polytype { ref body, .. } => tp = body,
+        }
+    };
+    let mut count = 0;
+    while let Some((_, ret)) = tp.as_arrow() {
+        count += 1;
+        tp = ret;
+    }
+    count
+}
+
+fn is_arrow(mut tp: &TypeSchema) -> bool {
+    loop {
+        match *tp {
+            TypeSchema::Monotype(ref t) => break t.as_arrow().is_some(),
+            TypeSchema::Polytype { ref body, .. } => tp = body,
         }
     }
 }

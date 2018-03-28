@@ -39,8 +39,8 @@ fn enumerate<'a>(
                 .into_iter()
                 .flat_map(move |(i, r)| {
                     let ar = AppliedRule(tp.clone(), i, vec![]);
-                    let arg_tps: VecDeque<Type> = if let Type::Arrow(ref arr) = r.production {
-                        arr.args().into_iter().cloned().collect()
+                    let arg_tps: VecDeque<Type> = if let Some(args) = r.production.args() {
+                        args.into_iter().cloned().collect()
                     } else {
                         VecDeque::new()
                     };
@@ -82,11 +82,8 @@ pub fn sample<R: Rng>(g: &Grammar, tp: &Type, rng: &mut R) -> AppliedRule {
         t -= r.logprob.exp();
         if t < 0f64 {
             // selected a rule
-            let args = if let Type::Arrow(ref arr) = r.production {
-                arr.args()
-                    .into_iter()
-                    .map(|tp| sample(g, tp, rng))
-                    .collect()
+            let args = if let Some(args) = r.production.args() {
+                args.into_iter().map(|tp| sample(g, tp, rng)).collect()
             } else {
                 vec![]
             };
