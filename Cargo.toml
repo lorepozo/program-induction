@@ -1,6 +1,6 @@
 [package]
 name = "programinduction"
-version = "0.2.6"
+version = "0.3.0"
 authors = ["Lucas Morales <lucas@lucasem.com>"]
 license = "MIT"
 readme = "README.md"
@@ -12,7 +12,7 @@ keywords = ["language", "inference", "bayesian", "genetic", "learning"]
 categories = ["algorithms", "science"]
 
 [package.metadata.docs.rs]
-rustdoc-args = ["--html-in-header", ".cargo/registry/src/github.com-1ecc6299db9ec823/programinduction-0.2.6/rustdoc-include-katex-header.html"]
+rustdoc-args = ["--html-in-header", ".cargo/registry/src/github.com-1ecc6299db9ec823/programinduction-0.3.0/rustdoc-include-katex-header.html"]
 
 [dependencies]
 crossbeam-channel = "0.1"
