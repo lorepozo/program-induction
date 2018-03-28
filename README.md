@@ -61,7 +61,8 @@ fn main() {
     );
     let ec_params = ECParams {
         frontier_limit: 1,
-        search_limit: 50,
+        search_limit_timeout: None,
+        search_limit_description_length: Some(8.0),
     };
     // task: the number 4
     let task = task_by_evaluation(&evaluate, &4, tp!(EXPR));
@@ -94,7 +95,8 @@ fn main() {
     let lambda_params = lambda::CompressionParams::default();
     let ec_params = ECParams {
         frontier_limit: 1,
-        search_limit: 50,
+        search_limit_timeout: Some(std::time::Duration::new(1, 0)),
+        search_limit_description_length: None,
     };
     // randomly sample 250 circuit tasks
     let tasks = domains::circuits::make_tasks(250);
