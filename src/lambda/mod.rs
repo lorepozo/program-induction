@@ -346,6 +346,9 @@ impl Language {
         ctx: &Context,
         env: &VecDeque<Type>,
     ) -> Vec<(f64, Expression, Type, Context)> {
+        // make cands as big as possible to prevent reallocation
+        let mut cands = Vec::with_capacity(self.primitives.len() + self.invented.len() + env.len());
+        // primitives and inventions
         let prims = self.primitives
             .iter()
             .enumerate()
@@ -354,56 +357,49 @@ impl Language {
             .iter()
             .enumerate()
             .map(|(i, &(_, ref tp, p))| (p, tp, Expression::Invented(i)));
-        let mut cands: Vec<_> = prims
-            .chain(invented)
-            .filter_map(|(p, tp, expr)| {
-                let mut ctx = ctx.clone();
-                let mut tp = tp.clone().instantiate_owned(&mut ctx);
-                let unification_result = {
-                    let ret = if let Some(ret) = tp.returns() {
-                        ret
-                    } else {
-                        &tp
-                    };
-                    ctx.unify(ret, request).ok()
-                };
-                unification_result.map(|_| {
-                    tp.apply_mut(&ctx);
-                    (p, expr, tp, ctx)
-                })
-            })
-            .collect();
-        let mut index_cands: Vec<_> = env.iter()
-            .enumerate()
-            .filter_map(|(i, tp)| {
-                let expr = Expression::Index(i);
-                let mut ctx = ctx.clone();
+        for (p, tp, expr) in prims.chain(invented) {
+            let mut ctx = ctx.clone();
+            let mut tp = tp.clone().instantiate_owned(&mut ctx);
+            let unifies = {
                 let ret = if let Some(ret) = tp.returns() {
                     ret
                 } else {
                     &tp
                 };
-                ctx.unify(ret, request).ok().map(|_| {
-                    let mut tp = tp.clone();
-                    tp.apply_mut(&ctx);
-                    (self.variable_logprob, expr, tp, ctx)
-                })
-            })
-            .collect();
-        // update probabilities for variables (indices)
-        let log_n_indexed = (index_cands.len() as f64).ln();
-        for mut c in &mut index_cands {
+                ctx.unify_fast(ret.clone(), request.clone()).is_ok()
+            };
+            if unifies {
+                tp.apply_mut(&ctx);
+                cands.push((p, expr, tp, ctx))
+            }
+        }
+        // indexed
+        let indexed_start = cands.len();
+        for (i, tp) in env.iter().enumerate() {
+            let expr = Expression::Index(i);
+            let mut ctx = ctx.clone();
+            let ret = if let Some(ret) = tp.returns() {
+                ret
+            } else {
+                &tp
+            };
+            if ctx.unify_fast(ret.clone(), request.clone()).is_ok() {
+                let mut tp = tp.clone();
+                tp.apply_mut(&ctx);
+                cands.push((self.variable_logprob, expr, tp, ctx))
+            }
+        }
+        // update probabilities for indices
+        let log_n_indexed = ((cands.len() - indexed_start) as f64).ln();
+        for mut c in &mut cands[indexed_start..] {
             c.0 -= log_n_indexed
         }
         // normalize
-        let mut p_largest = cands
+        let p_largest = cands
             .iter()
+            .take(indexed_start + 1)
             .map(|&(p, _, _, _)| p)
             .fold(f64::NEG_INFINITY, f64::max);
-        if log_n_indexed.is_finite() {
-            p_largest = p_largest.max(self.variable_logprob);
-        }
-        cands.append(&mut index_cands);
         let z = p_largest
             + cands
                 .iter()
