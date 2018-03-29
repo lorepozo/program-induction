@@ -358,7 +358,7 @@ impl Language {
             .chain(invented)
             .filter_map(|(p, tp, expr)| {
                 let mut ctx = ctx.clone();
-                let mut tp = tp.instantiate(&mut ctx);
+                let mut tp = tp.clone().instantiate_owned(&mut ctx);
                 let unification_result = {
                     let ret = if let Some(ret) = tp.returns() {
                         ret
@@ -458,7 +458,7 @@ impl Expression {
     ) -> Result<Type, InferenceError> {
         match *self {
             Expression::Primitive(num) => if let Some(prim) = dsl.primitives.get(num as usize) {
-                Ok(prim.1.instantiate(ctx))
+                Ok(prim.1.clone().instantiate_owned(ctx))
             } else {
                 Err(InferenceError::BadExpression(format!(
                     "primitive does not exist: {}",
@@ -496,7 +496,7 @@ impl Expression {
                 }
             }
             Expression::Invented(num) => if let Some(inv) = dsl.invented.get(num as usize) {
-                Ok(inv.1.instantiate(ctx))
+                Ok(inv.1.clone().instantiate_owned(ctx))
             } else {
                 Err(InferenceError::BadExpression(format!(
                     "invention does not exist: {}",

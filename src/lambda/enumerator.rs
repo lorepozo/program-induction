@@ -36,7 +36,7 @@ pub fn new<'a>(
     request: TypeSchema,
 ) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
     let mut ctx = Context::default();
-    let tp = request.instantiate(&mut ctx);
+    let tp = request.instantiate_owned(&mut ctx);
     let env = Rc::new(LinkedList::default());
     Box::new(
         (0..)
@@ -111,7 +111,7 @@ fn exponential_decay(budget: (f64, f64)) -> Vec<(f64, f64)> {
 pub fn likelihood<'a>(dsl: &'a Language, request: &TypeSchema, expr: &Expression) -> f64 {
     let mut ctx = Context::default();
     let env = Rc::new(LinkedList::default());
-    let t = request.instantiate(&mut ctx);
+    let t = request.clone().instantiate_owned(&mut ctx);
     likelihood_internal(dsl, &t, &ctx, &env, expr).0
 }
 fn likelihood_internal<'a>(

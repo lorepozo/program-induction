@@ -261,7 +261,7 @@ impl Language {
     /// _outside_ counts.
     fn uses(&self, request: &TypeSchema, expr: &Expression) -> (f64, Uses) {
         let mut ctx = Context::default();
-        let tp = request.instantiate(&mut ctx);
+        let tp = request.clone().instantiate_owned(&mut ctx);
         let env = Rc::new(LinkedList::default());
         self.likelihood_uses(&tp, expr, &ctx, &env)
     }
@@ -576,13 +576,13 @@ impl<'a> TreeMatcher<'a> {
                 }
             }
             (&Expression::Primitive(f_num), &Expression::Primitive(c_num)) if f_num == c_num => {
-                let tp = &self.dsl.primitives[f_num].1;
-                Some(tp.instantiate(self.ctx))
+                let tp = self.dsl.primitives[f_num].1.clone();
+                Some(tp.instantiate_owned(self.ctx))
             }
             (&Expression::Invented(f_num), &Expression::Invented(c_num)) => {
                 if f_num == c_num {
-                    let tp = &self.dsl.invented[f_num].1;
-                    Some(tp.instantiate(self.ctx))
+                    let tp = self.dsl.invented[f_num].1.clone();
+                    Some(tp.instantiate_owned(self.ctx))
                 } else {
                     None
                 }
