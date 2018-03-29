@@ -41,9 +41,8 @@ pub fn new<'a>(
     Box::new(
         (0..)
             .map(budget_interval)
-            .zip(iter::repeat(tp))
-            .flat_map(move |(budget, tp)| {
-                enumerate(dsl, tp, &ctx, env.clone(), budget, 0)
+            .flat_map(move |budget| {
+                enumerate(dsl, &tp, &ctx, env.clone(), budget, 0)
             })
             // .map(move |(log_prior, log_likelihood, expr)| {
             //     println!("{} {}", log_prior, dsl.display(&expr));
@@ -81,7 +80,7 @@ fn new_par(
             .zip(exponential_decay(budget))
             .for_each(|(tx, budget)| {
                 let env = Rc::new(LinkedList::default());
-                let e = enumerate(&dsl, request.clone(), &ctx, env.clone(), budget, 0)
+                let e = enumerate(&dsl, &request, &ctx, env.clone(), budget, 0)
                     .map(|(log_prior, _, expr)| (expr, log_prior));
                 for (expr, logprior) in e {
                     if tx.send((expr, logprior)).is_err() {
@@ -172,7 +171,7 @@ fn likelihood_internal<'a>(
 
 fn enumerate<'a>(
     dsl: &'a Language,
-    request: Type,
+    request: &Type,
     ctx: &Context,
     env: Rc<LinkedList<Type>>,
     budget: (f64, f64),
@@ -182,12 +181,12 @@ fn enumerate<'a>(
         Box::new(iter::empty())
     } else if let Some((arg, ret)) = request.as_arrow() {
         let env = LinkedList::prepend(&env, arg.clone());
-        let it = enumerate(dsl, ret.clone(), ctx, env, budget, depth)
+        let it = enumerate(dsl, ret, ctx, env, budget, depth)
             .map(|(ll, ctx, body)| (ll, ctx, Expression::Abstraction(Box::new(body))));
         Box::new(it)
     } else {
         Box::new(
-            dsl.candidates(&request, ctx, &env.as_vecdeque())
+            dsl.candidates(request, ctx, &env.as_vecdeque())
                 .into_iter()
                 .filter(move |&(ll, _, _, _)| -ll <= budget.1)
                 .flat_map(move |(ll, expr, tp, ctx)| {
@@ -214,7 +213,7 @@ fn enumerate_application<'a>(
     if let Some(mut arg_tp) = arg_tps.pop_front() {
         arg_tp.apply_mut(ctx);
         Box::new(
-            enumerate(dsl, arg_tp, ctx, env.clone(), (0f64, budget.1), depth).flat_map(
+            enumerate(dsl, &arg_tp, ctx, env.clone(), (0f64, budget.1), depth).flat_map(
                 move |(arg_ll, ctx, arg)| {
                     let f_next = Expression::Application(Box::new(f.clone()), Box::new(arg));
                     let budget = (budget.0 + arg_ll, budget.1 + arg_ll);
