@@ -53,12 +53,17 @@ pub fn new<'a>(
     )
 }
 #[cfg(feature = "par_enum")]
-pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
+pub fn new<'a>(
+    dsl: &'a Language,
+    request: TypeSchema,
+) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
+    let mut ctx = Context::default();
+    let request = request.instantiate_owned(&mut ctx);
     Box::new(
         (0..)
             .map(budget_interval)
-            .zip(iter::repeat((dsl.clone(), request)))
-            .flat_map(move |(budget, (dsl, request))| new_par(dsl, request, budget)),
+            .zip(iter::repeat((dsl.clone(), request, ctx)))
+            .flat_map(move |(budget, (dsl, request, ctx))| new_par(dsl, request, ctx, budget)),
     )
 }
 
@@ -67,6 +72,7 @@ pub fn new<'a>(dsl: &'a Language, request: Type) -> Box<Iterator<Item = (Express
 fn new_par(
     dsl: Language,
     request: Type,
+    ctx: Context,
     budget: (f64, f64),
 ) -> crossbeam_channel::IntoIter<(Expression, f64)> {
     let (tx, rx) = bounded(PAR_BUFFER_SIZE);
@@ -74,7 +80,6 @@ fn new_par(
         rayon::iter::repeat(tx)
             .zip(exponential_decay(budget))
             .for_each(|(tx, budget)| {
-                let ctx = Context::default();
                 let env = Rc::new(LinkedList::default());
                 let e = enumerate(&dsl, request.clone(), &ctx, env.clone(), budget, 0)
                     .map(|(log_prior, _, expr)| (expr, log_prior));
