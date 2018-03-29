@@ -1,16 +1,22 @@
-use crossbeam_channel::{self, bounded};
-use num_cpus;
 use polytype::{Context, Type, TypeSchema};
-use rayon;
-use rayon::prelude::*;
 use std::collections::VecDeque;
-use std::env;
 use std::f64;
 use std::iter;
 use std::rc::Rc;
 
 use super::{Expression, Language, LinkedList};
 
+#[cfg(feature = "par_enum")]
+use crossbeam_channel::{self, bounded};
+#[cfg(feature = "par_enum")]
+use num_cpus;
+#[cfg(feature = "par_enum")]
+use rayon;
+#[cfg(feature = "par_enum")]
+use rayon::prelude::*;
+#[cfg(feature = "par_enum")]
+use std::env;
+#[cfg(feature = "par_enum")]
 lazy_static! {
     static ref PIECES: u32 = match env::var("RAYON_NUM_THREADS")
         .ok()
@@ -21,6 +27,7 @@ lazy_static! {
     };
 }
 
+#[cfg(feature = "par_enum")]
 const PAR_BUFFER_SIZE: usize = 512;
 const BUDGET_INCREMENT: f64 = 1.0;
 const MAX_DEPTH: u32 = 256;
@@ -67,7 +74,7 @@ pub fn new<'a>(
 }
 
 /// enumerate expressions in parallel within the budget interval
-#[cfg_attr(not(feature = "par_enum"), allow(dead_code))]
+#[cfg(feature = "par_enum")]
 fn new_par(
     dsl: Language,
     request: Type,
@@ -93,7 +100,7 @@ fn new_par(
     rx.into_iter()
 }
 
-#[cfg_attr(not(feature = "par_enum"), allow(dead_code))]
+#[cfg(feature = "par_enum")]
 fn exponential_decay(budget: (f64, f64)) -> Vec<(f64, f64)> {
     // because depth values correspond to description length in nats, we
     // assume that for pieces to have the same total description coverage
