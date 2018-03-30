@@ -109,6 +109,7 @@
 //! [`pcfg`]: pcfg/index.html
 
 extern crate crossbeam_channel;
+extern crate fral;
 extern crate itertools;
 #[macro_use]
 extern crate lazy_static;

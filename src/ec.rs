@@ -1,13 +1,13 @@
 //! Representations capable of Exploration-Compression.
 
-use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use std::thread;
 use crossbeam_channel::bounded;
 use polytype::TypeSchema;
 use rayon::prelude::*;
+use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 use Task;
 
