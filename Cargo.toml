@@ -16,7 +16,6 @@ rustdoc-args = ["--html-in-header", ".cargo/registry/src/github.com-1ecc6299db9e
 
 [dependencies]
 crossbeam-channel = "0.1"
-fral = "1.0"
 itertools = "0.7"
 lazy_static = "1.0"
 maplit = "1.0"

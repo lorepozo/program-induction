@@ -42,11 +42,12 @@ pub use self::compression::CompressionParams;
 pub use self::eval::{Evaluator, LiftedFunction, SimpleEvaluator};
 pub use self::parser::ParseError;
 
-use fral::rc::Fral;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use std::f64;
 use std::fmt;
+use std::ops::Index;
+use std::rc::Rc;
 use std::sync::Arc;
 use polytype::{Context, Type, TypeSchema, UnificationError};
 
@@ -107,7 +108,7 @@ impl Language {
     /// [`Expression`]: enum.Expression.html
     pub fn infer(&self, expr: &Expression) -> Result<TypeSchema, InferenceError> {
         let mut ctx = Context::default();
-        let env = Fral::new();
+        let env = VecDeque::new();
         let mut indices = HashMap::new();
         expr.infer(self, &mut ctx, &env, &mut indices)
             .map(|t| t.generalize(&Context::default()))
@@ -343,7 +344,7 @@ impl Language {
         &self,
         request: &Type,
         ctx: &Context,
-        env: &Fral<Type>,
+        env: &VecDeque<Type>,
     ) -> Vec<(f64, Expression, Type, Context)> {
         // make cands as big as possible to prevent reallocation
         let mut cands = Vec::with_capacity(self.primitives.len() + self.invented.len() + env.len());
@@ -383,7 +384,7 @@ impl Language {
                 &tp
             };
             if ctx.unify_fast(ret.clone(), request.clone()).is_ok() {
-                let mut tp = (*tp).clone();
+                let mut tp = tp.clone();
                 tp.apply_mut(&ctx);
                 cands.push((self.variable_logprob, expr, tp, ctx))
             }
@@ -448,7 +449,7 @@ impl Expression {
         &self,
         dsl: &Language,
         mut ctx: &mut Context,
-        env: &Fral<Type>,
+        env: &VecDeque<Type>,
         indices: &mut HashMap<usize, Type>,
     ) -> Result<Type, InferenceError> {
         match *self {
@@ -469,15 +470,16 @@ impl Expression {
             }
             Expression::Abstraction(ref body) => {
                 let arg_tp = ctx.new_variable();
-                let env = env.cons(arg_tp.clone());
+                let mut env = env.clone();
+                env.push_front(arg_tp.clone());
                 let ret_tp = body.infer(dsl, &mut ctx, &env, indices)?;
                 let mut tp = Type::arrow(arg_tp, ret_tp);
                 tp.apply_mut(ctx);
                 Ok(tp)
             }
             Expression::Index(i) => {
-                if let Some(tp) = env.get(i as usize) {
-                    let mut tp = (*tp).clone();
+                if (i as usize) < env.len() {
+                    let mut tp = env[i as usize].clone();
                     tp.apply_mut(ctx);
                     Ok(tp)
                 } else {
@@ -666,6 +668,67 @@ where
         oracle,
         observation: examples,
         tp,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LinkedList<T: Clone>(Option<(T, Rc<LinkedList<T>>)>);
+impl<T: Clone> LinkedList<T> {
+    fn prepend(lst: &Rc<LinkedList<T>>, v: T) -> Rc<LinkedList<T>> {
+        Rc::new(LinkedList(Some((v, lst.clone()))))
+    }
+    fn as_vecdeque(&self) -> VecDeque<T> {
+        let mut lst: &Rc<LinkedList<T>>;
+        let mut out = VecDeque::new();
+        if let Some((ref v, ref nlst)) = self.0 {
+            out.push_back(v.clone());
+            lst = nlst;
+            while let Some((ref v, ref nlst)) = lst.0 {
+                out.push_back(v.clone());
+                lst = nlst;
+            }
+        }
+        out
+    }
+    fn len(&self) -> usize {
+        let mut lst: &Rc<LinkedList<T>>;
+        let mut n = 0;
+        if let Some((_, ref nlst)) = self.0 {
+            n += 1;
+            lst = nlst;
+            while let Some((_, ref nlst)) = lst.0 {
+                n += 1;
+                lst = nlst;
+            }
+        }
+        n
+    }
+}
+impl<T: Clone> Default for LinkedList<T> {
+    fn default() -> Self {
+        LinkedList(None)
+    }
+}
+impl<T: Clone> Index<usize> for LinkedList<T> {
+    type Output = T;
+    fn index(&self, i: usize) -> &Self::Output {
+        let mut lst: &Rc<LinkedList<T>>;
+        let mut n = 0;
+        if let Some((ref v, ref nlst)) = self.0 {
+            if i == n {
+                return v;
+            }
+            n += 1;
+            lst = nlst;
+            while let Some((ref v, ref nlst)) = lst.0 {
+                if i == n {
+                    return v;
+                }
+                n += 1;
+                lst = nlst;
+            }
+        }
+        panic!("index out of bounds");
     }
 }
 

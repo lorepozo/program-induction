@@ -1,9 +1,9 @@
 //! Representations capable of Genetic Programming.
 
+use std::cmp::Ordering;
 use itertools::Itertools;
 use polytype::TypeSchema;
 use rand::{seq, Rng};
-use std::cmp::Ordering;
 
 use Task;
 

@@ -1,10 +1,10 @@
-use fral::rc::Fral;
 use polytype::{Context, Type, TypeSchema};
 use std::collections::VecDeque;
 use std::f64;
 use std::iter;
+use std::rc::Rc;
 
-use super::{Expression, Language};
+use super::{Expression, Language, LinkedList};
 
 #[cfg(feature = "par_enum")]
 use crossbeam_channel::{self, bounded};
@@ -44,7 +44,7 @@ pub fn new<'a>(
 ) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
     let mut ctx = Context::default();
     let tp = request.instantiate_owned(&mut ctx);
-    let env = Fral::new();
+    let env = Rc::new(LinkedList::default());
     Box::new(
         (0..)
             .map(budget_interval)
@@ -86,7 +86,7 @@ fn new_par(
         rayon::iter::repeat(tx)
             .zip(exponential_decay(budget))
             .for_each(|(tx, budget)| {
-                let env = Fral::new();
+                let env = Rc::new(LinkedList::default());
                 let e = enumerate(&dsl, &request, &ctx, env.clone(), budget, 0)
                     .map(|(log_prior, _, expr)| (expr, log_prior));
                 for (expr, logprior) in e {
@@ -121,7 +121,7 @@ fn exponential_decay(budget: (f64, f64)) -> Vec<(f64, f64)> {
 
 pub fn likelihood<'a>(dsl: &'a Language, request: &TypeSchema, expr: &Expression) -> f64 {
     let mut ctx = Context::default();
-    let env = Fral::new();
+    let env = Rc::new(LinkedList::default());
     let t = request.clone().instantiate_owned(&mut ctx);
     likelihood_internal(dsl, &t, &ctx, &env, expr).0
 }
@@ -129,11 +129,11 @@ fn likelihood_internal<'a>(
     dsl: &'a Language,
     request: &Type,
     ctx: &Context,
-    env: &Fral<Type>,
+    env: &Rc<LinkedList<Type>>,
     mut expr: &Expression,
 ) -> (f64, Context) {
     if let Some((arg, ret)) = request.as_arrow() {
-        let env = env.cons(arg.clone());
+        let env = LinkedList::prepend(env, arg.clone());
         if let Expression::Abstraction(ref body) = *expr {
             likelihood_internal(dsl, ret, ctx, &env, body)
         } else {
@@ -146,7 +146,7 @@ fn likelihood_internal<'a>(
             xs.push(r);
         }
         xs.reverse();
-        match dsl.candidates(request, ctx, env)
+        match dsl.candidates(request, ctx, &env.as_vecdeque())
             .into_iter()
             .find(|&(_, ref c_expr, _, _)| expr == c_expr)
         {
@@ -180,20 +180,20 @@ fn enumerate<'a>(
     dsl: &'a Language,
     request: &Type,
     ctx: &Context,
-    env: Fral<Type>,
+    env: Rc<LinkedList<Type>>,
     budget: (f64, f64),
     depth: u32,
 ) -> Box<Iterator<Item = (f64, Context, Expression)> + 'a> {
     if budget.1 <= 0f64 || depth > MAX_DEPTH {
         Box::new(iter::empty())
     } else if let Some((arg, ret)) = request.as_arrow() {
-        let env = env.cons(arg.clone());
+        let env = LinkedList::prepend(&env, arg.clone());
         let it = enumerate(dsl, ret, ctx, env, budget, depth)
             .map(|(ll, ctx, body)| (ll, ctx, Expression::Abstraction(Box::new(body))));
         Box::new(it)
     } else {
         Box::new(
-            dsl.candidates(request, ctx, &env)
+            dsl.candidates(request, ctx, &env.as_vecdeque())
                 .into_iter()
                 .filter(move |&(ll, _, _, _)| -ll <= budget.1)
                 .flat_map(move |(ll, expr, tp, ctx)| {
@@ -211,7 +211,7 @@ fn enumerate<'a>(
 fn enumerate_application<'a>(
     dsl: &'a Language,
     ctx: &Context,
-    env: Fral<Type>,
+    env: Rc<LinkedList<Type>>,
     f: Expression,
     mut arg_tps: VecDeque<Type>,
     budget: (f64, f64),

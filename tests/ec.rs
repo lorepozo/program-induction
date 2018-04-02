@@ -4,10 +4,10 @@ extern crate programinduction;
 
 use std::time::Duration;
 
-use programinduction::domains::{circuits, strings};
+use programinduction::{ECParams, EC};
 use programinduction::lambda;
 use programinduction::pcfg::{self, Grammar, Rule};
-use programinduction::{ECParams, EC};
+use programinduction::domains::{circuits, strings};
 
 fn arith_evaluate(name: &str, inps: &[i32]) -> i32 {
     match name {

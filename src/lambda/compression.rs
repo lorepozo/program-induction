@@ -1,5 +1,4 @@
 use crossbeam_channel::bounded;
-use fral::rc::Fral;
 use itertools::Itertools;
 use polytype::{Context, Type, TypeSchema};
 use rayon::iter;
@@ -7,10 +6,11 @@ use rayon::prelude::*;
 use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 use std::f64;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 
-use super::{Expression, Language};
+use super::{Expression, Language, LinkedList};
 use {ECFrontier, Task};
 
 const BOUND_VAR_COST: f64 = 0.1;
@@ -262,7 +262,7 @@ impl Language {
     fn uses(&self, request: &TypeSchema, expr: &Expression) -> (f64, Uses) {
         let mut ctx = Context::default();
         let tp = request.clone().instantiate_owned(&mut ctx);
-        let env = Fral::new();
+        let env = Rc::new(LinkedList::default());
         self.likelihood_uses(&tp, expr, &ctx, &env)
     }
 
@@ -273,17 +273,17 @@ impl Language {
         request: &Type,
         expr: &Expression,
         ctx: &'a Context,
-        env: &Fral<Type>,
+        env: &Rc<LinkedList<Type>>,
     ) -> (f64, Uses) {
         if let Some((arg, ret)) = request.as_arrow() {
-            let env = env.cons(arg.clone());
+            let env = LinkedList::prepend(env, arg.clone());
             if let Expression::Abstraction(ref body) = *expr {
                 self.likelihood_uses(ret, body, ctx, &env)
             } else {
                 (f64::NEG_INFINITY, Uses::new(self)) // invalid expression
             }
         } else {
-            let candidates = self.candidates(request, ctx, env);
+            let candidates = self.candidates(request, ctx, &env.as_vecdeque());
             let mut possible_vars = 0f64;
             let mut possible_prims = vec![0f64; self.primitives.len()];
             let mut possible_invented = vec![0f64; self.invented.len()];
@@ -511,7 +511,7 @@ impl<'a> TreeMatcher<'a> {
             None
         } else if let Some(tp) = {
             let mut tm = TreeMatcher { dsl, ctx, bindings };
-            tm.execute(fragment, concrete, &Fral::new(), n_args)
+            tm.execute(fragment, concrete, &Rc::new(LinkedList::default()), n_args)
         } {
             Some(tp)
         } else {
@@ -558,7 +558,7 @@ impl<'a> TreeMatcher<'a> {
         &mut self,
         fragment: &Expression,
         concrete: &Expression,
-        env: &Fral<Type>,
+        env: &Rc<LinkedList<Type>>,
         n_args: usize,
     ) -> Option<Type> {
         match (fragment, concrete) {
@@ -593,14 +593,14 @@ impl<'a> TreeMatcher<'a> {
             }
             (&Expression::Abstraction(ref f_body), &Expression::Abstraction(ref c_body)) => {
                 let arg = self.ctx.new_variable();
-                let env = env.cons(arg.clone());
+                let env = LinkedList::prepend(env, arg.clone());
                 let ret = self.execute(f_body, c_body, &env, 0)?;
                 Some(Type::arrow(arg, ret))
             }
             (&Expression::Index(i), _) if i < env.len() => {
                 // bound variable
                 if fragment == concrete {
-                    let mut tp = (*env.get(i).unwrap()).clone();
+                    let mut tp = env[i].clone();
                     tp.apply_mut(self.ctx);
                     Some(tp)
                 } else {
@@ -750,8 +750,8 @@ mod proposals {
     //! Proposals, or "fragment expressions" (written `fragment_expr` where applicable) are
     //! expressions with free variables.
 
-    use super::super::Expression;
     use super::expression_count_kinds;
+    use super::super::Expression;
     use std::collections::HashMap;
     use std::iter;
 
