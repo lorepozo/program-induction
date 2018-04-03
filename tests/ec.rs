@@ -9,11 +9,11 @@ use programinduction::lambda;
 use programinduction::pcfg::{self, Grammar, Rule};
 use programinduction::domains::{circuits, strings};
 
-fn arith_evaluate(name: &str, inps: &[i32]) -> i32 {
+fn arith_evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
     match name {
-        "0" => 0,
-        "1" => 1,
-        "plus" => inps[0] + inps[1],
+        "0" => Ok(0),
+        "1" => Ok(1),
+        "plus" => Ok(inps[0] + inps[1]),
         _ => unreachable!(),
     }
 }

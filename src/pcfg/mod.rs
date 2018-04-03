@@ -8,11 +8,11 @@
 //! # extern crate programinduction;
 //! use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
 //!
-//! fn evaluator(name: &str, inps: &[i32]) -> i32 {
+//! fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
 //!     match name {
-//!         "0" => 0,
-//!         "1" => 1,
-//!         "plus" => inps[0] + inps[1],
+//!         "0" => Ok(0),
+//!         "1" => Ok(1),
+//!         "plus" => Ok(inps[0] + inps[1]),
 //!         _ => unreachable!(),
 //!     }
 //! }
@@ -179,11 +179,11 @@ impl Grammar {
     /// # extern crate programinduction;
     /// use programinduction::pcfg::{Grammar, Rule, task_by_evaluation};
     ///
-    /// fn evaluator(name: &str, inps: &[i32]) -> i32 {
+    /// fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
     ///     match name {
-    ///         "0" => 0,
-    ///         "1" => 1,
-    ///         "plus" => inps[0] + inps[1],
+    ///         "0" => Ok(0),
+    ///         "1" => Ok(1),
+    ///         "plus" => Ok(inps[0] + inps[1]),
     ///         _ => unreachable!(),
     ///     }
     /// }
@@ -199,14 +199,17 @@ impl Grammar {
     /// );
     ///
     /// let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
-    /// assert_eq!(4, g.eval(&expr, &evaluator));
+    /// assert_eq!(Ok(4), g.eval(&expr, &evaluator));
     /// # }
     /// ```
-    pub fn eval<V, F>(&self, ar: &AppliedRule, evaluator: &F) -> V
+    pub fn eval<V, E, F>(&self, ar: &AppliedRule, evaluator: &F) -> Result<V, E>
     where
-        F: Fn(&str, &[V]) -> V,
+        F: Fn(&str, &[V]) -> Result<V, E>,
     {
-        let args: Vec<V> = ar.2.iter().map(|ar| self.eval(ar, evaluator)).collect();
+        let args = ar.2
+            .iter()
+            .map(|ar| self.eval(ar, evaluator))
+            .collect::<Result<Vec<V>, E>>()?;
         evaluator(self.rules[&ar.0][ar.1].name, &args)
     }
     /// Sample a statement of the PCFG.
@@ -528,11 +531,11 @@ fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicU
 /// # extern crate programinduction;
 /// use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
 ///
-/// fn evaluator(name: &str, inps: &[i32]) -> i32 {
+/// fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
 ///     match name {
-///         "0" => 0,
-///         "1" => 1,
-///         "plus" => inps[0] + inps[1],
+///         "0" => Ok(0),
+///         "1" => Ok(1),
+///         "plus" => Ok(inps[0] + inps[1]),
 ///         _ => unreachable!(),
 ///     }
 /// }
@@ -555,18 +558,22 @@ fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicU
 /// assert!((task.oracle)(&g, &expr).is_finite())
 /// # }
 /// ```
-pub fn task_by_evaluation<'a, V, F>(
+pub fn task_by_evaluation<'a, V, E, F>(
     evaluator: &'a F,
     output: &'a V,
     tp: Type,
 ) -> Task<'a, Grammar, AppliedRule, &'a V>
 where
     V: PartialEq + Clone + Sync + Debug + 'a,
-    F: Fn(&str, &[V]) -> V + Sync + 'a,
+    F: Fn(&str, &[V]) -> Result<V, E> + Sync + 'a,
 {
     let oracle = Box::new(move |g: &Grammar, ar: &AppliedRule| {
-        if output == &g.eval(ar, evaluator) {
-            0f64
+        if let Ok(o) = g.eval(ar, evaluator) {
+            if o == *output {
+                0f64
+            } else {
+                f64::NEG_INFINITY
+            }
         } else {
             f64::NEG_INFINITY
         }

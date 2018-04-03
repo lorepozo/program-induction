@@ -7,11 +7,11 @@
 //! # extern crate programinduction;
 //! use programinduction::lambda::{task_by_evaluation, Language, SimpleEvaluator};
 //!
-//! fn evaluate(name: &str, inps: &[i32]) -> i32 {
+//! fn evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
 //!     match name {
-//!         "0" => 0,
-//!         "1" => 1,
-//!         "+" => inps[0] + inps[1],
+//!         "0" => Ok(0),
+//!         "1" => Ok(1),
+//!         "+" => Ok(inps[0] + inps[1]),
 //!         _ => unreachable!(),
 //!     }
 //! }
@@ -184,7 +184,7 @@ impl Language {
     /// let dsl = circuits::dsl();
     /// let tasks = circuits::make_tasks(100);
     /// let ec_params = ECParams {
-    ///     frontier_limit: 5,
+    ///     frontier_limit: 10,
     ///     search_limit_timeout: Some(std::time::Duration::new(2, 0)),
     ///     search_limit_description_length: None,
     /// };
@@ -221,11 +221,11 @@ impl Language {
     /// # extern crate programinduction;
     /// use programinduction::lambda::{Language, SimpleEvaluator};
     ///
-    /// fn evaluate(name: &str, inps: &[i32]) -> i32 {
+    /// fn evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
     ///     match name {
-    ///         "0" => 0,
-    ///         "1" => 1,
-    ///         "+" => inps[0] + inps[1],
+    ///         "0" => Ok(0),
+    ///         "1" => Ok(1),
+    ///         "+" => Ok(inps[0] + inps[1]),
     ///         _ => unreachable!(),
     ///     }
     /// }
@@ -243,10 +243,10 @@ impl Language {
     /// assert_eq!(evaluated, 8);
     /// # }
     /// ```
-    pub fn eval<E, V>(&self, expr: &Expression, evaluator: E, inps: &[V]) -> Option<V>
+    pub fn eval<V, E>(&self, expr: &Expression, evaluator: E, inps: &[V]) -> Result<V, E::Error>
     where
-        E: Evaluator<Space = V>,
         V: Clone + PartialEq + Send + Sync,
+        E: Evaluator<Space = V>,
     {
         eval::eval(self, expr, &Arc::new(evaluator), inps)
     }
@@ -254,10 +254,15 @@ impl Language {
     /// Like [`eval`], but useful in settings with a shared evaluator.
     ///
     /// [`eval`]: #method.eval
-    pub fn eval_arc<E, V>(&self, expr: &Expression, evaluator: &Arc<E>, inps: &[V]) -> Option<V>
+    pub fn eval_arc<V, E>(
+        &self,
+        expr: &Expression,
+        evaluator: &Arc<E>,
+        inps: &[V],
+    ) -> Result<V, E::Error>
     where
-        E: Evaluator<Space = V>,
         V: Clone + PartialEq + Send + Sync,
+        E: Evaluator<Space = V>,
     {
         eval::eval(self, expr, evaluator, inps)
     }
@@ -468,10 +473,7 @@ impl Expression {
             Expression::Primitive(num) => if let Some(prim) = dsl.primitives.get(num as usize) {
                 Ok(prim.1.clone().instantiate_owned(ctx))
             } else {
-                Err(InferenceError::BadExpression(format!(
-                    "primitive does not exist: {}",
-                    num
-                )))
+                Err(InferenceError::InvalidPrimitive(num))
             },
             Expression::Application(ref f, ref x) => {
                 let f_tp = f.infer(dsl, &mut ctx, env, indices)?;
@@ -506,10 +508,7 @@ impl Expression {
             Expression::Invented(num) => if let Some(inv) = dsl.invented.get(num as usize) {
                 Ok(inv.1.clone().instantiate_owned(ctx))
             } else {
-                Err(InferenceError::BadExpression(format!(
-                    "invention does not exist: {}",
-                    num
-                )))
+                Err(InferenceError::InvalidInvention(num))
             },
         }
     }
@@ -629,11 +628,11 @@ impl Expression {
 /// # extern crate programinduction;
 /// use programinduction::lambda::{task_by_evaluation, Language, SimpleEvaluator};
 ///
-/// fn evaluate(name: &str, inps: &[i32]) -> i32 {
+/// fn evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
 ///     match name {
-///         "0" => 0,
-///         "1" => 1,
-///         "+" => inps[0] + inps[1],
+///         "0" => Ok(0),
+///         "1" => Ok(1),
+///         "+" => Ok(inps[0] + inps[1]),
 ///         _ => unreachable!(),
 ///     }
 /// }
@@ -664,8 +663,8 @@ where
     let evaluator = Arc::new(evaluator);
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
         let success = examples.iter().all(|&(ref inps, ref out)| {
-            if let Some(ref o) = dsl.eval_arc(expr, &evaluator, inps) {
-                o == out
+            if let Ok(o) = dsl.eval_arc(expr, &evaluator, inps) {
+                o == *out
             } else {
                 false
             }
@@ -746,7 +745,8 @@ impl<T: Clone> Index<usize> for LinkedList<T> {
 
 #[derive(Debug, Clone)]
 pub enum InferenceError {
-    BadExpression(String),
+    InvalidPrimitive(usize),
+    InvalidInvention(usize),
     Unify(UnificationError),
 }
 impl From<UnificationError> for InferenceError {
@@ -757,7 +757,8 @@ impl From<UnificationError> for InferenceError {
 impl fmt::Display for InferenceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
-            InferenceError::BadExpression(ref msg) => write!(f, "invalid expression: '{}'", msg),
+            InferenceError::InvalidPrimitive(n) => write!(f, "primitive {} not in Language", n),
+            InferenceError::InvalidInvention(n) => write!(f, "invention {} not in Language", n),
             InferenceError::Unify(ref err) => write!(f, "could not unify to infer type: {}", err),
         }
     }

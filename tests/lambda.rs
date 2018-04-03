@@ -200,17 +200,17 @@ fn lambda_eval_simplest() {
         ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
     ]);
 
-    fn evaluate(primitive: &str, inps: &[i32]) -> i32 {
+    fn evaluate(primitive: &str, inps: &[i32]) -> Result<i32, ()> {
         match primitive {
-            "0" => 0,
-            "1" => 1,
-            "+" => inps[0] + inps[1],
+            "0" => Ok(0),
+            "1" => Ok(1),
+            "+" => Ok(inps[0] + inps[1]),
             _ => unreachable!(),
         }
     }
     let expr = dsl.parse("(+ (+ 1 1) 1)").unwrap();
     let out = dsl.eval(&expr, SimpleEvaluator::of(evaluate), &[]);
-    assert_eq!(out, Some(3));
+    assert_eq!(out, Ok(3));
 }
 
 #[test]
@@ -229,20 +229,20 @@ fn lambda_eval_somewhat_simple() {
         Num(i32),
     }
 
-    fn evaluate(primitive: &str, inps: &[ArithSpace]) -> ArithSpace {
+    fn evaluate(primitive: &str, inps: &[ArithSpace]) -> Result<ArithSpace, ()> {
         match primitive {
-            "0" => ArithSpace::Num(0),
-            "1" => ArithSpace::Num(1),
+            "0" => Ok(ArithSpace::Num(0)),
+            "1" => Ok(ArithSpace::Num(1)),
             "+" => match (&inps[0], &inps[1]) {
-                (&ArithSpace::Num(x), &ArithSpace::Num(y)) => ArithSpace::Num(x + y),
+                (&ArithSpace::Num(x), &ArithSpace::Num(y)) => Ok(ArithSpace::Num(x + y)),
                 _ => unreachable!(),
             },
             "eq" => match (&inps[0], &inps[1]) {
-                (&ArithSpace::Num(x), &ArithSpace::Num(y)) => ArithSpace::Bool(x == y),
+                (&ArithSpace::Num(x), &ArithSpace::Num(y)) => Ok(ArithSpace::Bool(x == y)),
                 _ => unreachable!(),
             },
             "not" => match inps[0] {
-                ArithSpace::Bool(b) => ArithSpace::Bool(!b),
+                ArithSpace::Bool(b) => Ok(ArithSpace::Bool(!b)),
                 _ => unreachable!(),
             },
             _ => unreachable!(),
@@ -252,10 +252,10 @@ fn lambda_eval_somewhat_simple() {
     let expr = dsl.parse("(λ (not (eq (+ 1 $0) 1)))").unwrap();
 
     let out = dsl.eval(&expr, SimpleEvaluator::of(evaluate), &[ArithSpace::Num(1)]);
-    assert_eq!(out, Some(ArithSpace::Bool(true)));
+    assert_eq!(out, Ok(ArithSpace::Bool(true)));
 
     let out = dsl.eval(&expr, SimpleEvaluator::of(evaluate), &[ArithSpace::Num(0)]);
-    assert_eq!(out, Some(ArithSpace::Bool(false)));
+    assert_eq!(out, Ok(ArithSpace::Bool(false)));
 }
 
 #[test]
@@ -280,34 +280,42 @@ fn lambda_eval_firstclass() {
     struct ListEvaluator;
     impl Evaluator for ListEvaluator {
         type Space = ListSpace;
-        fn evaluate(&self, primitive: &str, inps: &[Self::Space]) -> Self::Space {
+        type Error = ();
+        fn evaluate(
+            &self,
+            primitive: &str,
+            inps: &[Self::Space],
+        ) -> Result<Self::Space, Self::Error> {
             match primitive {
-                "0" => ListSpace::Num(0),
-                "1" => ListSpace::Num(1),
+                "0" => Ok(ListSpace::Num(0)),
+                "1" => Ok(ListSpace::Num(1)),
                 "+" => match (&inps[0], &inps[1]) {
-                    (&ListSpace::Num(x), &ListSpace::Num(y)) => ListSpace::Num(x + y),
+                    (&ListSpace::Num(x), &ListSpace::Num(y)) => Ok(ListSpace::Num(x + y)),
                     _ => unreachable!(),
                 },
                 "singleton" => match inps[0] {
-                    ListSpace::Num(x) => ListSpace::List(vec![x]),
+                    ListSpace::Num(x) => Ok(ListSpace::List(vec![x])),
                     _ => unreachable!(),
                 },
                 "chain" => match (&inps[0], &inps[1]) {
                     (&ListSpace::List(ref xs), &ListSpace::List(ref ys)) => {
-                        ListSpace::List(xs.into_iter().chain(ys).cloned().collect())
+                        Ok(ListSpace::List(xs.into_iter().chain(ys).cloned().collect()))
                     }
                     _ => unreachable!(),
                 },
                 "map" => match (&inps[0], &inps[1]) {
-                    (&ListSpace::Func(ref f), &ListSpace::List(ref xs)) => ListSpace::List(
-                        xs.into_iter()
-                            .cloned()
-                            .map(|x| match f.eval(&[ListSpace::Num(x)]) {
-                                ListSpace::Num(y) => y,
-                                _ => panic!("map given invalid function"),
+                    (&ListSpace::Func(ref f), &ListSpace::List(ref xs)) => {
+                        Ok(ListSpace::List(xs.into_iter()
+                            .map(|x| {
+                                f.eval(&[ListSpace::Num(x.clone())])
+                                    .map(|v| match v {
+                                        ListSpace::Num(y) => y,
+                                        _ => panic!("map given invalid function"),
+                                    })
+                                    .map_err(|_| ())
                             })
-                            .collect(),
-                    ),
+                            .collect::<Result<_, _>>()?))
+                    }
                     _ => unreachable!(),
                 },
                 _ => unreachable!(),

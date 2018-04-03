@@ -5,7 +5,12 @@ use polytype::TypeSchema;
 
 use lambda::{Expression, Language};
 
-pub fn eval<V, E>(dsl: &Language, expr: &Expression, evaluator: &Arc<E>, inps: &[V]) -> Option<V>
+pub fn eval<V, E>(
+    dsl: &Language,
+    expr: &Expression,
+    evaluator: &Arc<E>,
+    inps: &[V],
+) -> Result<V, E::Error>
 where
     V: Clone + PartialEq + Send + Sync,
     E: Evaluator<Space = V>,
@@ -17,17 +22,17 @@ where
 ///
 /// In many simple domains, using [`SimpleEvaluator::of`] where you need an `Evaluator` should
 /// suffice. A custom implementation should be done if the domain has **first-class functions**, so
-/// that an [`Abstraction`] may by "lifted" into the domain's value space. What follows is
-/// primarily an explanation of evaluation for value spaces with first-class functions.
+/// that an [`Abstraction`] may by "lifted" into the domain's value space.
 ///
-/// The associated type [`Space`] of an `Evaluator` is the value space of the domain. It is
-/// typically an enum with variants for different types of values. `Evaluator`s serve as a bridge
-/// from [`Type`]s and [`Expression`]s manipulated by this library to concrete values in Rust.  It
-/// is, therefore, best practice for `Space` to be an enum with as many variants as there are
-/// constructed types, plus one variant for functions. It is _guaranteed_ that evaluation will
-/// correspond to whatever the constraints of your types are. In other words, if `"plus"` takes two
-/// numbers and `"concat"` takes two strings according to the [`Language`], then they will _never_
-/// be called with arguments that aren't two numbers or two strings respectively.
+/// The associated type [`Space`] of an `Evaluator` is the value space of the domain. `Evaluator`s
+/// serve as a bridge from [`Type`]s and [`Expression`]s manipulated by this library to concrete
+/// values in Rust.  It is, therefore, best practice for `Space` to be an enum with as many
+/// variants as there are constructed types, plus one variant for functions. It is _guaranteed_
+/// that evaluation will correspond to whatever the constraints of your types are. In other words,
+/// if `"plus"` takes two numbers and `"concat"` takes two strings according to the [`Language`],
+/// then they will _never_ be called with arguments that aren't two numbers or two strings
+/// respectively. To help illustrate this, note that none of the this library's example evaluators
+/// can panic.
 ///
 /// When an `Abstraction` is encountered and passed into a function, a [`lift`] is attempted to
 /// bring the abstraction into the domain's `Space`. For example, if `"map"` takes a function from
@@ -53,11 +58,11 @@ where
 /// ]);
 /// # }
 ///
-/// fn evaluate(primitive: &str, inps: &[i32]) -> i32 {
+/// fn evaluate(primitive: &str, inps: &[i32]) -> Result<i32, ()> {
 ///     match primitive {
-///         "0" => 0,
-///         "1" => 1,
-///         "+" => inps[0] + inps[1],
+///         "0" => Ok(0),
+///         "1" => Ok(1),
+///         "+" => Ok(inps[0] + inps[1]),
 ///         _ => unreachable!(),
 ///     }
 /// }
@@ -92,20 +97,20 @@ where
 /// }
 /// use ArithSpace::*;
 ///
-/// fn evaluate(primitive: &str, inps: &[ArithSpace]) -> ArithSpace {
+/// fn evaluate(primitive: &str, inps: &[ArithSpace]) -> Result<ArithSpace, ()> {
 ///     match primitive {
-///         "0" => Num(0),
-///         "1" => Num(1),
+///         "0" => Ok(Num(0)),
+///         "1" => Ok(Num(1)),
 ///         "+" => match (&inps[0], &inps[1]) {
-///             (&Num(x), &Num(y)) => Num(x + y),
+///             (&Num(x), &Num(y)) => Ok(Num(x + y)),
 ///             _ => unreachable!(),
 ///         }
 ///         "eq" => match (&inps[0], &inps[1]) {
-///             (&Num(x), &Num(y)) => Bool(x == y),
+///             (&Num(x), &Num(y)) => Ok(Bool(x == y)),
 ///             _ => unreachable!(),
 ///         }
 ///         "not" => match inps[0] {
-///             Bool(b) => Bool(!b),
+///             Bool(b) => Ok(Bool(!b)),
 ///             _ => unreachable!(),
 ///         }
 ///         _ => unreachable!(),
@@ -146,17 +151,20 @@ where
 /// # }
 ///
 /// #[derive(Clone)]
+/// struct ListError(&'static str);
+///
+/// #[derive(Clone)]
 /// enum ListSpace {
-///     Number(i32),
-///     List(Vec<i32>),
+///     Num(i32),
+///     NumList(Vec<i32>),
 ///     Func(LiftedFunction<ListSpace, ListsEvaluator>),
 /// }
 /// use ListSpace::*;
 /// impl PartialEq for ListSpace {
 ///     fn eq(&self, other: &Self) -> bool {
 ///         match (self, other) {
-///             (&Number(x), &Number(y)) => x == y,
-///             (&List(ref xs), &List(ref ys)) => xs == ys,
+///             (&Num(x), &Num(y)) => x == y,
+///             (&NumList(ref xs), &NumList(ref ys)) => xs == ys,
 ///             _ => false,
 ///         }
 ///     }
@@ -166,34 +174,41 @@ where
 /// struct ListsEvaluator;
 /// impl Evaluator for ListsEvaluator {
 ///     type Space = ListSpace;
-///     fn evaluate(&self, primitive: &str, inps: &[Self::Space]) -> Self::Space {
+///     type Error = ListError;
+///     fn evaluate(
+///         &self,
+///         primitive: &str,
+///         inps: &[Self::Space],
+///     ) -> Result<Self::Space, Self::Error> {
 ///         match primitive {
-///             "0" => Number(0),
-///             "1" => Number(1),
+///             "0" => Ok(Num(0)),
+///             "1" => Ok(Num(1)),
 ///             "+" => match (&inps[0], &inps[1]) {
-///                 (&Number(x), &Number(y)) => Number(x + y),
+///                 (&Num(x), &Num(y)) => Ok(Num(x + y)),
 ///                 _ => unreachable!(),
 ///             },
 ///             "singleton" => match inps[0] {
-///                 Number(x) => List(vec![x]),
+///                 Num(x) => Ok(NumList(vec![x])),
 ///                 _ => unreachable!(),
 ///             },
 ///             "chain" => match (&inps[0], &inps[1]) {
-///                 (&List(ref xs), &List(ref ys)) => {
-///                     List(xs.into_iter().chain(ys).cloned().collect())
+///                 (&NumList(ref xs), &NumList(ref ys)) => {
+///                     Ok(NumList(xs.into_iter().chain(ys).cloned().collect()))
 ///                 },
 ///                 _ => unreachable!(),
 ///             },
 ///             "map" => match (&inps[0], &inps[1]) {
-///                 (&Func(ref f), &List(ref xs)) => List(
-///                     xs.into_iter()
-///                         .cloned()
-///                         .map(|x| match f.eval(&[Number(x)]) {
-///                             Number(y) => y,
-///                             _ => panic!("map given invalid function"),
+///                 (&Func(ref f), &NumList(ref xs)) => {
+///                     Ok(NumList(xs.into_iter()
+///                         .map(|x| {
+///                             f.eval(&[Num(x.clone())])
+///                                 .and_then(|v| match v {
+///                                     Num(y) => Ok(y),
+///                                     _ => Err(ListError("map given invalid function")),
+///                                 })
 ///                         })
-///                         .collect(),
-///                 ),
+///                         .collect::<Result<_, _>>()?))
+///                 }
 ///                 _ => unreachable!(),
 ///             },
 ///             _ => unreachable!(),
@@ -205,7 +220,7 @@ where
 /// }
 ///
 /// # fn main() {
-/// // Evaluator<Space = ListSpace>
+/// // Evaluator<Space = ListSpace, Error = ListError>
 /// let eval = ListsEvaluator;
 /// # }
 /// ```
@@ -223,18 +238,11 @@ pub trait Evaluator: Sized + Sync {
     /// The value space of a domain. The inputs of every primitive and the result of every
     /// evaluation must be of this type.
     type Space: Clone + PartialEq + Send + Sync;
-    fn evaluate(&self, primitive: &str, inps: &[Self::Space]) -> Self::Space;
+    /// If evaluation should fail, this would hold an appropriate error.
+    type Error: Clone + Sync;
+    fn evaluate(&self, primitive: &str, inps: &[Self::Space]) -> Result<Self::Space, Self::Error>;
     fn lift(&self, _f: LiftedFunction<Self::Space, Self>) -> Result<Self::Space, ()> {
         Err(())
-    }
-}
-impl<V> Evaluator for fn(&str, &[V]) -> V
-where
-    V: Clone + PartialEq + Send + Sync,
-{
-    type Space = V;
-    fn evaluate(&self, primitive: &str, inps: &[Self::Space]) -> Self::Space {
-        self(primitive, inps)
     }
 }
 
@@ -244,11 +252,12 @@ where
 ///
 /// [`Evaluator`]: trait.Evaluator.html
 /// [`of`]: struct.SimpleEvaluator.html#method.of
-pub struct SimpleEvaluator<V, F>(F, ::std::marker::PhantomData<V>);
-impl<V, F> SimpleEvaluator<V, F>
+pub struct SimpleEvaluator<V, R, F>(F, ::std::marker::PhantomData<(R, V)>);
+impl<V, R, F> SimpleEvaluator<V, R, F>
 where
     V: Clone + PartialEq + Send + Sync,
-    F: Fn(&str, &[V]) -> V,
+    R: Clone + Sync,
+    F: Fn(&str, &[V]) -> Result<V, R>,
 {
     /// Create a `SimpleEvaluator` out of a function that takes a primitive name and a list of
     /// arguments.
@@ -258,9 +267,9 @@ where
     /// ```
     /// use programinduction::lambda::SimpleEvaluator;
     ///
-    /// fn evaluate(primitive: &str, inp: &[bool]) -> bool {
+    /// fn evaluate(primitive: &str, inp: &[bool]) -> Result<bool, ()> {
     ///     match primitive {
-    ///         "nand" => !(inp[0] & inp[1]),
+    ///         "nand" => Ok(!(inp[0] & inp[1])),
     ///         _ => unreachable!(),
     ///     }
     /// }
@@ -271,13 +280,15 @@ where
         SimpleEvaluator(f, ::std::marker::PhantomData)
     }
 }
-impl<V, F> Evaluator for SimpleEvaluator<V, F>
+impl<V, R, F> Evaluator for SimpleEvaluator<V, R, F>
 where
     V: Clone + PartialEq + Send + Sync,
-    F: Fn(&str, &[V]) -> V + Sync,
+    R: Clone + Sync,
+    F: Fn(&str, &[V]) -> Result<V, R> + Sync,
 {
     type Space = V;
-    fn evaluate(&self, primitive: &str, inps: &[Self::Space]) -> Self::Space {
+    type Error = R;
+    fn evaluate(&self, primitive: &str, inps: &[Self::Space]) -> Result<Self::Space, Self::Error> {
         (self.0)(primitive, inps)
     }
 }
@@ -302,10 +313,8 @@ where
     /// passed in based on the types of the [`Language`] specification.
     ///
     /// [`Language`]: struct.Language.html
-    pub fn eval(&self, xs: &[V]) -> V {
-        self.0
-            .eval_inps_with_env(&self.1, &self.2, xs)
-            .expect("nested evaluation failed")
+    pub fn eval(&self, xs: &[V]) -> Result<V, E::Error> {
+        self.0.eval_inps_with_env(&self.1, &self.2, xs)
     }
 }
 impl<V, E> Clone for LiftedFunction<V, E>
@@ -340,14 +349,14 @@ where
         evaluator: &Arc<E>,
         env: &Arc<VecDeque<ReducedExpression<V>>>,
         inps: &[V],
-    ) -> Option<V>
+    ) -> Result<V, E::Error>
     where
         E: Evaluator<Space = V>,
     {
         let expr = self.clone().with_args(inps);
-        let mut evaluated = expr.eval(evaluator, env);
+        let mut evaluated = expr.eval(evaluator, env)?;
         loop {
-            let next = evaluated.eval(evaluator, env);
+            let next = evaluated.eval(evaluator, env)?;
             if next == evaluated {
                 break;
             } else {
@@ -355,11 +364,11 @@ where
             }
         }
         match evaluated {
-            Value(o) => Some(o),
-            _ => None,
+            Value(o) => Ok(o),
+            _ => panic!("tried to evaluate an irreducible expression"),
         }
     }
-    pub fn eval_inps<E>(&self, evaluator: &Arc<E>, inps: &[V]) -> Option<V>
+    pub fn eval_inps<E>(&self, evaluator: &Arc<E>, inps: &[V]) -> Result<V, E::Error>
     where
         E: Evaluator<Space = V>,
     {
@@ -370,14 +379,17 @@ where
         &self,
         evaluator: &Arc<E>,
         env: &Arc<VecDeque<ReducedExpression<V>>>,
-    ) -> ReducedExpression<V>
+    ) -> Result<ReducedExpression<V>, E::Error>
     where
         E: Evaluator<Space = V>,
     {
         match *self {
             Application(ref xs) => {
                 let f = &xs[0];
-                let mut xs: Vec<_> = xs[1..].iter().map(|x| x.eval(evaluator, env)).collect();
+                let mut xs: Vec<_> = xs[1..]
+                    .iter()
+                    .map(|x| x.eval(evaluator, env))
+                    .collect::<Result<_, _>>()?;
                 match *f {
                     Primitive(ref name, ref tp) => {
                         // when applying a primitive, check if all arity-many args are concrete
@@ -389,8 +401,8 @@ where
                             Value(_) | Abstraction(_, _) => true, // evaluatable
                             _ => false,
                         }) {
-                            xs.insert(0, f.eval(evaluator, env));
-                            Application(xs)
+                            xs.insert(0, f.eval(evaluator, env)?);
+                            Ok(Application(xs))
                         } else {
                             let mut args = xs;
                             let mut xs = args.split_off(arity);
@@ -411,19 +423,19 @@ where
                                     _ => unreachable!(),
                                 })
                                 .collect();
-                            let v = Value(evaluator.evaluate(name, &args));
+                            let v = Value(evaluator.evaluate(name, &args)?);
                             if xs.is_empty() {
-                                v
+                                Ok(v)
                             } else {
                                 xs.insert(0, v);
-                                Application(xs)
+                                Ok(Application(xs))
                             }
                         }
                     }
                     Abstraction(ref depth, ref body) => {
                         // when applying an abstraction, try to beta-reduce
                         if xs.is_empty() {
-                            Abstraction(*depth, body.clone())
+                            Ok(Abstraction(*depth, body.clone()))
                         } else {
                             let mut env = (**env).clone();
                             let mut depth: usize = *depth;
@@ -434,38 +446,38 @@ where
                                 depth -= 1;
                             }
                             xs.reverse();
-                            let v = body.eval(evaluator, &Arc::new(env));
+                            let v = body.eval(evaluator, &Arc::new(env))?;
                             if depth > 0 {
-                                Abstraction(depth, Box::new(v))
+                                Ok(Abstraction(depth, Box::new(v)))
                             } else if xs.is_empty() {
-                                v
+                                Ok(v)
                             } else if let Application(mut v) = v {
                                 v.extend(xs);
-                                Application(v)
+                                Ok(Application(v))
                             } else {
                                 xs.insert(0, v);
-                                Application(xs)
+                                Ok(Application(xs))
                             }
                         }
                     }
                     _ => {
-                        xs.insert(0, f.eval(evaluator, env));
-                        Application(xs)
+                        xs.insert(0, f.eval(evaluator, env)?);
+                        Ok(Application(xs))
                     }
                 }
             }
             Primitive(ref name, ref tp) => {
                 if is_arrow(tp) {
-                    Primitive(name.clone(), tp.clone())
+                    Ok(Primitive(name.clone(), tp.clone()))
                 } else {
-                    Value(evaluator.evaluate(name, &[]))
+                    Ok(Value(evaluator.evaluate(name, &[])?))
                 }
             }
             Index(i) => match env.get(i) {
-                Some(x) => x.clone(),
-                None => Index(i),
+                Some(x) => Ok(x.clone()),
+                None => Ok(Index(i)),
             },
-            _ => self.clone(),
+            _ => Ok(self.clone()),
         }
     }
     fn with_args(self, inps: &[V]) -> Self {

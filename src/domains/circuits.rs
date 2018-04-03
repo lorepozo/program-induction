@@ -86,9 +86,10 @@ pub type Space = bool;
 pub struct Evaluator;
 impl EvaluatorT for Evaluator {
     type Space = Space;
-    fn evaluate(&self, primitive: &str, inp: &[Self::Space]) -> Self::Space {
+    type Error = ();
+    fn evaluate(&self, primitive: &str, inp: &[Self::Space]) -> Result<Self::Space, Self::Error> {
         match primitive {
-            "nand" => !(inp[0] & inp[1]),
+            "nand" => Ok(!(inp[0] & inp[1])),
             _ => unreachable!(),
         }
     }
@@ -267,7 +268,7 @@ pub fn make_tasks_advanced(
                     .multi_cartesian_product()
                     .zip(&oracle_outputs)
                     .all(|(inps, out)| {
-                        if let Some(o) = dsl.eval_arc(expr, &evaluator, &inps) {
+                        if let Ok(o) = dsl.eval_arc(expr, &evaluator, &inps) {
                             o == *out
                         } else {
                             false

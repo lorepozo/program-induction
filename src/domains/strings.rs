@@ -178,86 +178,94 @@ impl PartialEq for Space {
 pub struct Evaluator;
 impl EvaluatorT for Evaluator {
     type Space = Space;
-    fn evaluate(&self, name: &str, inps: &[Self::Space]) -> Self::Space {
+    type Error = ();
+    fn evaluate(&self, name: &str, inps: &[Self::Space]) -> Result<Self::Space, Self::Error> {
         match OPERATIONS[name] {
-            Op::Zero => Num(0),
+            Op::Zero => Ok(Num(0)),
             Op::Incr => match inps[0] {
-                Num(x) => Num(x + 1),
+                Num(x) => Ok(Num(x + 1)),
                 _ => unreachable!(),
             },
             Op::Decr => match inps[0] {
-                Num(x) => Num(x - 1),
+                Num(x) => Ok(Num(x - 1)),
                 _ => unreachable!(),
             },
             Op::Len => match inps[0] {
-                Str(ref s) => Num(s.len() as i32),
+                Str(ref s) => Ok(Num(s.len() as i32)),
                 _ => unreachable!(),
             },
-            Op::Empty => Str(String::new()),
+            Op::Empty => Ok(Str(String::new())),
             Op::Lower => match inps[0] {
-                Str(ref s) => Str(s.to_lowercase()),
+                Str(ref s) => Ok(Str(s.to_lowercase())),
                 _ => unreachable!(),
             },
             Op::Upper => match inps[0] {
-                Str(ref s) => Str(s.to_uppercase()),
+                Str(ref s) => Ok(Str(s.to_uppercase())),
                 _ => unreachable!(),
             },
             Op::Concat => match (&inps[0], &inps[1]) {
                 (&Str(ref x), &Str(ref y)) => {
                     let mut s = x.to_string();
                     s.push_str(y);
-                    Str(s)
+                    Ok(Str(s))
                 }
                 _ => unreachable!(),
             },
             Op::Slice => match (&inps[0], &inps[1], &inps[2]) {
                 (&Num(x), &Num(y), &Str(ref s)) => {
-                    Str(s.chars().skip(x as usize).take((y - x) as usize).collect())
+                    if x as usize > s.len() || y < x {
+                        Err(())
+                    } else {
+                        Ok(Str(s.chars()
+                            .skip(x as usize)
+                            .take((y - x) as usize)
+                            .collect()))
+                    }
                 }
                 _ => unreachable!(),
             },
             Op::Nth => match (&inps[0], &inps[1]) {
-                (&Num(x), &List(ref ss)) => {
-                    ss.get(x as usize).cloned().unwrap_or_else(|| ss[0].clone())
-                }
+                (&Num(x), &List(ref ss)) => ss.get(x as usize).cloned().ok_or(()),
                 _ => unreachable!(),
             },
             Op::Map => match (&inps[0], &inps[1]) {
-                (&Func(ref f), &List(ref xs)) => {
-                    List(xs.into_iter().cloned().map(|x| f.eval(&[x])).collect())
-                }
+                (&Func(ref f), &List(ref xs)) => Ok(List(xs.into_iter()
+                    .map(|x| f.eval(&[x.clone()]).map_err(|_| ()))
+                    .collect::<Result<_, _>>()?)),
                 _ => unreachable!(),
             },
             Op::Strip => match inps[0] {
-                Str(ref s) => Str(s.trim().to_string()),
+                Str(ref s) => Ok(Str(s.trim().to_owned())),
                 _ => unreachable!(),
             },
             Op::Split => match (&inps[0], &inps[1]) {
-                (&Char(c), &Str(ref s)) => List(s.split(c).map(|s| Str(s.to_owned())).collect()),
+                (&Char(c), &Str(ref s)) => {
+                    Ok(List(s.split(c).map(|s| Str(s.to_owned())).collect()))
+                }
                 _ => unreachable!(),
             },
             Op::Join => match (&inps[0], &inps[1]) {
-                (&Str(ref delim), &List(ref ss)) => Str(ss.iter()
+                (&Str(ref delim), &List(ref ss)) => Ok(Str(ss.iter()
                     .map(|s| match *s {
                         Str(ref s) => s,
                         _ => unreachable!(),
                     })
-                    .join(delim)),
+                    .join(delim))),
                 _ => unreachable!(),
             },
             Op::CharToStr => match inps[0] {
-                Char(c) => Str(c.to_string()),
+                Char(c) => Ok(Str(c.to_string())),
                 _ => unreachable!(),
             },
-            Op::CharSpace => Char(' '),
-            Op::CharDot => Char('.'),
-            Op::CharComma => Char(','),
-            Op::CharLess => Char('<'),
-            Op::CharGreater => Char('>'),
-            Op::CharSlash => Char('/'),
-            Op::CharAt => Char('@'),
-            Op::CharDash => Char('-'),
-            Op::CharPipe => Char('|'),
+            Op::CharSpace => Ok(Char(' ')),
+            Op::CharDot => Ok(Char('.')),
+            Op::CharComma => Ok(Char(',')),
+            Op::CharLess => Ok(Char('<')),
+            Op::CharGreater => Ok(Char('>')),
+            Op::CharSlash => Ok(Char('/')),
+            Op::CharAt => Ok(Char('@')),
+            Op::CharDash => Ok(Char('-')),
+            Op::CharPipe => Ok(Char('|')),
         }
     }
     fn lift(&self, f: LiftedFunction<Self::Space, Self>) -> Result<Self::Space, ()> {
@@ -284,7 +292,7 @@ pub fn make_tasks(
             let oracle_examples = examples.clone();
             let oracle = Box::new(move |dsl: &Language, expr: &Expression| -> f64 {
                 let success = oracle_examples.iter().all(|&(ref inps, ref out)| {
-                    if let Some(o) = dsl.eval_arc(expr, &evaluator, inps) {
+                    if let Ok(o) = dsl.eval_arc(expr, &evaluator, inps) {
                         o == *out
                     } else {
                         false
