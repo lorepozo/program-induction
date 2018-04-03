@@ -4,7 +4,6 @@ const MAX_DEPTH: u32 = 512;
 use itertools::Itertools;
 use polytype::Type;
 use rand::Rng;
-use rand::distributions::Range;
 use std::collections::VecDeque;
 use std::f64;
 
@@ -78,7 +77,7 @@ fn enumerate_many(
 }
 
 pub fn sample<R: Rng>(g: &Grammar, tp: &Type, rng: &mut R) -> AppliedRule {
-    let mut t = Range::sample_single(0f64, 1.0, rng);
+    let mut t: f64 = rng.gen();
     for (i, r) in g.rules[tp].iter().enumerate() {
         t -= r.logprob.exp();
         if t < 0f64 {
