@@ -9,7 +9,7 @@
 //! let dsl = strings::dsl();
 //! let tasks = strings::make_tasks(250, 4);
 //! let ec_params = ECParams {
-//!     frontier_limit: 100,
+//!     frontier_limit: 10,
 //!     search_limit_timeout: None,
 //!     search_limit_description_length: Some(15.0),
 //! };
@@ -284,9 +284,9 @@ pub fn make_tasks(
     count: usize,
     n_examples: usize,
 ) -> Vec<Task<'static, Language, Expression, Vec<(Vec<Space>, Space)>>> {
-    make_examples(n_examples)
-        .into_iter()
-        .take(count as usize)
+    (0..(1 + count / 1467)) // make_examples yields 1467 tasks
+        .flat_map(|_| make_examples(n_examples))
+        .take(count)
         .map(|(_name, tp, examples)| {
             let evaluator = ::std::sync::Arc::new(Evaluator);
             let oracle_examples = examples.clone();
@@ -587,6 +587,206 @@ mod gen {
                 }
             }
         }
+
+        macro_rules! single_word_edit {
+            ($name: expr, $f: expr) => {
+                t!(
+                    concat!($name, " strip"),
+                    ptp!(@arrow[tp!(str), tp!(str)]),
+                    {
+                        let x = white_word(rng);
+                        let y = ($f)(&x);
+                        (Str(x), Str(y))
+                    }
+                );
+                t!(
+                    concat!("map ", $name),
+                    ptp!(@arrow[tp!(list(tp!(str))), tp!(list(tp!(str)))]),
+                    {
+                        let n_words = Range::sample_single(1, 5, rng);
+                        let xs: Vec<_> = (0..n_words).map(|_| word(rng)).collect();
+                        let ys = xs.iter().map(|s| Str(($f)(s))).collect();
+                        let xs = xs.into_iter().map(Str).collect();
+                        (List(xs), List(ys))
+                    }
+                );
+                for d in &DELIMITERS {
+                    let d: char = *d;
+                    t!(
+                        concat!("map ", $name, " after splitting"),
+                        ptp!(@arrow[tp!(str), tp!(list(tp!(str)))]),
+                        {
+                            let x = words(d, rng);
+                            let ys = x.split(d).map(|s| Str(($f)(s))).collect();
+                            (Str(x), List(ys))
+                        }
+                    );
+                    t!(
+                        concat!("map ", $name, " then join"),
+                        ptp!(@arrow[tp!(list(tp!(str))), tp!(str)]),
+                        {
+                            let n_words = Range::sample_single(1, 5, rng);
+                            let xs: Vec<_> = (0..n_words).map(|_| word(rng)).collect();
+                            let y = xs.iter().map(|s| ($f)(s)).join(&d.to_string());
+                            let xs = xs.into_iter().map(Str).collect();
+                            (List(xs), Str(y))
+                        }
+                    );
+                    if $name != "lowercase" && $name != "uppercase" {
+                        t!(
+                            concat!($name, " of delimited inp"),
+                            ptp!(@arrow[tp!(str), tp!(str)]),
+                            {
+                                let x = words(d, rng);
+                                let y = x.split(d).map(|s| ($f)(s)).join("");
+                                (Str(x), Str(y))
+                            }
+                        );
+                    }
+                    let d1 = d;
+                    for d2 in &DELIMITERS {
+                        let d2: char = *d2;
+                        t!(
+                            concat!($name, " of doubly delimited inp"),
+                            ptp!(@arrow[tp!(str), tp!(str)]),
+                            {
+                                let y = word(rng);
+                                let x = format!("{}{}{}{}{}", word(rng), d1, y, d2, word(rng));
+                                (Str(x), Str(($f)(&y)))
+                            }
+                        );
+                        if d1 != d2 && $name != "lowercase" && $name != "uppercase" {
+                            t!(
+                                concat!("delimited ", $name, " of delimited inp"),
+                                ptp!(@arrow[tp!(str), tp!(str)]),
+                                {
+                                    let x = words(d, rng);
+                                    let y = x.split(d).map(|s| ($f)(s)).join(&d2.to_string());
+                                    (Str(x), Str(y))
+                                }
+                            );
+                        }
+                    }
+                }
+                let importance = if $name != "lowercase" && $name != "uppercase" {
+                    2
+                } else {
+                    1
+                };
+                for _ in 0..importance {
+                    t!($name, ptp!(@arrow[tp!(str), tp!(str)]), {
+                        let x = word(rng);
+                        let y = ($f)(&x);
+                        (Str(x), Str(y))
+                    });
+                }
+            };
+        }
+
+        single_word_edit!("lowercase", |s: &str| -> String { s.to_lowercase() });
+        single_word_edit!("uppercase", |s: &str| -> String { s.to_uppercase() });
+        single_word_edit!("capitalize", |s: &str| -> String {
+            let mut s = s.to_owned();
+            s.get_mut(..1).map(|c| c.make_ascii_uppercase());
+            s
+        });
+        single_word_edit!("double", |s: &str| -> String { format!("{}{}", s, s) });
+        single_word_edit!("first character", |s: &str| -> String {
+            s.chars().next().unwrap().to_string()
+        });
+        single_word_edit!("drop first character", |s: &str| -> String {
+            s.chars().skip(1).collect()
+        });
+
+        macro_rules! word_edit_pair {
+            ($name1: expr, $f1: expr, $name2: expr, $f2: expr) => {
+                t!(
+                    concat!($name1, " . ", $name2),
+                    ptp!(@arrow[tp!(str), tp!(str)]),
+                    {
+                        let x = word(rng);
+                        let y = ($f2)(&(($f1)(&x)));
+                        (Str(x), Str(y))
+                    }
+                )
+            };
+        };
+
+        word_edit_pair!(
+            "lowercase",
+            |s: &str| -> String { s.to_lowercase() },
+            "first character",
+            |s: &str| -> String { s.chars().next().unwrap().to_string() }
+        );
+        word_edit_pair!(
+            "lowercase",
+            |s: &str| -> String { s.to_lowercase() },
+            "drop first character",
+            |s: &str| -> String { s.chars().skip(1).collect() }
+        );
+        word_edit_pair!(
+            "uppercase",
+            |s: &str| -> String { s.to_uppercase() },
+            "first character",
+            |s: &str| -> String { s.chars().next().unwrap().to_string() }
+        );
+        word_edit_pair!(
+            "uppercase",
+            |s: &str| -> String { s.to_uppercase() },
+            "drop first character",
+            |s: &str| -> String { s.chars().skip(1).collect() }
+        );
+        word_edit_pair!(
+            "double",
+            |s: &str| -> String { format!("{}{}", s, s) },
+            "first character",
+            |s: &str| -> String { s.chars().next().unwrap().to_string() }
+        );
+        word_edit_pair!(
+            "double",
+            |s: &str| -> String { format!("{}{}", s, s) },
+            "drop first character",
+            |s: &str| -> String { s.chars().skip(1).collect() }
+        );
+        word_edit_pair!(
+            "double",
+            |s: &str| -> String { format!("{}{}", s, s) },
+            "capitalize",
+            |s: &str| -> String {
+                let mut s = s.to_owned();
+                s.get_mut(..1).map(|c| c.make_ascii_uppercase());
+                s
+            }
+        );
+        word_edit_pair!(
+            "first character",
+            |s: &str| -> String { s.chars().next().unwrap().to_string() },
+            "drop first character",
+            |s: &str| -> String { s.chars().skip(1).collect() }
+        );
+        word_edit_pair!(
+            "drop first character",
+            |s: &str| -> String { s.chars().skip(1).collect() },
+            "drop first character",
+            |s: &str| -> String { s.chars().skip(1).collect() }
+        );
+        word_edit_pair!(
+            "drop first character",
+            |s: &str| -> String { s.chars().skip(1).collect() },
+            "double",
+            |s: &str| -> String { format!("{}{}", s, s) }
+        );
+        word_edit_pair!(
+            "capitalize",
+            |s: &str| -> String {
+                let mut s = s.to_owned();
+                s.get_mut(..1).map(|c| c.make_ascii_uppercase());
+                s
+            },
+            "double",
+            |s: &str| -> String { format!("{}{}", s, s) }
+        );
+
         tasks
     }
 }
