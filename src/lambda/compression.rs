@@ -755,7 +755,7 @@ mod proposals {
     use std::collections::HashMap;
     use std::iter;
 
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     enum Fragment {
         Variable,
         Application(Box<Fragment>, Box<Fragment>),
@@ -862,25 +862,36 @@ mod proposals {
             Expression::Abstraction(ref body) => Box::new(from_subexpression(body, arity)),
             _ => Box::new(iter::empty()),
         };
-        Box::new(from_particular(expr, arity).chain(rst))
+        Box::new(from_particular(expr, arity, true).chain(rst))
     }
     fn from_particular<'a>(
         expr: &'a Expression,
         arity: u32,
+        toplevel: bool,
     ) -> Box<Iterator<Item = Fragment> + 'a> {
         if arity == 0 {
             return Box::new(iter::once(Fragment::Expression(expr.clone())));
         }
         let rst: Box<Iterator<Item = Fragment> + 'a> = match *expr {
-            Expression::Application(ref f, ref x) => Box::new((0..arity + 1).flat_map(move |fa| {
-                let fs = from_particular(f, fa);
-                let xs = from_particular(x, (arity as i32 - fa as i32) as u32);
-                fs.zip(xs)
-                    .map(|(f, x)| Fragment::Application(Box::new(f), Box::new(x)))
-            })),
-            Expression::Abstraction(ref body) => {
-                Box::new(from_particular(body, arity).map(|e| Fragment::Abstraction(Box::new(e))))
+            Expression::Application(ref f, ref x) => {
+                if !toplevel {
+                    Box::new((0..arity + 1).flat_map(move |fa| {
+                        let fs = from_particular(f, fa, false);
+                        let xs: Vec<_> =
+                            from_particular(x, (arity as i32 - fa as i32) as u32, false).collect();
+                        fs.into_iter().zip(iter::repeat(xs)).flat_map(|(f, xs)| {
+                            xs.into_iter().map(move |x| {
+                                Fragment::Application(Box::new(f.clone()), Box::new(x))
+                            })
+                        })
+                    }))
+                } else {
+                    Box::new(iter::empty())
+                }
             }
+            Expression::Abstraction(ref body) => Box::new(
+                from_particular(body, arity, false).map(|e| Fragment::Abstraction(Box::new(e))),
+            ),
             _ => Box::new(iter::empty()),
         };
         if arity == 1 {
