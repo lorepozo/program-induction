@@ -130,6 +130,7 @@ _strings_.
       approach seems like a good direction to go, perhaps minus the Bayesian
       non-parametrics.
 - [ ] `impl GP for pcfg::Grammar` is not yet complete.
+- [ ] Add more learning traits (like `EC` or `GP`)
 - [ ] Add more representations
 - [ ] Add more domains
 - [ ] Add task generation function in `domains::strings`
