@@ -750,8 +750,8 @@ mod proposals {
     //! Proposals, or "fragment expressions" (written `fragment_expr` where applicable) are
     //! expressions with free variables.
 
-    use super::expression_count_kinds;
     use super::super::Expression;
+    use super::expression_count_kinds;
     use std::collections::HashMap;
     use std::iter;
 

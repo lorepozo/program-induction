@@ -40,17 +40,19 @@ mod enumerator;
 mod parser;
 pub use self::parser::ParseError;
 
+use crossbeam_channel::bounded;
+use itertools::Itertools;
+use polytype::{Type, TypeSchema};
+use rand::Rng;
+use rand::distributions::Range;
+use rayon::prelude::*;
+use rayon::spawn;
 use std::cmp;
 use std::collections::HashMap;
 use std::f64;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use itertools::Itertools;
-use polytype::{Type, TypeSchema};
-use rand::Rng;
-use rand::distributions::Range;
-use rayon::prelude::*;
 
 use {ECFrontier, Task, EC, GP};
 
@@ -123,15 +125,22 @@ impl Grammar {
     /// );
     /// # }
     /// ```
-    pub fn enumerate<'a>(&'a self) -> Box<Iterator<Item = (AppliedRule, f64)> + 'a> {
+    pub fn enumerate(&self) -> Box<Iterator<Item = (AppliedRule, f64)>> {
         self.enumerate_nonterminal(self.start.clone())
     }
     /// Enumerate subsentences in the Grammar for the given nonterminal.
-    pub fn enumerate_nonterminal<'a>(
-        &'a self,
-        tp: Type,
-    ) -> Box<Iterator<Item = (AppliedRule, f64)> + 'a> {
-        enumerator::new(self, tp)
+    pub fn enumerate_nonterminal(
+        &self,
+        nonterminal: Type,
+    ) -> Box<Iterator<Item = (AppliedRule, f64)>> {
+        let (tx, rx) = bounded(1);
+        let g = self.clone();
+        spawn(move || {
+            let tx = tx.clone();
+            let termination_condition = &mut |expr, logprior| tx.send((expr, logprior)).is_err();
+            enumerator::new(&g, nonterminal, termination_condition)
+        });
+        Box::new(rx.into_iter())
     }
     /// Set parameters based on supplied sentences. This is performed by [`Grammar::compress`].
     ///
@@ -326,12 +335,12 @@ impl EC for Grammar {
     type Expression = AppliedRule;
     type Params = EstimationParams;
 
-    fn enumerate<'a>(
-        &'a self,
-        tp: TypeSchema,
-    ) -> Box<Iterator<Item = (Self::Expression, f64)> + 'a> {
+    fn enumerate<F>(&self, tp: TypeSchema, termination_condition: F)
+    where
+        F: FnMut(Self::Expression, f64) -> bool,
+    {
         match tp {
-            TypeSchema::Monotype(tp) => self.enumerate_nonterminal(tp),
+            TypeSchema::Monotype(tp) => enumerator::new(self, tp, termination_condition),
             _ => panic!("PCFGs can't handle polytypes"),
         }
     }

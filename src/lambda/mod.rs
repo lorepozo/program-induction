@@ -42,6 +42,9 @@ pub use self::compression::CompressionParams;
 pub use self::eval::{Evaluator, LiftedFunction, SimpleEvaluator};
 pub use self::parser::ParseError;
 
+use crossbeam_channel::bounded;
+use polytype::{Context, Type, TypeSchema, UnificationError};
+use rayon::spawn;
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use std::f64;
@@ -49,7 +52,6 @@ use std::fmt;
 use std::ops::Index;
 use std::rc::Rc;
 use std::sync::Arc;
-use polytype::{Context, Type, TypeSchema, UnificationError};
 
 use {ECFrontier, Task, EC};
 
@@ -151,8 +153,15 @@ impl Language {
     /// );
     /// # }
     /// ```
-    pub fn enumerate<'a>(&'a self, tp: TypeSchema) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
-        enumerator::new(self, tp)
+    pub fn enumerate(&self, tp: TypeSchema) -> Box<Iterator<Item = (Expression, f64)>> {
+        let (tx, rx) = bounded(1);
+        let dsl = self.clone();
+        spawn(move || {
+            let tx = tx.clone();
+            let termination_condition = &mut |expr, logprior| tx.send((expr, logprior)).is_err();
+            enumerator::run(&dsl, tp, termination_condition)
+        });
+        Box::new(rx.into_iter())
     }
 
     /// Update production probabilities and induce new primitives, with the guarantee that any
@@ -415,8 +424,11 @@ impl Language {
 impl EC for Language {
     type Expression = Expression;
     type Params = CompressionParams;
-    fn enumerate<'a>(&'a self, tp: TypeSchema) -> Box<Iterator<Item = (Expression, f64)> + 'a> {
-        self.enumerate(tp)
+    fn enumerate<F>(&self, tp: TypeSchema, termination_condition: F)
+    where
+        F: FnMut(Self::Expression, f64) -> bool,
+    {
+        enumerator::run(self, tp, termination_condition)
     }
     fn compress<O: Sync>(
         &self,

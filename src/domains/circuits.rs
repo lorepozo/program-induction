@@ -94,14 +94,6 @@ impl EvaluatorT for Evaluator {
     }
 }
 
-fn truth_table(dim: usize) -> Box<Iterator<Item = Vec<bool>>> {
-    Box::new(
-        iter::repeat(vec![false, true])
-            .take(dim)
-            .multi_cartesian_product(),
-    )
-}
-
 /// Randomly sample a number of circuits into [`Task`]s.
 ///
 /// For a circuit, the number of inputs is sampled from 1 to 6 with weights 1, 2, 3, 4, 4, and 4
@@ -262,13 +254,17 @@ pub fn make_tasks_advanced(
             }
             let tp = TypeSchema::Monotype(Type::from(vec![tp!(bool); n_inputs + 1]));
             let circuit = Circuit::new(&mut rng, &gate_distribution, n_inputs as u32, n_gates);
-            let outputs: Vec<_> = truth_table(n_inputs)
+            let outputs: Vec<_> = iter::repeat(vec![false, true])
+                .take(n_inputs)
+                .multi_cartesian_product()
                 .map(|ins| circuit.eval(&ins))
                 .collect();
             let oracle_outputs = outputs.clone();
             let evaluator = ::std::sync::Arc::new(Evaluator);
             let oracle = Box::new(move |dsl: &Language, expr: &Expression| -> f64 {
-                let success = truth_table(n_inputs)
+                let success = iter::repeat(vec![false, true])
+                    .take(n_inputs)
+                    .multi_cartesian_product()
                     .zip(&oracle_outputs)
                     .all(|(inps, out)| {
                         if let Some(o) = dsl.eval_arc(expr, &evaluator, &inps) {

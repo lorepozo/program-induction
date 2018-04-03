@@ -511,7 +511,7 @@ where
                 Abstraction(depth, Box::new(Self::from_expr(dsl, body)))
             }
             Expression::Index(i) => Index(i),
-            Expression::Invented(_) => unreachable!(/* invented was stripped */),
+            Expression::Invented(_) => unreachable!(), // invented was stripped
         }
     }
 }

@@ -1,6 +1,6 @@
-use std::{error, fmt};
-use polytype::Type;
 use nom::types::CompleteStr;
+use polytype::Type;
+use std::{error, fmt};
 
 use super::{AppliedRule, Grammar, Rule};
 
