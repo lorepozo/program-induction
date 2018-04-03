@@ -51,12 +51,12 @@ pub trait EC: Send + Sync + Sized {
     /// Many representations have some parameters for compression. They belong here.
     type Params;
 
-    /// Get an iterator over [`Expression`]s for a given type and corresponding log-priors.
-    /// This enumeration should be best-first: the log-prior of enumerated expressions should
-    /// generally increase, so simple expressions are enumerated first.
+    /// Iterate over [`Expression`]s for a given type, with their corresponding log-priors, until a
+    /// condition is met. This enumeration should be best-first: the log-prior of enumerated
+    /// expressions should generally increase, so simple expressions are enumerated first.
     ///
-    /// The `termination_condition` acts as a callback that returns whether enumeration should
-    /// continue. If it responds with true, enumeration should be stopped.
+    /// The `termination_condition` acts as a callback for each enumerated `(Expression, f64)`.
+    /// If it responds with true, enumeration must stop (i.e. this method call should terminate).
     ///
     /// [`Expression`]: #associatedtype.Expression
     fn enumerate<F>(&self, tp: TypeSchema, termination_condition: F)
