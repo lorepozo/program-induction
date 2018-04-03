@@ -122,6 +122,7 @@ _strings_.
 
 - [x] First-class function evaluation within Rust (and remove lisp
       interpreters).
+- [x] Add task generation function in `domains::strings`
 - [ ] Fallible evaluation (e.g. see how `domains::strings` handles `slice`).
 - [ ] Faster lambda calculus evaluation.
 - [ ] PCFG compression is currently only estimating parameters, not actually
@@ -133,5 +134,4 @@ _strings_.
 - [ ] Add more learning traits (like `EC` or `GP`)
 - [ ] Add more representations
 - [ ] Add more domains
-- [ ] Add task generation function in `domains::strings`
 
