@@ -489,15 +489,11 @@ where
             Expression::Application(ref f, ref x) => {
                 let mut v = vec![Self::from_expr(dsl, x)];
                 let mut f: &Expression = f;
-                loop {
-                    if let Expression::Application(ref inner_f, ref x) = *f {
-                        v.push(Self::from_expr(dsl, x));
-                        f = inner_f;
-                    } else {
-                        v.push(Self::from_expr(dsl, f));
-                        break;
-                    }
+                while let Expression::Application(ref inner_f, ref x) = *f {
+                    v.push(Self::from_expr(dsl, x));
+                    f = inner_f;
                 }
+                v.push(Self::from_expr(dsl, f));
                 v.reverse();
                 Application(v)
             }

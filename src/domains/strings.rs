@@ -92,8 +92,12 @@ pub fn dsl() -> Language {
         ),
         ("nth", ptp!(@arrow[tp!(int), tp!(list(tp!(str))), tp!(str)])),
         (
-            "map",
-            ptp!(0, 1; @arrow[tp!(@arrow[tp!(0), tp!(1)]), tp!(list(tp!(0))), tp!(list(tp!(1)))]),
+            "map-to-nums",
+            ptp!(0; @arrow[tp!(@arrow[tp!(0), tp!(int)]), tp!(list(tp!(0))), tp!(list(tp!(int)))]),
+        ),
+        (
+            "map-to-strs",
+            ptp!(0; @arrow[tp!(@arrow[tp!(0), tp!(str)]), tp!(list(tp!(0))), tp!(list(tp!(str)))]),
         ),
         ("strip", ptp!(@arrow[tp!(str), tp!(str)])),
         (
@@ -191,12 +195,33 @@ impl EvaluatorT for Evaluator {
                 }
                 _ => unreachable!(),
             },
-            Op::Map => match (&inps[0], &inps[1]) {
+            Op::MapToNums => match (&inps[0], &inps[1]) {
                 (&Func(ref f), &NumList(ref xs)) => NumList(
                     xs.into_iter()
                         .cloned()
                         .map(|x| match f.eval(&[Num(x)]) {
                             Num(y) => y,
+                            _ => panic!("map given invalid function"),
+                        })
+                        .collect(),
+                ),
+                (&Func(ref f), &StrList(ref xs)) => NumList(
+                    xs.into_iter()
+                        .cloned()
+                        .map(|x| match f.eval(&[Str(x)]) {
+                            Num(y) => y,
+                            _ => panic!("map given invalid function"),
+                        })
+                        .collect(),
+                ),
+                _ => unreachable!(),
+            },
+            Op::MapToStrs => match (&inps[0], &inps[1]) {
+                (&Func(ref f), &NumList(ref xs)) => StrList(
+                    xs.into_iter()
+                        .cloned()
+                        .map(|x| match f.eval(&[Num(x)]) {
+                            Str(y) => y,
                             _ => panic!("map given invalid function"),
                         })
                         .collect(),
@@ -256,7 +281,8 @@ enum Op {
     Concat,
     Slice,
     Nth,
-    Map,
+    MapToNums,
+    MapToStrs,
     Strip,
     Split,
     Join,
@@ -284,7 +310,8 @@ lazy_static! {
         "concat" => Op::Concat,
         "slice" => Op::Slice,
         "nth" => Op::Nth,
-        "map" => Op::Map,
+        "map-to-nums" => Op::MapToNums,
+        "map-to-strs" => Op::MapToStrs,
         "strip" => Op::Strip,
         "split" => Op::Split,
         "join" => Op::Join,
