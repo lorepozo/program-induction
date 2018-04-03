@@ -29,39 +29,34 @@ use Task;
 /// The string editing [`lambda::Language`] defines the following operations:
 ///
 /// ```ignore
-/// "0":           ptp!(int)
-/// "+1":          ptp!(@arrow[tp!(int), tp!(int)])
-/// "-1":          ptp!(@arrow[tp!(int), tp!(int)])
-/// "len":         ptp!(@arrow[tp!(str), tp!(int)])
-/// "empty_str":   ptp!(str)
-/// "lower":       ptp!(@arrow[tp!(str), tp!(str)])
-/// "upper":       ptp!(@arrow[tp!(str), tp!(str)])
-/// "concat":      ptp!(@arrow[tp!(str), tp!(str), tp!(str)])
-/// "slice":       ptp!(@arrow[tp!(int), tp!(int), tp!(str), tp!(str)])
-/// "nth":         ptp!(@arrow[tp!(int), tp!(list(tp!(str))), tp!(str)])
-/// "map-to-nums": ptp!(0; @arrow[
-///                    tp!(@arrow[tp!(0), tp!(int)]),
-///                    tp!(list(tp!(0))),
-///                    tp!(list(tp!(int))),
-///                ])
-/// "map-to-strs": ptp!(0; @arrow[
-///                    tp!(@arrow[tp!(0), tp!(str)]),
-///                    tp!(list(tp!(0))),
-///                    tp!(list(tp!(str))),
-///                ])
-/// "strip":       ptp!(@arrow[tp!(str), tp!(str)])
-/// "split":       ptp!(@arrow[tp!(char), tp!(str), tp!(list(tp!(str)))])
-/// "join":        ptp!(@arrow[tp!(str), tp!(list(tp!(str))), tp!(str)])
-/// "char->str":   ptp!(@arrow[tp!(char), tp!(str)])
-/// "space":       ptp!(char)
-/// ".":           ptp!(char)
-/// ",":           ptp!(char)
-/// "<":           ptp!(char)
-/// ">":           ptp!(char)
-/// "/":           ptp!(char)
-/// "@":           ptp!(char)
-/// "-":           ptp!(char)
-/// "|":           ptp!(char)
+/// "0":         ptp!(int)
+/// "+1":        ptp!(@arrow[tp!(int), tp!(int)])
+/// "-1":        ptp!(@arrow[tp!(int), tp!(int)])
+/// "len":       ptp!(@arrow[tp!(str), tp!(int)])
+/// "empty_str": ptp!(str)
+/// "lower":     ptp!(@arrow[tp!(str), tp!(str)])
+/// "upper":     ptp!(@arrow[tp!(str), tp!(str)])
+/// "concat":    ptp!(@arrow[tp!(str), tp!(str), tp!(str)])
+/// "slice":     ptp!(@arrow[tp!(int), tp!(int), tp!(str), tp!(str)])
+/// "nth":       ptp!(@arrow[tp!(int), tp!(list(tp!(str))), tp!(str)])
+/// "map":       ptp!(0, 1; @arrow[
+///                  tp!(@arrow[tp!(0), tp!(1)]),
+///                  tp!(list(tp!(0))),
+///                  tp!(list(tp!(1))),
+///              ])
+/// "strip":     ptp!(@arrow[tp!(str), tp!(str)])
+/// "split":     ptp!(@arrow[tp!(char), tp!(str), tp!(list(tp!(str)))])
+/// "join":      ptp!(@arrow[tp!(str), tp!(list(tp!(str))), tp!(str)])
+/// "char->str": ptp!(@arrow[tp!(char), tp!(str)])
+/// "space":     ptp!(char)
+/// ".":         ptp!(char)
+/// ",":         ptp!(char)
+/// "<":         ptp!(char)
+/// ">":         ptp!(char)
+/// "/":         ptp!(char)
+/// "@":         ptp!(char)
+/// "-":         ptp!(char)
+/// "|":         ptp!(char)
 /// ```
 ///
 /// [`lambda::Language`]: ../../lambda/struct.Language.html
@@ -81,12 +76,8 @@ pub fn dsl() -> Language {
         ),
         ("nth", ptp!(@arrow[tp!(int), tp!(list(tp!(str))), tp!(str)])),
         (
-            "map-to-nums",
-            ptp!(0; @arrow[tp!(@arrow[tp!(0), tp!(int)]), tp!(list(tp!(0))), tp!(list(tp!(int)))]),
-        ),
-        (
-            "map-to-strs",
-            ptp!(0; @arrow[tp!(@arrow[tp!(0), tp!(str)]), tp!(list(tp!(0))), tp!(list(tp!(str)))]),
+            "map",
+            ptp!(0, 1; @arrow[tp!(@arrow[tp!(0), tp!(1)]), tp!(list(tp!(0))), tp!(list(tp!(1)))]),
         ),
         ("strip", ptp!(@arrow[tp!(str), tp!(str)])),
         (
@@ -117,8 +108,7 @@ pub enum Space {
     Num(i32),
     Char(char),
     Str(String),
-    StrList(Vec<String>),
-    NumList(Vec<i32>),
+    List(Vec<Space>),
     Func(LiftedFunction<Space, Evaluator>),
 }
 impl fmt::Debug for Space {
@@ -127,8 +117,7 @@ impl fmt::Debug for Space {
             Num(x) => write!(f, "Num({:?})", x),
             Char(x) => write!(f, "Char({:?})", x),
             Str(ref x) => write!(f, "Str({:?})", x),
-            StrList(ref x) => write!(f, "StrList({:?})", x),
-            NumList(ref x) => write!(f, "NumList({:?})", x),
+            List(ref x) => write!(f, "List({:?})", x),
             Func(_) => write!(f, "<function>"),
         }
     }
@@ -139,8 +128,7 @@ impl PartialEq for Space {
             (&Num(x), &Num(y)) => x == y,
             (&Char(x), &Char(y)) => x == y,
             (&Str(ref x), &Str(ref y)) => x == y,
-            (&StrList(ref xs), &StrList(ref ys)) => xs == ys,
-            (&NumList(ref xs), &NumList(ref ys)) => xs == ys,
+            (&List(ref xs), &List(ref ys)) => xs == ys,
             _ => false,
         }
     }
@@ -229,51 +217,15 @@ impl EvaluatorT for Evaluator {
                 _ => unreachable!(),
             },
             Op::Nth => match (&inps[0], &inps[1]) {
-                (&Num(x), &StrList(ref ss)) => {
-                    Str(ss.get(x as usize).cloned().unwrap_or_else(String::new))
+                (&Num(x), &List(ref ss)) => {
+                    ss.get(x as usize).cloned().unwrap_or_else(|| ss[0].clone())
                 }
                 _ => unreachable!(),
             },
-            Op::MapToNums => match (&inps[0], &inps[1]) {
-                (&Func(ref f), &NumList(ref xs)) => NumList(
-                    xs.into_iter()
-                        .cloned()
-                        .map(|x| match f.eval(&[Num(x)]) {
-                            Num(y) => y,
-                            e => panic!("map given invalid function: saw {:?}, expected Num", e),
-                        })
-                        .collect(),
-                ),
-                (&Func(ref f), &StrList(ref xs)) => NumList(
-                    xs.into_iter()
-                        .cloned()
-                        .map(|x| match f.eval(&[Str(x)]) {
-                            Num(y) => y,
-                            _ => panic!("map given invalid function"),
-                        })
-                        .collect(),
-                ),
-                _ => unreachable!(),
-            },
-            Op::MapToStrs => match (&inps[0], &inps[1]) {
-                (&Func(ref f), &NumList(ref xs)) => StrList(
-                    xs.into_iter()
-                        .cloned()
-                        .map(|x| match f.eval(&[Num(x)]) {
-                            Str(y) => y,
-                            _ => panic!("map given invalid function"),
-                        })
-                        .collect(),
-                ),
-                (&Func(ref f), &StrList(ref xs)) => StrList(
-                    xs.into_iter()
-                        .cloned()
-                        .map(|x| match f.eval(&[Str(x)]) {
-                            Str(y) => y,
-                            e => panic!("map given invalid function: saw {:?}, expected Str", e),
-                        })
-                        .collect(),
-                ),
+            Op::Map => match (&inps[0], &inps[1]) {
+                (&Func(ref f), &List(ref xs)) => {
+                    List(xs.into_iter().cloned().map(|x| f.eval(&[x])).collect())
+                }
                 _ => unreachable!(),
             },
             Op::Strip => match inps[0] {
@@ -281,11 +233,16 @@ impl EvaluatorT for Evaluator {
                 _ => unreachable!(),
             },
             Op::Split => match (&inps[0], &inps[1]) {
-                (&Char(c), &Str(ref s)) => StrList(s.split(c).map(str::to_string).collect()),
+                (&Char(c), &Str(ref s)) => List(s.split(c).map(|s| Str(s.to_owned())).collect()),
                 _ => unreachable!(),
             },
             Op::Join => match (&inps[0], &inps[1]) {
-                (&Str(ref delim), &StrList(ref ss)) => Str(ss.iter().join(delim)),
+                (&Str(ref delim), &List(ref ss)) => Str(ss.iter()
+                    .map(|s| match *s {
+                        Str(ref s) => s,
+                        _ => unreachable!(),
+                    })
+                    .join(delim)),
                 _ => unreachable!(),
             },
             Op::CharToStr => match inps[0] {
@@ -360,8 +317,7 @@ enum Op {
     Concat,
     Slice,
     Nth,
-    MapToNums,
-    MapToStrs,
+    Map,
     Strip,
     Split,
     Join,
@@ -389,8 +345,7 @@ lazy_static! {
         "concat" => Op::Concat,
         "slice" => Op::Slice,
         "nth" => Op::Nth,
-        "map-to-nums" => Op::MapToNums,
-        "map-to-strs" => Op::MapToStrs,
+        "map" => Op::Map,
         "strip" => Op::Strip,
         "split" => Op::Split,
         "join" => Op::Join,
@@ -483,8 +438,9 @@ mod gen {
             {
                 let n_words = Range::sample_single(1, 5, rng);
                 let xs: Vec<_> = (0..n_words).map(|_| white_word(rng)).collect();
-                let ys = xs.iter().map(|s| s.trim().to_owned()).collect();
-                (StrList(xs), StrList(ys))
+                let ys = xs.iter().map(|s| Str(s.trim().to_owned())).collect();
+                let xs = xs.into_iter().map(Str).collect();
+                (List(xs), List(ys))
             }
         );
         t!("strip", ptp!(@arrow[tp!(str), tp!(str)]), {
@@ -499,8 +455,8 @@ mod gen {
                 ptp!(@arrow[tp!(str), tp!(list(tp!(str)))]),
                 {
                     let x = words(d, rng);
-                    let ys = x.split(d).map(|s| s.trim().to_owned()).collect();
-                    (Str(x), StrList(ys))
+                    let ys = x.split(d).map(|s| Str(s.trim().to_owned())).collect();
+                    (Str(x), List(ys))
                 }
             );
             t!(
@@ -510,7 +466,8 @@ mod gen {
                     let n_words = Range::sample_single(1, 5, rng);
                     let xs: Vec<_> = (0..n_words).map(|_| word(rng)).collect();
                     let y = xs.iter().map(|s| s.trim().to_owned()).join(&d.to_string());
-                    (StrList(xs), Str(y))
+                    let xs = xs.into_iter().map(Str).collect();
+                    (List(xs), Str(y))
                 }
             );
             t!("delete delimiter d", ptp!(@arrow[tp!(str), tp!(str)]), {
