@@ -124,7 +124,8 @@ _strings_.
       interpreters).
 - [x] Add task generation function in `domains::strings`
 - [x] Fallible evaluation (e.g. see how `domains::strings` handles `slice`).
-- [ ] Faster lambda calculus evaluation.
+- [ ] Faster lambda calculus evaluation (less cloning; bubble up whether
+      beta reduction happened rather than ultimate equality comparison).
 - [ ] PCFG compression is currently only estimating parameters, not actually
       learning pieces of programs. An [adaptor
       grammar](http://cocosci.berkeley.edu/tom/papers/adaptornips.pdf)
