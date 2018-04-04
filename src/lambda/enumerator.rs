@@ -109,7 +109,10 @@ fn enumerate(
                     .map(|args| args.into_iter().cloned().collect())
                     .unwrap_or_else(VecDeque::new);
                 let budget = (budget.0 + p, budget.1 + p);
-                enumerate_many(dsl, &ctx, env, expr, arg_tps, budget, p, depth + 1, cb)
+                let depth = depth + 1;
+                let idx = (0, &expr);
+                let f = expr.clone();
+                enumerate_many(dsl, &ctx, env, f, idx, arg_tps, budget, p, depth, cb)
             })
     }
 }
@@ -120,6 +123,7 @@ fn enumerate_many(
     ctx: &Context,
     env: &Rc<LinkedList<Type>>,
     f: Expression,
+    idx: (usize, &Expression),
     mut arg_tps: VecDeque<Type>,
     budget: (f64, f64),
     offset: f64,
@@ -131,15 +135,19 @@ fn enumerate_many(
     } else if let Some(mut arg_tp) = arg_tps.pop_front() {
         arg_tp.apply_mut(ctx);
         let cb_arg = &mut |arg, ll, ctx| {
-            let f_next = Expression::Application(Box::new(f.clone()), Box::new(arg));
+            if dsl.violates_symmetry(idx.1, idx.0, &arg) {
+                return true;
+            }
+            let idx = (idx.0 + 1, idx.1);
+            let f = Expression::Application(Box::new(f.clone()), Box::new(arg));
             let arg_tps = arg_tps.clone();
             let budget = (budget.0 + ll, budget.1 + ll);
             let offset = offset + ll;
-            enumerate_many(dsl, &ctx, env, f_next, arg_tps, budget, offset, depth, cb)
+            enumerate_many(dsl, &ctx, env, f, idx, arg_tps, budget, offset, depth, cb)
         };
         enumerate(dsl, ctx, &arg_tp, env, (0f64, budget.1), depth, cb_arg)
     } else if budget.0 < 0f64 {
-        cb(f, offset, ctx.clone())
+        cb(f.clone(), offset, ctx.clone())
     } else {
         true
     }

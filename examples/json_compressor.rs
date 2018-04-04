@@ -89,6 +89,7 @@ impl From<ExternalCompressionInput> for CompressionInput {
             primitives,
             invented: vec![],
             variable_logprob,
+            symmetry_violations: vec![],
         };
         for inv in eci.inventions {
             let expr = dsl.parse(&inv.expression).expect("invalid invention");

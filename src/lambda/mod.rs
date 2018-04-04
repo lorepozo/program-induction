@@ -62,6 +62,14 @@ pub struct Language {
     pub primitives: Vec<(String, TypeSchema, f64)>,
     pub invented: Vec<(Expression, TypeSchema, f64)>,
     pub variable_logprob: f64,
+    /// Symmetry breaking prevents certain productions from being made. Specifically, an item `(f,
+    /// i, a)` means that enumeration will not yield an application of `f` where the `i`th argument
+    /// is `a`. This vec must be kept sorted — use via [`add_symmetry_violation`] and
+    /// [`violates_symmetry`].
+    ///
+    /// [`add_symmetry_violation`]: #method.add_symmetry_violation
+    /// [`violates_symmetry`]: #method.violates_symmetry
+    pub symmetry_violations: Vec<(usize, usize, usize)>,
 }
 impl Language {
     /// A uniform distribution over primitives and invented expressions, as well as the abstraction
@@ -75,6 +83,7 @@ impl Language {
             primitives,
             invented: vec![],
             variable_logprob: 0f64,
+            symmetry_violations: Vec::new(),
         }
     }
 
@@ -121,6 +130,9 @@ impl Language {
     ///
     /// # Examples
     ///
+    /// The following example can be made more effective using the approach shown with
+    /// [`add_symmetry_violation`].
+    ///
     /// ```
     /// # #[macro_use] extern crate polytype;
     /// # extern crate programinduction;
@@ -131,7 +143,6 @@ impl Language {
     ///     ("0", ptp!(int)),
     ///     ("1", ptp!(int)),
     ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
-    ///     (">", ptp!(@arrow[tp!(int), tp!(int), tp!(bool)])),
     /// ]);
     /// let exprs: Vec<Expression> = dsl.enumerate(ptp!(int))
     ///     .take(8)
@@ -153,6 +164,8 @@ impl Language {
     /// );
     /// # }
     /// ```
+    ///
+    /// [`add_symmetry_violation`]: #method.add_symmetry_violation
     pub fn enumerate(&self, tp: TypeSchema) -> Box<Iterator<Item = (Expression, f64)>> {
         let (tx, rx) = bounded(1);
         let dsl = self.clone();
@@ -326,6 +339,97 @@ impl Language {
         let tp = self.infer(&expr)?;
         self.invented.push((expr, tp, log_probability));
         Ok(self.invented.len() - 1)
+    }
+
+    /// Introduce a symmetry-breaking pattern to the Language.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # use programinduction::lambda::{Expression, Language};
+    /// # fn main() {
+    /// let mut dsl = Language::uniform(vec![
+    ///     ("0", ptp!(int)),
+    ///     ("1", ptp!(int)),
+    ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+    /// ]);
+    /// // disallow (+ 0 _) and (+ _ 0)
+    /// dsl.add_symmetry_violation(2, 0, 0);
+    /// dsl.add_symmetry_violation(2, 1, 0);
+    /// // disallow (+ (+ ..) _), so effort isn't wasted with (+ _ (+ ..))
+    /// dsl.add_symmetry_violation(2, 0, 2);
+    ///
+    /// let exprs: Vec<Expression> = dsl.enumerate(ptp!(int))
+    ///     .take(6)
+    ///     .map(|(expr, _log_prior)| expr)
+    ///     .collect();
+    ///
+    /// // enumeration can be far more effective with symmetry-breaking:
+    /// assert_eq!(
+    ///     exprs,
+    ///     vec![
+    ///         Expression::Primitive(0),
+    ///         Expression::Primitive(1),
+    ///         dsl.parse("(+ 1 1)").unwrap(),
+    ///         dsl.parse("(+ 1 (+ 1 1))").unwrap(),
+    ///         dsl.parse("(+ 1 (+ 1 (+ 1 1)))").unwrap(),
+    ///         dsl.parse("(+ 1 (+ 1 (+ 1 (+ 1 1))))").unwrap(),
+    ///     ]
+    /// );
+    /// # }
+    /// ```
+    pub fn add_symmetry_violation(&mut self, primitive: usize, arg_index: usize, arg: usize) {
+        let x = (primitive, arg_index, arg);
+        if let Err(i) = self.symmetry_violations.binary_search(&x) {
+            self.symmetry_violations.insert(i, x)
+        }
+    }
+    /// Check whether expressions break symmetry.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # use programinduction::lambda::{Expression, Language};
+    /// # fn main() {
+    /// let mut dsl = Language::uniform(vec![
+    ///     ("0", ptp!(int)),
+    ///     ("1", ptp!(int)),
+    ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+    /// ]);
+    /// dsl.add_symmetry_violation(2, 0, 0);
+    /// dsl.add_symmetry_violation(2, 1, 0);
+    /// dsl.add_symmetry_violation(2, 0, 2);
+    ///
+    /// let f = &Expression::Primitive(2); // +
+    /// let x = &Expression::Primitive(0); // 0
+    /// assert!(dsl.violates_symmetry(f, 0, x));
+    /// let x = &dsl.parse("(+ 1 1)").unwrap();
+    /// assert!(dsl.violates_symmetry(f, 0, x));
+    /// # }
+    pub fn violates_symmetry(&self, f: &Expression, index: usize, x: &Expression) -> bool {
+        match (f, x) {
+            (&Expression::Primitive(f), &Expression::Primitive(x)) => {
+                let x = (f, index, x);
+                self.symmetry_violations.binary_search(&x).is_ok()
+            }
+            (&Expression::Primitive(f), &Expression::Application(ref x, _)) => {
+                let mut z: &Expression = &**x;
+                while let Expression::Application(ref x, _) = *z {
+                    z = x
+                }
+                if let Expression::Primitive(x) = *z {
+                    let x = (f, index, x);
+                    self.symmetry_violations.binary_search(&x).is_ok()
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
     }
 
     /// Remove all invented expressions by pulling out their underlying expressions.
