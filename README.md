@@ -124,6 +124,8 @@ _strings_.
       interpreters).
 - [x] Add task generation function in `domains::strings`
 - [x] Fallible evaluation (e.g. see how `domains::strings` handles `slice`).
+- [ ] Ability to include recursive primitives in `lambda` representation.
+- [ ] Lazy evaluation.
 - [ ] Faster lambda calculus evaluation (less cloning; bubble up whether
       beta reduction happened rather than ultimate equality comparison).
 - [ ] PCFG compression is currently only estimating parameters, not actually
