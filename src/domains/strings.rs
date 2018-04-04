@@ -61,7 +61,7 @@ use Task;
 ///
 /// [`lambda::Language`]: ../../lambda/struct.Language.html
 pub fn dsl() -> Language {
-    Language::uniform(vec![
+    let mut dsl = Language::uniform(vec![
         ("0", ptp!(int)),
         ("+1", ptp!(@arrow[tp!(int), tp!(int)])),
         ("-1", ptp!(@arrow[tp!(int), tp!(int)])),
@@ -98,7 +98,21 @@ pub fn dsl() -> Language {
         ("@", ptp!(char)),
         ("-", ptp!(char)),
         ("|", ptp!(char)),
-    ])
+    ]);
+    // disallow (+1 (-1 _)) and (-1 (+1 _))
+    dsl.add_symmetry_violation(1, 0, 2);
+    dsl.add_symmetry_violation(2, 0, 1);
+    // disallow len of empty_str, (lower _), (upper _), and (char->str _)
+    dsl.add_symmetry_violation(3, 0, 4);
+    dsl.add_symmetry_violation(3, 0, 5);
+    dsl.add_symmetry_violation(3, 0, 6);
+    dsl.add_symmetry_violation(3, 0, 14);
+    // disallow (concat (concat ..) _) in favor of (concat _ (concat ..))
+    dsl.add_symmetry_violation(7, 0, 7);
+    // disallow concat of empty_str
+    dsl.add_symmetry_violation(7, 0, 4);
+    dsl.add_symmetry_violation(7, 1, 4);
+    dsl
 }
 
 use self::Space::*;
