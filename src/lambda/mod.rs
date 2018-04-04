@@ -409,6 +409,7 @@ impl Language {
     /// assert!(dsl.violates_symmetry(f, 0, x));
     /// let x = &dsl.parse("(+ 1 1)").unwrap();
     /// assert!(dsl.violates_symmetry(f, 0, x));
+    /// assert!(!dsl.violates_symmetry(f, 1, x));
     /// # }
     pub fn violates_symmetry(&self, f: &Expression, index: usize, x: &Expression) -> bool {
         match (f, x) {

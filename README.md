@@ -41,11 +41,11 @@ extern crate programinduction;
 use programinduction::{ECParams, EC};
 use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
 
-fn evaluate(name: &str, inps: &[i32]) -> i32 {
+fn evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
     match name {
-        "0" => 0,
-        "1" => 1,
-        "plus" => inps[0] + inps[1],
+        "0" => Ok(0),
+        "1" => Ok(1),
+        "plus" => Ok(inps[0] + inps[1]),
         _ => unreachable!(),
     }
 }
