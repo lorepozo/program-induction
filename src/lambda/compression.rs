@@ -214,9 +214,8 @@ impl Language {
             prim.2 = obs.ln() - pot.ln();
         }
         for (i, inv) in self.invented.iter_mut().enumerate() {
-            let obs = u.actual_invented[i] + pseudocounts;
+            let obs = u.actual_invented[i];
             let pot = u.possible_invented[i];
-            let pot = if pot == 0f64 { pseudocounts } else { pot };
             inv.2 = obs.ln() - pot.ln();
         }
         joint_mdl
