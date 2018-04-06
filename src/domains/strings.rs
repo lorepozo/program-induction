@@ -436,6 +436,8 @@ mod gen {
         (0..size).map(|_| white_word(rng)).join(&delim.to_string())
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(cyclomatic_complexity))]
+    #[cfg_attr(feature = "cargo-clippy", allow(redundant_closure_call))]
     #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
     pub fn make_examples(
         n_examples: usize,
