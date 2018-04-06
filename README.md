@@ -125,6 +125,7 @@ _strings_.
 - [x] Add task generation function in `domains::strings`
 - [x] Fallible evaluation (e.g. see how `domains::strings` handles `slice`).
 - [x] Lazy evaluation.
+- [ ] Consolidate lazy/non-lazy evaluation (for ergonomics).
 - [ ] Ability to include recursive primitives in `lambda` representation.
 - [ ] Faster lambda calculus evaluation (less cloning; bubble up whether
       beta reduction happened rather than ultimate equality comparison).
