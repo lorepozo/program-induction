@@ -116,7 +116,6 @@ extern crate lazy_static;
 extern crate maplit;
 #[macro_use]
 extern crate nom;
-extern crate num_cpus;
 #[macro_use]
 extern crate polytype;
 extern crate rand;
