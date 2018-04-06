@@ -365,3 +365,80 @@ fn lambda_eval_firstclass() {
     let expr = dsl.parse("(λ (λ (map (λ (+ $0 1)) $0)))").unwrap();
     assert!((task.oracle)(&dsl, &expr).is_infinite());
 }
+
+#[test]
+fn lambda_lazy_eval() {
+    #[derive(Clone, Debug, PartialEq)]
+    struct ListError(&'static str);
+
+    #[derive(Clone, Debug)]
+    enum ListSpace {
+        Bool(bool),
+        Num(i32),
+        List(Vec<i32>),
+    }
+    impl PartialEq for ListSpace {
+        fn eq(&self, other: &Self) -> bool {
+            match (self, other) {
+                (&ListSpace::Bool(x), &ListSpace::Bool(y)) => x == y,
+                (&ListSpace::Num(x), &ListSpace::Num(y)) => x == y,
+                (&ListSpace::List(ref xs), &ListSpace::List(ref ys)) => xs == ys,
+                _ => false,
+            }
+        }
+    }
+
+    #[derive(Copy, Clone)]
+    struct ListsEvaluator;
+    impl LazyEvaluator for ListsEvaluator {
+        type Space = ListSpace;
+        type Error = ListError;
+        fn lazy_evaluate(
+            &self,
+            primitive: &str,
+            inps: &[LiftedLazyFunction<Self::Space, Self>],
+        ) -> Result<Self::Space, Self::Error> {
+            match primitive {
+                "-1" => Ok(ListSpace::Num(-1)),
+                "empty?" => match inps[0].eval(&[])? {
+                    ListSpace::List(xs) => Ok(ListSpace::Bool(xs.is_empty())),
+                    _ => unreachable!(),
+                },
+                "if" => match inps[0].eval(&[])? {
+                    ListSpace::Bool(true) => inps[1].eval(&[]),
+                    ListSpace::Bool(false) => inps[2].eval(&[]),
+                    _ => unreachable!(),
+                },
+                "car" => match inps[0].eval(&[])? {
+                    ListSpace::List(xs) => if !xs.is_empty() {
+                        Ok(ListSpace::Num(xs[0].clone()))
+                    } else {
+                        Err(ListError("cannot get car of empty list"))
+                    },
+                    _ => unreachable!(),
+                },
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    let dsl = Language::uniform(vec![
+        ("if", ptp!(0; @arrow[tp!(bool), tp!(0), tp!(0), tp!(0)])),
+        ("empty?", ptp!(0; @arrow[tp!(list(tp!(0))), tp!(bool)])),
+        ("car", ptp!(0; @arrow[tp!(list(tp!(0))), tp!(0)])),
+        ("-1", ptp!(int)),
+    ]);
+    let examples = vec![
+        (vec![ListSpace::List(vec![])], ListSpace::Num(-1)),
+        (vec![ListSpace::List(vec![2])], ListSpace::Num(2)),
+        (vec![ListSpace::List(vec![42])], ListSpace::Num(42)),
+    ];
+    let task = task_by_lazy_evaluation(
+        ListsEvaluator,
+        ptp!(@arrow[tp!(list(tp!(int))), tp!(int)]),
+        &examples,
+    );
+
+    let expr = dsl.parse("(λ (if (empty? $0) -1 (car $0)))").unwrap();
+    assert!((task.oracle)(&dsl, &expr).is_finite());
+}

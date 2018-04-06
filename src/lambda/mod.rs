@@ -39,7 +39,7 @@ mod eval;
 mod compression;
 mod parser;
 pub use self::compression::CompressionParams;
-pub use self::eval::{Evaluator, LiftedFunction, SimpleEvaluator};
+pub use self::eval::{Evaluator, LazyEvaluator, LiftedFunction, LiftedLazyFunction, SimpleEvaluator};
 pub use self::parser::ParseError;
 
 use crossbeam_channel::bounded;
@@ -278,6 +278,40 @@ impl Language {
         E: Evaluator<Space = V>,
     {
         eval::eval(self, expr, evaluator, inps)
+    }
+
+    /// Like [`eval`], but for lazy evaluation with a [`LazyEvaluator`].
+    ///
+    /// [`eval`]: #method.eval
+    /// [`LazyEvaluator`]: trait.LazyEvaluator.html
+    pub fn lazy_eval<V, E>(
+        &self,
+        expr: &Expression,
+        evaluator: E,
+        inps: &[V],
+    ) -> Result<V, E::Error>
+    where
+        V: Clone + PartialEq + Send + Sync,
+        E: LazyEvaluator<Space = V>,
+    {
+        eval::lazy_eval(self, expr, &Arc::new(evaluator), inps)
+    }
+
+    /// Like [`eval_arc`], but for lazy evaluation with a [`LazyEvaluator`].
+    ///
+    /// [`eval_arc`]: #method.eval_arc
+    /// [`LazyEvaluator`]: trait.LazyEvaluator.html
+    pub fn lazy_eval_arc<V, E>(
+        &self,
+        expr: &Expression,
+        evaluator: &Arc<E>,
+        inps: &[V],
+    ) -> Result<V, E::Error>
+    where
+        V: Clone + PartialEq + Send + Sync,
+        E: LazyEvaluator<Space = V>,
+    {
+        eval::lazy_eval(self, expr, evaluator, inps)
     }
 
     /// Get the log-likelihood of an expression normalized with other expressions with the given
@@ -769,6 +803,41 @@ where
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
         let success = examples.iter().all(|&(ref inps, ref out)| {
             if let Ok(o) = dsl.eval_arc(expr, &evaluator, inps) {
+                o == *out
+            } else {
+                false
+            }
+        });
+        if success {
+            0f64
+        } else {
+            f64::NEG_INFINITY
+        }
+    });
+    Task {
+        oracle,
+        observation: examples,
+        tp,
+    }
+}
+
+/// Liky [`task_by_evaluation`], but for use with a [`LazyEvaluator`].
+///
+/// [`LazyEvaluator`]: trait.LazyEvaluator.html
+/// [`task_by_evaluation`]: fn.task_by_evaluation.html
+pub fn task_by_lazy_evaluation<'a, E, V>(
+    evaluator: E,
+    tp: TypeSchema,
+    examples: &'a [(Vec<V>, V)],
+) -> Task<'a, Language, Expression, &'a [(Vec<V>, V)]>
+where
+    E: LazyEvaluator<Space = V> + Send + 'a,
+    V: PartialEq + Clone + Send + Sync + 'a,
+{
+    let evaluator = Arc::new(evaluator);
+    let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
+        let success = examples.iter().all(|&(ref inps, ref out)| {
+            if let Ok(o) = dsl.lazy_eval_arc(expr, &evaluator, inps) {
                 o == *out
             } else {
                 false
