@@ -67,13 +67,13 @@ fn alphanumeric_ext(c: char) -> bool {
 named!(var<CompleteStr, Item>,
         do_parse!(
             name: ws!( take_while!(alphanumeric_ext) ) >>
-            (Item(name.0.to_string(), vec![]))
+            (Item(name.to_string(), vec![]))
         ));
 named!(func<CompleteStr, Item>,
         do_parse!(
             name: ws!( take_while!(alphanumeric_ext) ) >>
             args: delimited!(tag!("("), separated_list!(tag!(","), expr), tag!(")")) >>
-            (Item(name.0.to_string(), args))
+            (Item(name.to_string(), args))
         ));
 named!(expr<CompleteStr, Item>, alt!(func | var));
 
