@@ -4,10 +4,10 @@ extern crate programinduction;
 
 use std::time::Duration;
 
-use programinduction::{ECParams, EC};
+use programinduction::domains::{circuits, strings};
 use programinduction::lambda;
 use programinduction::pcfg::{self, Grammar, Rule};
-use programinduction::domains::{circuits, strings};
+use programinduction::{ECParams, EC};
 
 fn arith_evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
     match name {
@@ -104,33 +104,25 @@ fn ec_strings() {
     let dsl = strings::dsl();
     let examples = vec![
         // Replace delimiter '>' with '/'
-        vec![
-            (
-                vec![strings::Space::Str("OFJQc>BLVP>eMS".to_string())],
-                strings::Space::Str("OFJQc/BLVP/eMS".to_string()),
-            ),
-        ],
+        vec![(
+            vec![strings::Space::Str("OFJQc>BLVP>eMS".to_string())],
+            strings::Space::Str("OFJQc/BLVP/eMS".to_string()),
+        )],
         // Replace delimiter '<' with '/'
-        vec![
-            (
-                vec![strings::Space::Str("OFJQc<BLVP<eMS".to_string())],
-                strings::Space::Str("OFJQc/BLVP/eMS".to_string()),
-            ),
-        ],
+        vec![(
+            vec![strings::Space::Str("OFJQc<BLVP<eMS".to_string())],
+            strings::Space::Str("OFJQc/BLVP/eMS".to_string()),
+        )],
         // Replace delimiter ' ' with '/'
-        vec![
-            (
-                vec![strings::Space::Str("OFJQc BLVP eMS".to_string())],
-                strings::Space::Str("OFJQc/BLVP/eMS".to_string()),
-            ),
-        ],
+        vec![(
+            vec![strings::Space::Str("OFJQc BLVP eMS".to_string())],
+            strings::Space::Str("OFJQc/BLVP/eMS".to_string()),
+        )],
         // Replace delimiter '.' with '/'
-        vec![
-            (
-                vec![strings::Space::Str("OFJQc.BLVP.eMS".to_string())],
-                strings::Space::Str("OFJQc/BLVP/eMS".to_string()),
-            ),
-        ],
+        vec![(
+            vec![strings::Space::Str("OFJQc.BLVP.eMS".to_string())],
+            strings::Space::Str("OFJQc/BLVP/eMS".to_string()),
+        )],
     ];
     let tasks = examples
         .iter()

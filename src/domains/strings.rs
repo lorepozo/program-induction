@@ -388,8 +388,8 @@ use self::gen::make_examples;
 mod gen {
     use itertools::Itertools;
     use polytype::TypeSchema;
-    use rand::{self, Rng};
     use rand::distributions::{Distribution, Range};
+    use rand::{self, Rng};
     use std::iter;
 
     use super::Space::{self, *};
@@ -446,7 +446,7 @@ mod gen {
         let mut tasks = Vec::new();
 
         macro_rules! t {
-            ($name: expr, $tp: expr, $body: block) => {
+            ($name:expr, $tp:expr, $body:block) => {
                 let examples = (0..n_examples)
                     .map(|_| {
                         let (i, o) = $body;
@@ -605,7 +605,7 @@ mod gen {
         }
 
         macro_rules! single_word_edit {
-            ($name: expr, $f: expr) => {
+            ($name:expr, $f:expr) => {
                 t!(
                     concat!($name, " strip"),
                     ptp!(@arrow[tp!(str), tp!(str)]),
@@ -715,7 +715,7 @@ mod gen {
         });
 
         macro_rules! word_edit_pair {
-            ($name1: expr, $f1: expr, $name2: expr, $f2: expr) => {
+            ($name1:expr, $f1:expr, $name2:expr, $f2:expr) => {
                 t!(
                     concat!($name1, " . ", $name2),
                     ptp!(@arrow[tp!(str), tp!(str)]),

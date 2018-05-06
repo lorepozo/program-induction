@@ -6,10 +6,10 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 
-use std::f64;
 use polytype::TypeSchema;
 use programinduction::{lambda, ECFrontier, Task};
 use rayon::prelude::*;
+use std::f64;
 
 #[derive(Deserialize)]
 struct ExternalCompressionInput {

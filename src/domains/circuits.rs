@@ -28,8 +28,8 @@ use rand::distributions::{Distribution, Weighted, WeightedChoice};
 use std::f64;
 use std::iter;
 
-use Task;
 use lambda::{Evaluator as EvaluatorT, Expression, Language};
+use Task;
 
 /// The circuit representation, a [`lambda::Language`], only defines the binary `nand` operation.
 ///
@@ -39,9 +39,10 @@ use lambda::{Evaluator as EvaluatorT, Expression, Language};
 ///
 /// [`lambda::Language`]: ../../lambda/struct.Language.html
 pub fn dsl() -> Language {
-    Language::uniform(vec![
-        ("nand", ptp!(@arrow[tp!(bool), tp!(bool), tp!(bool)])),
-    ])
+    Language::uniform(vec![(
+        "nand",
+        ptp!(@arrow[tp!(bool), tp!(bool), tp!(bool)]),
+    )])
 }
 
 /// All values in the circuits domain can be represented in this `Space`.
@@ -291,8 +292,8 @@ pub fn make_tasks_advanced(
 
 use self::gates::{Circuit, Gate};
 mod gates {
-    use rand::Rng;
     use rand::distributions::{Distribution, WeightedChoice};
+    use rand::Rng;
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum Gate {

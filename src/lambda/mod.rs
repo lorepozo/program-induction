@@ -34,12 +34,14 @@
 //! # }
 //! ```
 
+mod compression;
 mod enumerator;
 mod eval;
-mod compression;
 mod parser;
 pub use self::compression::CompressionParams;
-pub use self::eval::{Evaluator, LazyEvaluator, LiftedFunction, LiftedLazyFunction, SimpleEvaluator};
+pub use self::eval::{
+    Evaluator, LazyEvaluator, LiftedFunction, LiftedLazyFunction, SimpleEvaluator,
+};
 pub use self::parser::ParseError;
 
 use crossbeam_channel::bounded;

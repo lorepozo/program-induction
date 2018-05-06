@@ -6,9 +6,10 @@ use programinduction::lambda::*;
 
 #[test]
 fn lambda_expression_parse_primitive() {
-    let dsl = Language::uniform(vec![
-        ("singleton", ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))])),
-    ]);
+    let dsl = Language::uniform(vec![(
+        "singleton",
+        ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))]),
+    )]);
     let expr = dsl.parse("singleton").unwrap();
     assert_eq!(expr, Expression::Primitive(0));
 
@@ -54,9 +55,10 @@ fn lambda_expression_parse_application() {
 
 #[test]
 fn lambda_expression_parse_index() {
-    let dsl = Language::uniform(vec![
-        ("singleton", ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))])),
-    ]);
+    let dsl = Language::uniform(vec![(
+        "singleton",
+        ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))]),
+    )]);
     assert_eq!(
         dsl.parse("(singleton $0)").unwrap(),
         Expression::Application(

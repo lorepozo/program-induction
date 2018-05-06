@@ -129,8 +129,8 @@ pub mod pcfg;
 pub use ec::*;
 pub use gp::*;
 
-use std::f64;
 use polytype::TypeSchema;
+use std::f64;
 
 /// A task which is solved by an expression under some representation.
 ///

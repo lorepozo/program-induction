@@ -1,8 +1,8 @@
 //! Evaluation happens by calling primitives provided by an evaluator.
+use polytype::TypeSchema;
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::Arc;
-use polytype::TypeSchema;
 
 use lambda::{Expression, Language};
 

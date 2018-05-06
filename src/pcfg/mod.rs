@@ -43,16 +43,16 @@ pub use self::parser::ParseError;
 use crossbeam_channel::bounded;
 use itertools::Itertools;
 use polytype::{Type, TypeSchema};
-use rand::Rng;
 use rand::distributions::Range;
+use rand::Rng;
 use rayon::prelude::*;
 use rayon::spawn;
 use std::cmp;
 use std::collections::HashMap;
 use std::f64;
 use std::fmt::Debug;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use {ECFrontier, Task, EC, GP};
 
