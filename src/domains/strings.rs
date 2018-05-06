@@ -703,7 +703,9 @@ mod gen {
         single_word_edit!("uppercase", |s: &str| -> String { s.to_uppercase() });
         single_word_edit!("capitalize", |s: &str| -> String {
             let mut s = s.to_owned();
-            s.get_mut(..1).map(|c| c.make_ascii_uppercase());
+            if let Some(c) = s.get_mut(..1) {
+                c.make_ascii_uppercase()
+            }
             s
         });
         single_word_edit!("double", |s: &str| -> String { format!("{}{}", s, s) });
@@ -770,7 +772,9 @@ mod gen {
             "capitalize",
             |s: &str| -> String {
                 let mut s = s.to_owned();
-                s.get_mut(..1).map(|c| c.make_ascii_uppercase());
+                if let Some(c) = s.get_mut(..1) {
+                    c.make_ascii_uppercase()
+                }
                 s
             }
         );
@@ -796,7 +800,9 @@ mod gen {
             "capitalize",
             |s: &str| -> String {
                 let mut s = s.to_owned();
-                s.get_mut(..1).map(|c| c.make_ascii_uppercase());
+                if let Some(c) = s.get_mut(..1) {
+                    c.make_ascii_uppercase()
+                }
                 s
             },
             "double",

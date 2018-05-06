@@ -296,7 +296,7 @@ impl Grammar {
             let args = ar.2.iter().map(|ar| self.display(ar)).join(",");
             format!("{}({})", r.name, args)
         } else {
-            format!("{}", r.name)
+            r.name.to_string()
         }
     }
 
