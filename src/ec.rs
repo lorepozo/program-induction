@@ -37,6 +37,37 @@ pub struct ECParams {
 /// Typically, you will interact with this trait via existing implementations, such as with
 /// [`lambda::Language`] or [`pcfg::Grammar`].
 ///
+/// # Examples
+///
+/// Using an existing domain in the lambda calculus representation [`lambda::Language`]:
+///
+/// ```
+/// extern crate programinduction;
+/// use programinduction::{lambda, ECParams, EC};
+/// use programinduction::domains::circuits;
+///
+/// fn main() {
+///     let mut dsl = circuits::dsl();
+///     let tasks = circuits::make_tasks(250);
+///     let ec_params = ECParams {
+///         frontier_limit: 10,
+///         search_limit_timeout: None,
+///         search_limit_description_length: Some(9.0),
+///     };
+///     let params = lambda::CompressionParams::default();
+///
+///     let mut frontiers = Vec::new();
+///     for _ in 0..5 {
+///         let (new_dsl, new_frontiers) = dsl.ec(&ec_params, &params, &tasks);
+///         dsl = new_dsl;
+///         frontiers = new_frontiers;
+///     }
+///     let n_invented = dsl.invented.len();
+///     let n_hit = frontiers.iter().filter(|f| !f.is_empty()).count();
+///     println!("hit {} of {} using {} invented primitives", n_hit, tasks.len(), n_invented);
+/// }
+/// ```
+///
 /// [here]: index.html#bayesian-program-learning-with-the-ec-algorithm
 /// [`enumerate`]: #tymethod.enumerate
 /// [`compress`]: #tymethod.compress

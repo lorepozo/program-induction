@@ -19,19 +19,98 @@ pub struct GPParams {
     pub n_delta: usize,
 }
 
-/// A kind of representation suitable for **genetic programming**. (WIP)
+/// A kind of representation suitable for **genetic programming**.
 ///
 /// Implementors of `GP` must provide methods for [`genesis`], [`mutate`], [`crossover`]. A
-/// [`Task`] provides a fitness function via its [`oracle`].
+/// [`Task`] provides a fitness function via its [`oracle`]: we adopt the convention that smaller
+/// values are better (so one can think of the [`oracle`] as providing a measure of error). To opt
+/// out of the default tournament-based selection, implementors may override the [`tournament`]
+/// method.
 ///
-/// See [`pcfg::Grammar`] for an implementation.
+/// Typically, you will interact with this trait using the [`init`] and [`evolve`] methods on
+/// existing implementations, such as [`pcfg::Grammar`].
+///
+/// The provided methods (namely [`init`] and [`evolve`]) manipulate a _population_, which is a
+/// sorted list of programs according to fitness. If you otherwise modify the population such that
+/// it is no longer sorted appropriately, these methods will behave incorrectly.
+///
+/// # Examples
+///
+/// This example has a lot of code, but it is quite straightforward. Given a PCFG and an evaluator
+/// for sentences, a task is created by measuring proximity of an evaluted sentence to some target.
+/// We finally pick some parameters and evolve a population for a few hundred generations.
+///
+/// ```
+/// #[macro_use]
+/// extern crate polytype;
+/// extern crate programinduction;
+/// extern crate rand;
+/// use programinduction::pcfg::{self, Grammar, Rule};
+/// use programinduction::{GPParams, Task, GP};
+/// use rand::{SmallRng, SeedableRng};
+///
+/// fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
+///     match name {
+///         "0" => Ok(0),
+///         "1" => Ok(1),
+///         "plus" => Ok(inps[0] + inps[1]),
+///         _ => unreachable!(),
+///     }
+/// }
+///
+/// fn main() {
+///     let g = Grammar::new(
+///         tp!(EXPR),
+///         vec![
+///             Rule::new("0", tp!(EXPR), 1.0),
+///             Rule::new("1", tp!(EXPR), 1.0),
+///             Rule::new("plus", tp!(@arrow[tp!(EXPR), tp!(EXPR), tp!(EXPR)]), 1.0),
+///         ],
+///     );
+///     let target = 6;
+///     let task = Task {
+///         oracle: Box::new(|g: &Grammar, expr| {
+///             if let Ok(n) = g.eval(expr, &evaluator) {
+///                 (n - target).abs() as f64 // numbers close to target
+///             } else {
+///                 std::f64::INFINITY
+///             }
+///         }),
+///         tp: ptp!(EXPR),
+///         observation: (),
+///     };
+///
+///     let gpparams = GPParams {
+///         population_size: 10,
+///         tournament_size: 5,
+///         mutation_prob: 0.6,
+///         n_delta: 1,
+///     };
+///     let params = pcfg::GeneticParams::default();
+///     let generations = 300;
+///     let rng = &mut SmallRng::from_seed([4u8; 16]);
+///
+///     let mut pop = g.init(&params, rng, &gpparams, &task);
+///     for _ in 0..generations {
+///         g.evolve(&params, rng, &gpparams, &task, &mut pop)
+///     }
+///
+///     // perfect winner is found!
+///     let &(ref winner, score) = &pop[0];
+///     assert_eq!(6, g.eval(winner, &evaluator).unwrap());
+///     assert_eq!(0.0, score);
+/// }
+/// ```
 ///
 /// [`genesis`]: #tymethod.genesis
 /// [`mutate`]: #tymethod.mutate
 /// [`crossover`]: #tymethod.crossover
+/// [`tournament`]: #method.tournament
+/// [`init`]: #method.mutate
+/// [`evolve`]: #method.crossover
 /// [`Task`]: struct.Task.html
 /// [`oracle`]: struct.Task.html#structfield.oracle
-/// [`pcfg::Grammar`] pcfg/struct.Grammar.html
+/// [`pcfg::Grammar`]: pcfg/struct.Grammar.html
 pub trait GP: Send + Sync + Sized {
     /// An Expression is a sentence in the representation. **Tasks are solved by Expressions**.
     type Expression: Clone + Send + Sync;
@@ -64,6 +143,7 @@ pub trait GP: Send + Sync + Sized {
         parent2: &Self::Expression,
     ) -> Vec<Self::Expression>;
 
+    /// A tournament selects an individual from a population.
     fn tournament<'a, R: Rng>(
         &self,
         rng: &mut R,
@@ -79,6 +159,8 @@ pub trait GP: Send + Sync + Sized {
             .expect("tournament cannot select winner from no contestants")
     }
 
+    /// Initializes a population, which is a list of programs and their scores sorted by score.
+    /// The most-fit individual is the first element in the population.
     fn init<R: Rng, O: Sync>(
         &self,
         params: &Self::Params,
@@ -96,6 +178,12 @@ pub trait GP: Send + Sync + Sized {
             .sorted_by(|&(_, ref x), &(_, ref y)| x.partial_cmp(y).expect("found NaN"))
     }
 
+    /// Evolves a population. This will repeatedly run a Bernoulli trial with parameter
+    /// [`mutation_prob`] and perform mutation or crossover depending on the outcome until
+    /// [`n_delta`] expressions are determined.
+    ///
+    /// [`mutation_prob`]: struct.GPParams.html#mutation_prob
+    /// [`n_delta`]: struct.GPParams.html#n_delta
     fn evolve<R: Rng, O: Sync>(
         &self,
         params: &Self::Params,
@@ -130,50 +218,36 @@ pub trait GP: Send + Sync + Sized {
             sorted_place(child, population)
         }
     }
-
-    fn init_and_evolve<R: Rng, O: Sync>(
-        &self,
-        params: &Self::Params,
-        rng: &mut R,
-        gpparams: &GPParams,
-        task: &Task<Self, Self::Expression, O>,
-        generations: u32,
-    ) -> Vec<(Self::Expression, f64)> {
-        let mut pop = self.init(params, rng, gpparams, task);
-        for _ in 0..generations {
-            self.evolve(params, rng, gpparams, task, &mut pop)
-        }
-        pop
-    }
 }
 
 fn sorted_place<T>(child: (T, f64), pop: &mut Vec<(T, f64)>) {
     let mut size = pop.len();
+    if size == 0 {
+        return;
+    }
     let idx = {
-        if size == 0 {
-            0
-        } else {
-            let mut base = 0usize;
-            while size > 1 {
-                let half = size / 2;
-                let mid = base + half;
-                // mid is always in [0, size), that means mid is >= 0 and < size.
-                // mid >= 0: by definition
-                // mid < size: mid = size / 2 + size / 4 + size / 8 ...
-                let other = unsafe { pop.get_unchecked(mid) };
-                let cmp = other.1.partial_cmp(&child.1).expect("found NaN");
-                base = if cmp == Ordering::Greater { base } else { mid };
-                size -= half;
-            }
-            // base is always in [0, size) because base <= mid.
-            let other = unsafe { pop.get_unchecked(base) };
+        let mut base = 0usize;
+        while size > 1 {
+            let half = size / 2;
+            let mid = base + half;
+            // mid is always in [0, size), that means mid is >= 0 and < size.
+            // mid >= 0: by definition
+            // mid < size: mid = size / 2 + size / 4 + size / 8 ...
+            let other = unsafe { pop.get_unchecked(mid) };
             let cmp = other.1.partial_cmp(&child.1).expect("found NaN");
-            if cmp == Ordering::Equal {
-                base
-            } else {
-                base + (cmp == Ordering::Less) as usize
-            }
+            base = if cmp == Ordering::Greater { base } else { mid };
+            size -= half;
+        }
+        // base is always in [0, size) because base <= mid.
+        let other = unsafe { pop.get_unchecked(base) };
+        let cmp = other.1.partial_cmp(&child.1).expect("found NaN");
+        if cmp == Ordering::Equal {
+            base
+        } else {
+            base + (cmp == Ordering::Less) as usize
         }
     };
-    pop[idx] = child;
+    if idx < size {
+        pop[idx] = child;
+    }
 }

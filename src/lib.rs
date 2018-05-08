@@ -62,40 +62,26 @@
 //! polymorphically-typed lambda calculus in the [`lambda`] module, and a probabilistic context
 //! free grammar in the [`pcfg`] module.
 //!
-//! For example, here is the EC algorithm applied to learning Boolean circuits (a domain which we
-//! provide useful tools for, though expanding to other domains is trivial) for five iterations:
-//!
-//! ```
-//! extern crate programinduction;
-//! use programinduction::{lambda, ECParams, EC};
-//! use programinduction::domains::circuits;
-//!
-//! fn main() {
-//!     let mut dsl = circuits::dsl();
-//!     let tasks = circuits::make_tasks(250);
-//!     let ec_params = ECParams {
-//!         frontier_limit: 10,
-//!         search_limit_timeout: None,
-//!         search_limit_description_length: Some(9.0),
-//!     };
-//!     let params = lambda::CompressionParams::default();
-//!
-//!     let mut frontiers = Vec::new();
-//!     for _ in 0..5 {
-//!         let (new_dsl, new_frontiers) = dsl.ec(&ec_params, &params, &tasks);
-//!         dsl = new_dsl;
-//!         frontiers = new_frontiers;
-//!     }
-//!     let n_invented = dsl.invented.len();
-//!     let n_hit = frontiers.iter().filter(|f| !f.is_empty()).count();
-//!     println!("hit {} of {} using {} invented primitives", n_hit, tasks.len(), n_invented);
-//! }
-//! ```
+//! See the [`EC`] trait for an example.
 //!
 //! # Genetic Programming
 //!
-//! Genetic programming (GP) with this library is in progress. Our primary resource is the 2008
-//! book by Poli et al.: [_A Field Guide to Genetic Programming_].
+//! Our primary resource is the 2008 book by Poli et al.: [_A Field Guide to Genetic Programming_].
+//!
+//! Genetic programming (GP) applies an evolutionary algorithm to a population of programs. The
+//! evolutionary algorithm involves _mutations_ to selected individuals and _crossover_ between
+//! pairs of selected individuals. Individuals are selected with a tournament, where a random
+//! subset of the population is drawn and the best individual is selected (note: there are
+//! alternative selection strategies). Crucial to GP is the notion of _fitness_, a way of measuring
+//! how well individuals perform.
+//!
+//! In this library, we represent a [`Task`] as a fitness function in the [`oracle`] field, and a
+//! constraint for relevant programs as a type in the [`tp`] field. The [`observation`] field is
+//! not utilized by GP (we recommend setting it to [`unit`]). Programs may be expressed under
+//! different representations, so we provide a representation-agnostic trait [`GP`]. We provide an
+//! implementation for probabilistic context free grammars in the [`pcfg`] module.
+//!
+//! See the [`GP`] trait for an example.
 //!
 //! [Human-level concept learning through probabilistic program induction]: http://web.mit.edu/cocosci/Papers/Science-2015-Lake-1332-8.pdf
 //! [Bootstrap learning via modular concept discovery]: https://hips.seas.harvard.edu/files/dechter-bootstrap-ijcai-2013.pdf
@@ -105,8 +91,10 @@
 //! [`oracle`]: struct.Task.html#structfield.oracle
 //! [`tp`]: struct.Task.html#structfield.tp
 //! [`EC`]: trait.EC.html
+//! [`GP`]: trait.GP.html
 //! [`lambda`]: lambda/index.html
 //! [`pcfg`]: pcfg/index.html
+//! [`unit`]: https://doc.rust-lang.org/std/primitive.unit.html
 
 extern crate crossbeam_channel;
 extern crate itertools;
@@ -140,11 +128,14 @@ use std::f64;
 /// [`lambda::task_by_evaluation`]: lambda/fn.task_by_simple_evaluation.html
 /// [`pcfg::task_by_evaluation`]: pcfg/fn.task_by_simple_evaluation.html
 pub struct Task<'a, R: Send + Sync + Sized, X: Clone + Send + Sync, O: Sync> {
-    /// Evaluate an expression by getting its log-likelihood.
+    /// Assess an expression. For [`EC`] this should return a log-likelihood. For [`GP`] this
+    /// should return the fitness, where smaller values correspond to better expressions.
     pub oracle: Box<Fn(&R, &X) -> f64 + Send + Sync + 'a>,
-    /// Some program induction methods can take advantage of observations. This may often
-    /// practically be the unit type `()`.
-    pub observation: O,
     /// An expression that is considered valid for the `oracle` is one of this type.
     pub tp: TypeSchema,
+    /// Some program induction methods can take advantage of observations. This may often
+    /// practically be the [`unit`] type `()`.
+    ///
+    /// [`unit`]: https://doc.rust-lang.org/std/primitive.unit.html
+    pub observation: O,
 }

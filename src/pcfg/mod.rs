@@ -398,8 +398,12 @@ pub struct GeneticParams {
     /// being chosen for mutation. If set to `2`, then every parent is half as likely to be chosen
     /// than any one of its children.
     pub progeny_factor: f64,
+    /// A point mutation replaces a single node with a valid rule that may take its place, without
+    /// changing any children.
     pub mutation_point: f64,
+    /// A subtree mutation replaces a subtree with a valid sentence that may take its place.
     pub mutation_subtree: f64,
+    /// A reproduction mutation is a no-op.
     pub mutation_reproduction: f64,
 }
 impl Default for GeneticParams {
