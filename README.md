@@ -135,7 +135,7 @@ _strings_.
       grammar](http://cocosci.berkeley.edu/tom/papers/adaptornips.pdf)
       approach seems like a good direction to go, perhaps minus the Bayesian
       non-parametrics.
-- [ ] `impl GP for pcfg::Grammar` is not yet complete.
+- [x] `impl GP for pcfg::Grammar` is not yet complete.
 - [ ] Add more learning traits (like `EC` or `GP`)
 - [ ] Add more representations
 - [ ] Add more domains

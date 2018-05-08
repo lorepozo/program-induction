@@ -24,11 +24,14 @@ pub struct GPParams {
 /// Implementors of `GP` must provide methods for [`genesis`], [`mutate`], [`crossover`]. A
 /// [`Task`] provides a fitness function via its [`oracle`].
 ///
+/// See [`pcfg::Grammar`] for an implementation.
+///
 /// [`genesis`]: #tymethod.genesis
 /// [`mutate`]: #tymethod.mutate
 /// [`crossover`]: #tymethod.crossover
 /// [`Task`]: struct.Task.html
 /// [`oracle`]: struct.Task.html#structfield.oracle
+/// [`pcfg::Grammar`] pcfg/struct.Grammar.html
 pub trait GP: Send + Sync + Sized {
     /// An Expression is a sentence in the representation. **Tasks are solved by Expressions**.
     type Expression: Clone + Send + Sync;

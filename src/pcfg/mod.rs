@@ -393,10 +393,24 @@ impl EC for Grammar {
 ///
 /// [`GP`]: ../trait.GP.html
 pub struct GeneticParams {
-    pub max_crossover_depth: u32,
+    /// The progeny factor determines the distribution over nodes in a statement when a
+    /// node/subtree is randomly selected. If set to `1`, each node has uniform probability of
+    /// being chosen for mutation. If set to `2`, then every parent is half as likely to be chosen
+    /// than any one of its children.
+    pub progeny_factor: f64,
     pub mutation_point: f64,
     pub mutation_subtree: f64,
     pub mutation_reproduction: f64,
+}
+impl Default for GeneticParams {
+    fn default() -> GeneticParams {
+        GeneticParams {
+            progeny_factor: 2f64,
+            mutation_point: 0.45,
+            mutation_subtree: 0.45,
+            mutation_reproduction: 0.1,
+        }
+    }
 }
 
 impl GP for Grammar {
@@ -424,24 +438,29 @@ impl GP for Grammar {
     ) -> Self::Expression {
         let tot = params.mutation_point + params.mutation_subtree + params.mutation_reproduction;
         match Range::sample_single(0f64, tot, rng) {
-            x if x < params.mutation_point => mutate_random_node(prog.clone(), rng, |ar, rng| {
-                let rule = &self.rules[&ar.0][ar.1];
-                let mut candidates: Vec<_> = self.rules[&ar.0]
-                    .iter()
-                    .enumerate()
-                    .filter(|&(i, r)| r.production == rule.production && i != ar.1)
-                    .map(|(i, _)| i)
-                    .collect();
-                if candidates.is_empty() {
-                    ar
-                } else {
-                    rng.shuffle(&mut candidates);
-                    AppliedRule(ar.0, candidates[0], ar.2)
-                }
-            }),
-            x if x < params.mutation_point + params.mutation_subtree => {
-                mutate_random_node(prog.clone(), rng, |ar, rng| self.sample(&ar.0, rng))
+            // point mutation
+            x if x < params.mutation_point => {
+                mutate_random_node(params, prog.clone(), rng, |ar, rng| {
+                    let rule = &self.rules[&ar.0][ar.1];
+                    let mut candidates: Vec<_> = self.rules[&ar.0]
+                        .iter()
+                        .enumerate()
+                        .filter(|&(i, r)| r.production == rule.production && i != ar.1)
+                        .map(|(i, _)| i)
+                        .collect();
+                    if candidates.is_empty() {
+                        ar
+                    } else {
+                        rng.shuffle(&mut candidates);
+                        AppliedRule(ar.0, candidates[0], ar.2)
+                    }
+                })
             }
+            // subtree mutation
+            x if x < params.mutation_point + params.mutation_subtree => {
+                mutate_random_node(params, prog.clone(), rng, |ar, rng| self.sample(&ar.0, rng))
+            }
+            // reproduction
             _ => prog.clone(), // reproduction
         }
     }
@@ -452,9 +471,10 @@ impl GP for Grammar {
         parent1: &Self::Expression,
         parent2: &Self::Expression,
     ) -> Vec<Self::Expression> {
-        // TODO
-        let _ = (rng, params);
-        vec![parent1.clone(), parent2.clone()]
+        vec![
+            crossover_random_node(params, parent1, parent2, rng),
+            crossover_random_node(params, parent2, parent1, rng),
+        ]
     }
 }
 
@@ -585,11 +605,124 @@ where
     }
 }
 
-fn mutate_random_node<R, F>(ar: AppliedRule, rng: &mut R, mutation: F) -> AppliedRule
-where
-    R: Rng,
-    F: Fn(AppliedRule, &mut R) -> AppliedRule,
-{
-    // TODO: set ar to a random node within the tree (see commented code below)
-    mutation(ar, rng)
+use self::gp::{crossover_random_node, mutate_random_node};
+mod gp {
+    use super::{AppliedRule, GeneticParams};
+    use polytype::Type;
+    use rand::{distributions::Range, Rng};
+
+    pub fn mutate_random_node<R, F>(
+        params: &GeneticParams,
+        ar: AppliedRule,
+        rng: &mut R,
+        mutation: F,
+    ) -> AppliedRule
+    where
+        R: Rng,
+        F: Fn(AppliedRule, &mut R) -> AppliedRule,
+    {
+        let mut arc = WeightedAppliedRule::new(params, ar);
+        let mut selection = Range::sample_single(0.0, arc.2, rng);
+        // selection is like an index in a flattened weighted tree
+        {
+            let mut cur = &mut arc;
+            while selection > 1.0 {
+                // subtree
+                selection -= 1.0;
+                selection /= params.progeny_factor;
+                let prev = cur;
+                cur = prev.3
+                    .iter_mut()
+                    .find(|arc| {
+                        if selection > arc.2 {
+                            selection -= arc.2;
+                            false
+                        } else {
+                            true
+                        }
+                    })
+                    .unwrap();
+            }
+            // we've selected a node to mutate
+            let inp = AppliedRule::from(cur.clone());
+            let mutated = mutation(inp, rng);
+            *cur = WeightedAppliedRule::new(params, mutated);
+        }
+        AppliedRule::from(arc)
+    }
+
+    pub fn crossover_random_node<R: Rng>(
+        params: &GeneticParams,
+        parent1: &AppliedRule,
+        parent2: &AppliedRule,
+        rng: &mut R,
+    ) -> AppliedRule {
+        mutate_random_node(params, parent1.clone(), rng, |ar, rng| {
+            // find node in parent2 with type ar.0
+            let mut viables = Vec::new();
+            fetch_subtrees_with_type(params, parent2, &ar.0, 0, &mut viables);
+            if viables.is_empty() {
+                ar
+            } else {
+                let total = viables.iter().map(|&(weight, _)| weight).sum();
+                let mut idx = Range::sample_single(0f64, total, rng);
+                viables
+                    .into_iter()
+                    .find(|&(weight, _)| {
+                        if idx > weight {
+                            idx -= weight;
+                            false
+                        } else {
+                            true
+                        }
+                    })
+                    .unwrap()
+                    .1
+                    .clone()
+            }
+        })
+    }
+
+    fn fetch_subtrees_with_type<'a>(
+        params: &GeneticParams,
+        ar: &'a AppliedRule,
+        tp: &Type,
+        depth: usize,
+        viables: &mut Vec<(f64, &'a AppliedRule)>,
+    ) {
+        if &ar.0 == tp {
+            viables.push((params.progeny_factor.powf(depth as f64), ar))
+        }
+        for ar in &ar.2 {
+            fetch_subtrees_with_type(params, ar, tp, depth + 1, viables)
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct WeightedAppliedRule(Type, usize, f64, Vec<WeightedAppliedRule>);
+    impl WeightedAppliedRule {
+        fn new(params: &GeneticParams, ar: AppliedRule) -> Self {
+            if ar.2.is_empty() {
+                WeightedAppliedRule(ar.0, ar.1, 1.0, vec![])
+            } else {
+                let children: Vec<_> = ar.2
+                    .into_iter()
+                    .map(|ar| WeightedAppliedRule::new(params, ar))
+                    .collect();
+                let children_weight: f64 = children.iter().map(|arc| arc.2).sum();
+                let weight = 1.0 + params.progeny_factor * children_weight;
+                WeightedAppliedRule(ar.0, ar.1, weight, children)
+            }
+        }
+    }
+    impl From<WeightedAppliedRule> for AppliedRule {
+        fn from(arc: WeightedAppliedRule) -> Self {
+            if arc.3.is_empty() {
+                AppliedRule(arc.0, arc.1, vec![])
+            } else {
+                let children = arc.3.into_iter().map(Self::from).collect();
+                AppliedRule(arc.0, arc.1, children)
+            }
+        }
+    }
 }
