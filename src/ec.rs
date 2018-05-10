@@ -92,7 +92,7 @@ pub trait EC: Send + Sync + Sized {
     /// [`Expression`]: #associatedtype.Expression
     fn enumerate<F>(&self, tp: TypeSchema, termination_condition: F)
     where
-        F: FnMut(Self::Expression, f64) -> bool;
+        F: Fn(Self::Expression, f64) -> bool + Send + Sync;
     /// Update the representation based on findings of expressions that solve [`Task`]s.
     ///
     /// The `frontiers` argument, and similar return value, must always be of the same size as
@@ -294,20 +294,14 @@ where
     L: EC<Expression = X>,
 {
     // initialization
-    let frontiers: Vec<_> = tasks
-        .iter()
-        .map(|&(j, _)| (j, ECFrontier::default()))
-        .collect();
-    let frontiers = Arc::new(Mutex::new(frontiers));
-    let tasks: Vec<_> = tasks
+    let frontiers: Vec<_> = tasks // associate task id with task and frontier
         .into_iter()
-        .enumerate()
-        .map(|(i, (_, t))| (i, t))
+        .map(|(j, t)| (j, Some(t), ECFrontier::default()))
         .collect();
-    let tasks = Arc::new(RwLock::new(tasks));
+    let frontiers = Arc::new(RwLock::new(frontiers));
 
     // termination conditions
-    let mut timeout_complete: Box<Fn() -> bool> = Box::new(|| false);
+    let mut timeout_complete: Box<Fn() -> bool + Send + Sync> = Box::new(|| false);
     let (tx, rx) = bounded(1);
     if let Some(duration) = params.search_limit_timeout {
         thread::spawn(move || {
@@ -316,50 +310,64 @@ where
         });
         timeout_complete = Box::new(move || rx.try_recv().is_ok());
     }
-    let mut dl_complete: Box<Fn(f64) -> bool> = Box::new(|_| false);
+    let mut dl_complete: Box<Fn(f64) -> bool + Send + Sync> = Box::new(|_| false);
     if let Some(dl) = params.search_limit_description_length {
         dl_complete = Box::new(move |logprior| -logprior > dl);
     }
+    let is_terminated = Arc::new(RwLock::new(false));
 
     // update frontiers and check for termination
     let termination_condition = {
-        let frontiers = frontiers.clone();
+        let frontiers = Arc::clone(&frontiers);
         move |expr: X, logprior: f64| {
-            let to_remove: Vec<_> = tasks
+            {
+                if *is_terminated.read().unwrap() {
+                    return true;
+                }
+            }
+            let hits: Vec<_> = frontiers
                 .read()
-                .expect("enumeration tasks poisoned")
-                .par_iter()
+                .expect("enumeration frontiers poisoned")
+                .iter()
                 .enumerate()
-                .filter_map(|(j, &(i, t))| {
+                .filter_map(|(i, &(_, ref ot, _))| ot.as_ref().map(|t| (i, t))) // only check incomplete tasks
+                .filter_map(|(i, t)| {
                     let l = (t.oracle)(repr, &expr);
                     if l.is_finite() {
-                        let mut frontiers =
-                            frontiers.lock().expect("enumeration frontiers poisoned");
-                        frontiers[i].1.push(expr.clone(), logprior, l);
-                        if frontiers[i].1.len() >= params.frontier_limit {
-                            Some(j)
-                        } else {
-                            None
-                        }
+                        Some((i, expr.clone(), logprior, l))
                     } else {
                         None
                     }
                 })
                 .collect();
-            if !to_remove.is_empty() {
-                let mut tasks = tasks.write().expect("enumeration tasks poisoned");
-                for j in to_remove.into_iter().rev() {
-                    tasks.remove(j);
+            if !hits.is_empty() {
+                let mut frontiers = frontiers.write().expect("enumeration frontiers poisoned");
+                for (i, expr, logprior, l) in hits {
+                    frontiers[i].2.push(expr, logprior, l);
+                    if frontiers[i].2.len() >= params.frontier_limit {
+                        frontiers[i].1 = None
+                    }
                 }
             }
-            tasks.read().expect("enumeration tasks poisoned").is_empty() | timeout_complete()
-                | dl_complete(logprior)
+            let mut is_terminated = is_terminated.write().unwrap();
+            if *is_terminated
+                | frontiers
+                    .read()
+                    .expect("enumeration frontiers poisoned")
+                    .is_empty() | timeout_complete() | dl_complete(logprior)
+            {
+                *is_terminated = true;
+                true
+            } else {
+                false
+            }
         }
     };
 
     repr.enumerate(tp, termination_condition);
     if let Ok(l) = Arc::try_unwrap(frontiers) {
-        l.into_inner().expect("enumeration frontiers poisoned")
+        let frontiers = l.into_inner().expect("enumeration frontiers poisoned");
+        frontiers.into_iter().map(|(j, _, f)| (j, f)).collect()
     } else {
         panic!("enumeration lifetime exceeded its scope")
     }
