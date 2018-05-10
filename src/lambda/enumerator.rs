@@ -186,7 +186,7 @@ mod par {
         let (items, bfss) = super::bfs::search(dsl, ctx, request, shards);
         if items
             .into_iter()
-            .filter(|&(_, ll, _)| -ll < budget.0)
+            .filter(|&(_, ll, _)| ll >= budget.0 && ll < budget.1)
             .all(|(expr, ll, ctx)| cb(expr, ll, ctx))
         {
             bfss.into_par_iter()
