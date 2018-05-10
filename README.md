@@ -11,8 +11,8 @@ See the [docs](https://docs.rs/programinduction) for more information.
 
 ## Installation
 
-Install [rust](https://rust-lang.org). In a new or existing project, add the
-following to your `Cargo.toml`:
+Install [rust](https://rust-lang.org) and ensure you're up to date (`rustup update`).
+In a new or existing project, add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
