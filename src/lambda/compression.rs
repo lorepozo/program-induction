@@ -862,7 +862,7 @@ mod proposals {
     fn from_subexpression<'a>(
         expr: &'a Expression,
         arity: u32,
-    ) -> Box<Iterator<Item = Fragment> + 'a> {
+    ) -> impl Iterator<Item = Fragment> + 'a {
         let rst: Box<Iterator<Item = Fragment>> = match *expr {
             Expression::Application(ref f, ref x) => {
                 Box::new(from_subexpression(f, arity).chain(from_subexpression(x, arity)))
@@ -870,7 +870,7 @@ mod proposals {
             Expression::Abstraction(ref body) => Box::new(from_subexpression(body, arity)),
             _ => Box::new(iter::empty()),
         };
-        Box::new(from_particular(expr, arity, true).chain(rst))
+        from_particular(expr, arity, true).chain(rst)
     }
     fn from_particular<'a>(
         expr: &'a Expression,
@@ -908,7 +908,7 @@ mod proposals {
             rst
         }
     }
-    fn to_inventions(expr: Expression) -> Box<Iterator<Item = Expression>> {
+    fn to_inventions(expr: Expression) -> impl Iterator<Item = Expression> {
         // for any common subtree within the expression, replace with new index.
         let reach = free_reach(&expr, 0);
         let mut counts = HashMap::new();
@@ -924,7 +924,7 @@ mod proposals {
                 substitute(&mut expr, &subtree, &Expression::Index(reach));
                 expr
             });
-        Box::new(fst.chain(rst))
+        fst.chain(rst)
     }
 
     /// How far out does the furthest reaching index go, excluding internal abstractions?
