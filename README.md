@@ -126,6 +126,7 @@ _strings_.
 - [x] Add task generation function in `domains::strings`
 - [x] Fallible evaluation (e.g. see how `domains::strings` handles `slice`).
 - [x] Lazy evaluation.
+- [x] `impl GP for pcfg::Grammar` is not yet complete.
 - [ ] Consolidate lazy/non-lazy evaluation (for ergonomics).
 - [ ] Permit non-`&'static str`-named `Type`/`TypeSchema`.
 - [ ] Ability to include recursive primitives in `lambda` representation.
@@ -136,7 +137,6 @@ _strings_.
       grammar](http://cocosci.berkeley.edu/tom/papers/adaptornips.pdf)
       approach seems like a good direction to go, perhaps minus the Bayesian
       non-parametrics.
-- [x] `impl GP for pcfg::Grammar` is not yet complete.
 - [ ] Add more learning traits (like `EC` or `GP`)
 - [ ] Add more representations
 - [ ] Add more domains
