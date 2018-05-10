@@ -1,7 +1,7 @@
-use crossbeam_channel::bounded;
+use crossbeam_channel::{bounded, Sender};
 use itertools::Itertools;
 use polytype::{Context, Type, TypeSchema};
-use rayon::iter;
+use rayon::join;
 use rayon::prelude::*;
 use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
@@ -104,9 +104,15 @@ pub fn induce<O: Sync>(
                     .par_iter()
                     .map(|f| dsl.rescore_frontier(f, params.topk))
                     .collect();
-                let best_proposal = iter::repeat(dsl.clone())
-                    .zip(dsl.propose_inventions(&rescored_frontiers, params.arity))
-                    .filter_map(|(mut dsl, fragment_expr)| {
+                let (tx, rx) = bounded(100);
+                let (_, proposals) = join(
+                    || dsl.propose_inventions(&rescored_frontiers, params.arity, tx),
+                    || rx.iter().collect::<Vec<_>>(),
+                );
+                let best_proposal = proposals
+                    .into_par_iter()
+                    .filter_map(|fragment_expr| {
+                        let mut dsl = dsl.clone();
                         dsl.invent(fragment_expr, 0f64).unwrap();
                         let s = dsl.score(
                             &rescored_frontiers,
@@ -446,7 +452,12 @@ impl Language {
     }
 
     /// Yields expressions that may have free variables.
-    fn propose_inventions(&self, frontiers: &[RescoredFrontier], arity: u32) -> Vec<Expression> {
+    fn propose_inventions(
+        &self,
+        frontiers: &[RescoredFrontier],
+        arity: u32,
+        tx: Sender<Expression>,
+    ) {
         let findings = Arc::new(RwLock::new(HashMap::new()));
         frontiers
             .par_iter()
@@ -460,32 +471,30 @@ impl Language {
                     .is_none()
             })
             .for_each(|fragment_expr| {
-                let did_update = {
+                let res = {
                     let h = findings.read().expect("hashmap was poisoned");
                     h.get(&fragment_expr)
-                        .map(|x: &AtomicUsize| x.fetch_add(1, Ordering::Relaxed))
-                        .is_some()
+                        .map(|x: &AtomicUsize| x.fetch_add(1, Ordering::SeqCst))
                 };
-                if !did_update {
-                    let mut h = findings.write().expect("hashmap was poisoned");
-                    let count = h.entry(fragment_expr)
-                        .or_insert_with(|| AtomicUsize::new(0));
-                    count.fetch_add(1, Ordering::Relaxed);
+                match res {
+                    Some(2) if self.infer(&fragment_expr).is_ok() => {
+                        tx.send(fragment_expr)
+                            .expect("failed to send fragment proposal");
+                    }
+                    None => {
+                        let mut h = findings.write().expect("hashmap was poisoned");
+                        let count = h.entry(fragment_expr.clone())
+                            .or_insert_with(|| AtomicUsize::new(0));
+                        if 2 == count.fetch_add(1, Ordering::SeqCst)
+                            && self.infer(&fragment_expr).is_ok()
+                        {
+                            tx.send(fragment_expr)
+                                .expect("failed to send fragment proposal");
+                        }
+                    }
+                    _ => (),
                 }
             });
-        Arc::try_unwrap(findings)
-            .unwrap()
-            .into_inner()
-            .unwrap()
-            .into_iter()
-            .filter_map(move |(fragment_expr, count)| {
-                if count.into_inner() >= 2 && self.infer(&fragment_expr).is_ok() {
-                    Some(fragment_expr)
-                } else {
-                    None
-                }
-            })
-            .collect()
     }
 }
 
