@@ -200,8 +200,8 @@ impl Language {
     /// let tasks = circuits::make_tasks(100);
     /// let ec_params = ECParams {
     ///     frontier_limit: 10,
-    ///     search_limit_timeout: Some(std::time::Duration::new(2, 0)),
-    ///     search_limit_description_length: None,
+    ///     search_limit_timeout: None,
+    ///     search_limit_description_length: Some(10.0),
     /// };
     /// let params = lambda::CompressionParams::default();
     ///

@@ -25,7 +25,7 @@ fn ec_circuits_dl() {
     let ec_params = ECParams {
         frontier_limit: 10,
         search_limit_timeout: None,
-        search_limit_description_length: Some(8.0),
+        search_limit_description_length: Some(9.0),
     };
     let params = lambda::CompressionParams::default();
 
