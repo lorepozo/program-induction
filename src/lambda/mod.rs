@@ -146,9 +146,24 @@ impl Language {
     ///     ("1", ptp!(int)),
     ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
     /// ]);
-    /// for (expr, log_prior) in dsl.enumerate(ptp!(int)).take(8) {
-    ///     println!("{} at {} nats", dsl.display(&expr), log_prior)
-    /// }
+    /// let exprs: Vec<Expression> = dsl.enumerate(ptp!(int))
+    ///     .take(8)
+    ///     .map(|(expr, _log_prior)| expr)
+    ///     .collect();
+    ///
+    /// assert_eq!(
+    ///     exprs,
+    ///     vec![
+    ///         Expression::Primitive(0),
+    ///         Expression::Primitive(1),
+    ///         dsl.parse("(+ 0 0)").unwrap(),
+    ///         dsl.parse("(+ 0 1)").unwrap(),
+    ///         dsl.parse("(+ 1 0)").unwrap(),
+    ///         dsl.parse("(+ 1 1)").unwrap(),
+    ///         dsl.parse("(+ 0 (+ 0 0))").unwrap(),
+    ///         dsl.parse("(+ 0 (+ 0 1))").unwrap(),
+    ///     ]
+    /// );
     /// # }
     /// ```
     ///
