@@ -313,37 +313,45 @@ mod bfs {
                     };
                     super::enumerate(dsl, ctx, req, &nenv, budget, 0, cb)
                 }
-                HoleExpression::Application(ref hf, ref hx) => match (hf.free(), hx.free()) {
-                    (false, true) => {
-                        let f = hf.as_expression().unwrap();
+                HoleExpression::Application(ref hf, ref hx) if !hf.free() => {
+                    let f = hf.as_expression().unwrap();
+                    let idx = Some(idx.map(|(i, e)| (i + 1, e)).unwrap_or((0, &f)));
+                    let cb_arg = &mut |arg, ll, ctx| {
+                        if let Some((i, e)) = idx {
+                            if dsl.violates_symmetry(e, i, &arg) {
+                                return true;
+                            }
+                        }
+                        cb(
+                            Expression::Application(Box::new(f.clone()), Box::new(arg)),
+                            ll,
+                            ctx,
+                        )
+                    };
+                    hx.enumerate_dfs(dsl, ctx, env, budget, idx, abs_depth, cb_arg)
+                }
+                HoleExpression::Application(ref hf, ref hx) => {
+                    // both hf and hx are free
+                    // TODO: consider not duplicating some work
+                    let cb_f = &mut |f: Expression, f_ll, ctx| {
                         let idx = Some(idx.map(|(i, e)| (i + 1, e)).unwrap_or((0, &f)));
-                        let cb_arg = &mut |arg, ll, ctx| {
+                        let cb_arg = &mut |arg, arg_ll, ctx| {
+                            if let Some((i, e)) = idx {
+                                if dsl.violates_symmetry(e, i, &arg) {
+                                    return true;
+                                }
+                            }
                             cb(
                                 Expression::Application(Box::new(f.clone()), Box::new(arg)),
-                                ll,
+                                f_ll + arg_ll,
                                 ctx,
                             )
                         };
-                        hx.enumerate_dfs(dsl, ctx, env, budget, idx, abs_depth, cb_arg)
-                    }
-                    (true, true) => {
-                        // TODO: consider not duplicating some work
-                        let cb_f = &mut |f: Expression, f_ll, ctx| {
-                            let idx = Some(idx.map(|(i, e)| (i + 1, e)).unwrap_or((0, &f)));
-                            let cb_arg = &mut |arg, arg_ll, ctx| {
-                                cb(
-                                    Expression::Application(Box::new(f.clone()), Box::new(arg)),
-                                    f_ll + arg_ll,
-                                    ctx,
-                                )
-                            };
-                            let budget = (budget.0 + f_ll, budget.1 + f_ll);
-                            hx.enumerate_dfs(dsl, &ctx, env, budget, idx, abs_depth, cb_arg)
-                        };
-                        hf.enumerate_dfs(dsl, ctx, env, (0.0, budget.1), None, abs_depth, cb_f)
-                    }
-                    _ => panic!("impossible hole application free-ness"),
-                },
+                        let budget = (budget.0 + f_ll, budget.1 + f_ll);
+                        hx.enumerate_dfs(dsl, &ctx, env, budget, idx, abs_depth, cb_arg)
+                    };
+                    hf.enumerate_dfs(dsl, ctx, env, (0.0, budget.1), None, abs_depth, cb_f)
+                }
                 HoleExpression::Abstraction(ref body) => {
                     let cb =
                         &mut |body, ll, ctx| cb(Expression::Abstraction(Box::new(body)), ll, ctx);
