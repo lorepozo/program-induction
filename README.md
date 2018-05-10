@@ -7,6 +7,7 @@
 A library for program induction and learning representations.
 
 Implements Bayesian program learning and genetic programming.
+See the [docs](https://docs.rs/programinduction) for more information.
 
 ## Installation
 

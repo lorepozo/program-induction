@@ -62,9 +62,9 @@
 //! polymorphically-typed lambda calculus in the [`lambda`] module, and a probabilistic context
 //! free grammar in the [`pcfg`] module.
 //!
-//! See the [`EC`] trait for an example.
+//! See the [`EC`] trait for details and an example.
 //!
-//! # Genetic Programming
+//! # Genetic programming
 //!
 //! Our primary resource is the 2008 book by Poli et al.: [_A Field Guide to Genetic Programming_].
 //!
@@ -81,7 +81,7 @@
 //! different representations, so we provide a representation-agnostic trait [`GP`]. We provide an
 //! implementation for probabilistic context free grammars in the [`pcfg`] module.
 //!
-//! See the [`GP`] trait for an example.
+//! See the [`GP`] trait for details and an example.
 //!
 //! [Human-level concept learning through probabilistic program induction]: http://web.mit.edu/cocosci/Papers/Science-2015-Lake-1332-8.pdf
 //! [Bootstrap learning via modular concept discovery]: https://hips.seas.harvard.edu/files/dechter-bootstrap-ijcai-2013.pdf
