@@ -155,6 +155,13 @@ pub trait EC: Send + Sync + Sized {
         tasks: &[Task<Self, Self::Expression, O>],
     ) -> (Self, Vec<ECFrontier<Self>>) {
         let frontiers = self.explore(ecparams, tasks);
+        if cfg!(feature = "verbose") {
+            eprintln!(
+                "EXPLORE-COMPRESS: explored {} frontiers with {} hits",
+                frontiers.len(),
+                frontiers.iter().filter(|f| !f.is_empty()).count()
+            )
+        }
         self.compress(params, tasks, frontiers)
     }
 
@@ -243,8 +250,7 @@ pub trait EC: Send + Sync + Sized {
         {
             let mutex = Arc::new(Mutex::new(&mut results));
             tps.into_par_iter()
-                .map(|(tp, tasks)| enumerate_solutions(self, ec_params, tp.clone(), tasks))
-                .flat_map(|iter| iter)
+                .flat_map(|(tp, tasks)| enumerate_solutions(self, ec_params, tp.clone(), tasks))
                 .for_each(move |(i, frontier)| {
                     let mut results = mutex.lock().unwrap();
                     results[i] = frontier

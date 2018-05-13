@@ -5,35 +5,59 @@ use std::rc::Rc;
 
 use super::{Expression, Language, LinkedList};
 
-const BUDGET_INCREMENT: f64 = 1.0;
 const MAX_DEPTH: u32 = 8192;
 
 fn budget_interval(n: u32) -> (f64, f64) {
-    let offset = BUDGET_INCREMENT * f64::from(n);
-    (offset, offset + BUDGET_INCREMENT)
+    match n / 6 {
+        0 => {
+            let offset = f64::from(n) * 2.0;
+            (offset, offset + 2.0)
+        }
+        1 => {
+            let offset = 12. + f64::from(n - 6) * 1.0;
+            (offset, offset + 1.0)
+        }
+        _ => {
+            let offset = 18. + f64::from(n - 12) * 0.5;
+            (offset, offset + 0.5)
+        }
+    }
 }
 
 pub fn run<F>(dsl: &Language, request: TypeSchema, termination_condition: F)
 where
     F: Fn(Expression, f64) -> bool + Send + Sync,
 {
+    let mut ctx = Context::default();
+    let tp = request.instantiate_owned(&mut ctx);
     if ::rayon::current_num_threads() == 1 {
         // dfs
-        let mut ctx = Context::default();
-        let tp = request.instantiate_owned(&mut ctx);
         let env = Rc::new(LinkedList::default());
         let cb = &mut |expr, logprior, _| !termination_condition(expr, logprior);
-        (0..)
-            .map(budget_interval)
-            .all(|budget| enumerate(dsl, &ctx, &tp, &env, budget, 0, cb));
+        (0..).map(budget_interval).all(|budget| {
+            if cfg!(feature = "verbose") {
+                eprintln!(
+                    "ENUMERATION: starting budget {:?} for request {}",
+                    budget, &tp
+                );
+            }
+            enumerate(dsl, &ctx, &tp, &env, budget, 0, cb)
+        });
     } else {
         // partial bfs then dfs
-        let mut ctx = Context::default();
-        let tp = request.instantiate_owned(&mut ctx);
         let cb = move |expr, logprior, _| !termination_condition(expr, logprior);
-        (0..)
-            .map(budget_interval)
-            .all(|budget| self::par::enumerate(dsl, &ctx, &tp, budget, &cb));
+        (0..).map(budget_interval).all(|budget| {
+            if cfg!(feature = "verbose") {
+                eprintln!(
+                    "ENUMERATION: starting budget {:?} for request {}",
+                    budget, &tp
+                );
+            }
+            self::par::enumerate(dsl, &ctx, &tp, budget, &cb)
+        });
+    }
+    if cfg!(feature = "verbose") {
+        eprintln!("ENUMERATION: finished for request {}", &tp);
     }
 }
 

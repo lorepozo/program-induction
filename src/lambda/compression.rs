@@ -97,6 +97,9 @@ pub fn induce<O: Sync>(
         params.structure_penalty,
     );
 
+    if cfg!(feature = "verbose") {
+        eprintln!("COMPRESSION: starting score: {}", best_score)
+    }
     if params.aic.is_finite() {
         loop {
             let fragment_expr = {
@@ -109,6 +112,9 @@ pub fn induce<O: Sync>(
                     || dsl.propose_inventions(&rescored_frontiers, params.arity, tx),
                     || rx.iter().collect::<Vec<_>>(),
                 );
+                if cfg!(feature = "verbose") {
+                    eprintln!("COMPRESSION: proposed {} fragments", proposals.len())
+                }
                 let best_proposal = proposals
                     .into_par_iter()
                     .filter_map(|fragment_expr| {
@@ -128,10 +134,16 @@ pub fn induce<O: Sync>(
                     })
                     .max_by(|&(_, ref x), &(_, ref y)| x.partial_cmp(y).unwrap());
                 if best_proposal.is_none() {
+                    if cfg!(feature = "verbose") {
+                        eprintln!("COMPRESSION: no sufficient proposals")
+                    }
                     break;
                 }
                 let (new_dsl, new_score) = best_proposal.unwrap();
                 if new_score <= best_score {
+                    if cfg!(feature = "verbose") {
+                        eprintln!("COMPRESSION: score did not improve")
+                    }
                     break;
                 }
                 dsl = new_dsl;
@@ -140,6 +152,13 @@ pub fn induce<O: Sync>(
                 let (fragment_expr, _, log_prior) = dsl.invented.pop().unwrap();
                 let inv = proposals::defragment(fragment_expr.clone());
                 dsl.invent(inv, log_prior).expect("invalid invention");
+                if cfg!(feature = "verbose") {
+                    eprintln!(
+                        "COMPRESSION: score improved to {} with invention {}",
+                        best_score,
+                        dsl.display(&fragment_expr),
+                    )
+                }
                 fragment_expr
             };
             let i = dsl.invented.len() - 1;
