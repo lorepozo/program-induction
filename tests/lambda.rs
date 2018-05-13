@@ -262,20 +262,11 @@ fn lambda_eval_somewhat_simple() {
 
 #[test]
 fn lambda_eval_firstclass() {
-    #[derive(Clone)]
+    #[derive(Clone, PartialEq)]
     enum ListSpace {
         Num(i32),
         List(Vec<i32>),
         Func(LiftedFunction<ListSpace, ListEvaluator>),
-    }
-    impl PartialEq for ListSpace {
-        fn eq(&self, other: &Self) -> bool {
-            match (self, other) {
-                (&ListSpace::Num(x), &ListSpace::Num(y)) => x == y,
-                (&ListSpace::List(ref xs), &ListSpace::List(ref ys)) => xs == ys,
-                _ => false,
-            }
-        }
     }
 
     #[derive(Clone)]
@@ -373,21 +364,11 @@ fn lambda_lazy_eval() {
     #[derive(Clone, Debug, PartialEq)]
     struct ListError(&'static str);
 
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, PartialEq)]
     enum ListSpace {
         Bool(bool),
         Num(i32),
         List(Vec<i32>),
-    }
-    impl PartialEq for ListSpace {
-        fn eq(&self, other: &Self) -> bool {
-            match (self, other) {
-                (&ListSpace::Bool(x), &ListSpace::Bool(y)) => x == y,
-                (&ListSpace::Num(x), &ListSpace::Num(y)) => x == y,
-                (&ListSpace::List(ref xs), &ListSpace::List(ref ys)) => xs == ys,
-                _ => false,
-            }
-        }
     }
 
     #[derive(Copy, Clone)]
@@ -443,4 +424,101 @@ fn lambda_lazy_eval() {
 
     let expr = dsl.parse("(λ (if (empty? $0) -1 (car $0)))").unwrap();
     assert!((task.oracle)(&dsl, &expr).is_finite());
+}
+
+#[test]
+fn lambda_lazy_eval_firstclass() {
+    #[derive(Clone, PartialEq)]
+    enum ListSpace {
+        Num(i32),
+        List(Vec<i32>),
+        Func(LiftedLazyFunction<ListSpace, LazyListEvaluator>),
+    }
+
+    #[derive(Clone)]
+    struct LazyListEvaluator;
+    impl LazyEvaluator for LazyListEvaluator {
+        type Space = ListSpace;
+        type Error = ();
+        fn lazy_evaluate(
+            &self,
+            primitive: &str,
+            inps: &[LiftedLazyFunction<Self::Space, Self>],
+        ) -> Result<Self::Space, Self::Error> {
+            match primitive {
+                "0" => Ok(ListSpace::Num(0)),
+                "1" => Ok(ListSpace::Num(1)),
+                "+" => match (inps[0].eval(&[])?, inps[1].eval(&[])?) {
+                    (ListSpace::Num(x), ListSpace::Num(y)) => Ok(ListSpace::Num(x + y)),
+                    _ => unreachable!(),
+                },
+                "singleton" => match inps[0].eval(&[])? {
+                    ListSpace::Num(x) => Ok(ListSpace::List(vec![x])),
+                    _ => unreachable!(),
+                },
+                "chain" => match (inps[0].eval(&[])?, inps[1].eval(&[])?) {
+                    (ListSpace::List(xs), ListSpace::List(ys)) => {
+                        Ok(ListSpace::List(xs.into_iter().chain(ys).collect()))
+                    }
+                    _ => unreachable!(),
+                },
+                "map" => match (inps[0].eval(&[])?, inps[1].eval(&[])?) {
+                    (ListSpace::Func(f), ListSpace::List(xs)) => Ok(ListSpace::List(xs.into_iter(
+                    ).map(|x| {
+                            f.eval(&[ListSpace::Num(x)])
+                                .map(|v| match v {
+                                    ListSpace::Num(y) => y,
+                                    _ => panic!("map given invalid function"),
+                                })
+                                .map_err(|_| ())
+                        })
+                        .collect::<Result<_, _>>()?)),
+                    _ => unreachable!(),
+                },
+                _ => unreachable!(),
+            }
+        }
+        fn lift(&self, f: LiftedLazyFunction<Self::Space, Self>) -> Result<Self::Space, ()> {
+            Ok(ListSpace::Func(f))
+        }
+    }
+
+    let dsl = Language::uniform(vec![
+        ("0", ptp!(int)),
+        ("1", ptp!(int)),
+        ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+        ("singleton", ptp!(@arrow[tp!(int), tp!(list(tp!(int)))])),
+        (
+            "chain",
+            ptp!(@arrow[tp!(list(tp!(int))), tp!(list(tp!(int))), tp!(list(tp!(int)))]),
+        ),
+        (
+            "map",
+            ptp!(@arrow[
+                tp!(@arrow[tp!(int), tp!(int)]),
+                tp!(list(tp!(int))),
+                tp!(list(tp!(int)))
+            ]),
+        ),
+    ]);
+    let examples = vec![
+        (
+            vec![ListSpace::Num(5), ListSpace::List(vec![2, 5, 7])],
+            ListSpace::List(vec![7, 10, 12]),
+        ),
+        (
+            vec![ListSpace::Num(2), ListSpace::List(vec![1, 2, 3])],
+            ListSpace::List(vec![3, 4, 5]),
+        ),
+    ];
+    // task: add-k
+    let tp = ptp!(@arrow[tp!(list(tp!(int))), tp!(int), tp!(list(tp!(int)))]);
+    let task = task_by_lazy_evaluation(LazyListEvaluator, tp, &examples);
+
+    // good solution:
+    let expr = dsl.parse("(λ (λ (map (λ (+ $0 $2)) $0)))").unwrap();
+    assert!((task.oracle)(&dsl, &expr).is_finite());
+    // bad solution:
+    let expr = dsl.parse("(λ (λ (map (λ (+ $0 1)) $0)))").unwrap();
+    assert!((task.oracle)(&dsl, &expr).is_infinite());
 }

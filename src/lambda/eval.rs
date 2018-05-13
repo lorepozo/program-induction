@@ -473,6 +473,21 @@ where
         LiftedFunction(self.0.clone(), self.1.clone(), self.2.clone())
     }
 }
+impl<V, E> PartialEq for LiftedFunction<V, E>
+where
+    E: Evaluator<Space = V>,
+    V: Clone + PartialEq + Send + Sync,
+{
+    fn eq(&self, other: &LiftedFunction<V, E>) -> bool {
+        self.0 == other.0 && self.2 == other.2
+    }
+}
+impl<V, E> Eq for LiftedFunction<V, E>
+where
+    E: Evaluator<Space = V>,
+    V: Clone + PartialEq + Send + Sync,
+{
+}
 
 /// Like [`LiftedFunction`], but for lazy evaluation with a [`LazyEvaluator`].
 ///
@@ -507,6 +522,21 @@ where
     fn clone(&self) -> Self {
         LiftedLazyFunction(self.0.clone(), self.1.clone(), self.2.clone())
     }
+}
+impl<V, E> PartialEq for LiftedLazyFunction<V, E>
+where
+    E: LazyEvaluator<Space = V>,
+    V: Clone + PartialEq + Send + Sync,
+{
+    fn eq(&self, other: &LiftedLazyFunction<V, E>) -> bool {
+        self.0 == other.0 && self.2 == other.2
+    }
+}
+impl<V, E> Eq for LiftedLazyFunction<V, E>
+where
+    E: LazyEvaluator<Space = V>,
+    V: Clone + PartialEq + Send + Sync,
+{
 }
 
 use self::ReducedExpression::*;
@@ -555,9 +585,8 @@ where
             let next = evaluated.eval(evaluator, env)?;
             if next == evaluated {
                 break;
-            } else {
-                evaluated = next
             }
+            evaluated = next;
         }
         match evaluated {
             Value(o) => Ok(o),
@@ -579,9 +608,8 @@ where
             let next = evaluated.lazy_eval(evaluator, env)?;
             if next == evaluated {
                 break;
-            } else {
-                evaluated = next
             }
+            evaluated = next;
         }
         match evaluated {
             Value(o) => Ok(o),
