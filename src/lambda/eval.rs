@@ -169,22 +169,13 @@ where
 /// #[derive(Clone)]
 /// struct ListError(&'static str);
 ///
-/// #[derive(Clone)]
+/// #[derive(Clone, PartialEq)]
 /// enum ListSpace {
 ///     Num(i32),
 ///     NumList(Vec<i32>),
 ///     Func(LiftedFunction<ListSpace, ListsEvaluator>),
 /// }
 /// use ListSpace::*;
-/// impl PartialEq for ListSpace {
-///     fn eq(&self, other: &Self) -> bool {
-///         match (self, other) {
-///             (&Num(x), &Num(y)) => x == y,
-///             (&NumList(ref xs), &NumList(ref ys)) => xs == ys,
-///             _ => false,
-///         }
-///     }
-/// }
 ///
 /// #[derive(Copy, Clone)]
 /// struct ListsEvaluator;
@@ -300,23 +291,13 @@ pub trait Evaluator: Sized + Sync {
 /// #[derive(Clone, Debug, PartialEq)]
 /// struct ListError(&'static str);
 ///
-/// #[derive(Clone, Debug)]
+/// #[derive(Clone, Debug, PartialEq)]
 /// enum ListSpace {
 ///     Bool(bool),
 ///     Num(i32),
 ///     List(Vec<i32>),
 /// }
 /// use ListSpace::*;
-/// impl PartialEq for ListSpace {
-///     fn eq(&self, other: &Self) -> bool {
-///         match (self, other) {
-///             (&Bool(x), &Bool(y)) => x == y,
-///             (&Num(x), &Num(y)) => x == y,
-///             (&List(ref xs), &List(ref ys)) => xs == ys,
-///             _ => false,
-///         }
-///     }
-/// }
 ///
 /// #[derive(Copy, Clone)]
 /// struct ListsEvaluator;
