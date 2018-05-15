@@ -900,23 +900,19 @@ mod proposals {
             return Box::new(iter::once(Fragment::Expression(expr.clone())));
         }
         let rst: Box<Iterator<Item = Fragment> + 'a> = match *expr {
-            Expression::Application(ref f, ref x) => {
-                if !toplevel {
-                    Box::new((0..arity + 1).flat_map(move |fa| {
-                        let fs = from_particular(f, fa, false);
-                        let xs: Vec<_> =
-                            from_particular(x, (arity as i32 - fa as i32) as u32, false).collect();
-                        fs.into_iter().zip(iter::repeat(xs)).flat_map(|(f, xs)| {
-                            xs.into_iter().map(move |x| {
-                                Fragment::Application(Box::new(f.clone()), Box::new(x))
-                            })
-                        })
-                    }))
-                } else {
-                    Box::new(iter::empty())
-                }
-            }
-            Expression::Abstraction(ref body) => Box::new(
+            Expression::Application(ref f, ref x) => Box::new((0..arity + 1).flat_map(move |fa| {
+                let xa = (arity as i32 - fa as i32) as u32;
+                from_particular(f, fa, false)
+                    .into_iter()
+                    .zip(iter::repeat(
+                        from_particular(x, xa, false).collect::<Vec<_>>(),
+                    ))
+                    .flat_map(|(f, xs)| {
+                        xs.into_iter()
+                            .map(move |x| Fragment::Application(Box::new(f.clone()), Box::new(x)))
+                    })
+            })),
+            Expression::Abstraction(ref body) if !toplevel => Box::new(
                 from_particular(body, arity, false).map(|e| Fragment::Abstraction(Box::new(e))),
             ),
             _ => Box::new(iter::empty()),
