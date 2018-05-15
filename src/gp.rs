@@ -47,7 +47,7 @@ pub struct GPParams {
 /// extern crate rand;
 /// use programinduction::pcfg::{self, Grammar, Rule};
 /// use programinduction::{GPParams, Task, GP};
-/// use rand::{SmallRng, SeedableRng};
+/// use rand::{rngs::SmallRng, SeedableRng};
 ///
 /// fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
 ///     match name {
@@ -87,8 +87,8 @@ pub struct GPParams {
 ///         n_delta: 1,
 ///     };
 ///     let params = pcfg::GeneticParams::default();
-///     let generations = 300;
-///     let rng = &mut SmallRng::from_seed([4u8; 16]);
+///     let generations = 1000;
+///     let rng = &mut SmallRng::from_seed([1u8; 16]);
 ///
 ///     let mut pop = g.init(&params, rng, &gpparams, &task);
 ///     for _ in 0..generations {

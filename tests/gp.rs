@@ -4,7 +4,7 @@ extern crate programinduction;
 extern crate rand;
 use programinduction::pcfg::{self, Grammar, Rule};
 use programinduction::{GPParams, Task, GP};
-use rand::{SeedableRng, SmallRng};
+use rand::{rngs::SmallRng, SeedableRng};
 
 #[test]
 fn gp_sum_arith() {
@@ -44,8 +44,8 @@ fn gp_sum_arith() {
         n_delta: 1,
     };
     let params = pcfg::GeneticParams::default();
-    let generations = 300;
-    let rng = &mut SmallRng::from_seed([4u8; 16]);
+    let generations = 1000;
+    let rng = &mut SmallRng::from_seed([1u8; 16]);
 
     let mut pop = g.init(&params, rng, &gpparams, &task);
     for _ in 0..generations {
