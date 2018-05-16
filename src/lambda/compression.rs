@@ -917,7 +917,7 @@ mod proposals {
             ),
             _ => Box::new(iter::empty()),
         };
-        if arity == 1 {
+        if arity >= 1 {
             Box::new(iter::once(Fragment::Variable).chain(rst))
         } else {
             rst
