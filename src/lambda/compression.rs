@@ -917,11 +917,7 @@ mod proposals {
             ),
             _ => Box::new(iter::empty()),
         };
-        if arity >= 1 {
-            Box::new(iter::once(Fragment::Variable).chain(rst))
-        } else {
-            rst
-        }
+        Box::new(iter::once(Fragment::Variable).chain(rst))
     }
     fn to_inventions(expr: Expression) -> impl Iterator<Item = Expression> {
         // for any common subtree within the expression, replace with new index.
