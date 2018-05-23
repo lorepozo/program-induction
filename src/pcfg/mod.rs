@@ -43,7 +43,7 @@ pub use self::parser::ParseError;
 use crossbeam_channel::bounded;
 use itertools::Itertools;
 use polytype::{Type, TypeSchema};
-use rand::distributions::Range;
+use rand::distributions::{Distribution, Uniform};
 use rand::Rng;
 use rayon::prelude::*;
 use rayon::spawn;
@@ -441,7 +441,7 @@ impl GP for Grammar {
         prog: &Self::Expression,
     ) -> Self::Expression {
         let tot = params.mutation_point + params.mutation_subtree + params.mutation_reproduction;
-        match Range::sample_single(0f64, tot, rng) {
+        match Uniform::from(0f64..tot).sample(rng) {
             // point mutation
             x if x < params.mutation_point => {
                 mutate_random_node(params, prog.clone(), rng, |ar, rng| {
@@ -613,7 +613,8 @@ use self::gp::{crossover_random_node, mutate_random_node};
 mod gp {
     use super::{AppliedRule, GeneticParams};
     use polytype::Type;
-    use rand::{distributions::Range, Rng};
+    use rand::distributions::{Distribution, Uniform};
+    use rand::Rng;
 
     pub fn mutate_random_node<R, F>(
         params: &GeneticParams,
@@ -626,7 +627,7 @@ mod gp {
         F: Fn(AppliedRule, &mut R) -> AppliedRule,
     {
         let mut arc = WeightedAppliedRule::new(params, ar);
-        let mut selection = Range::sample_single(0.0, arc.2, rng);
+        let mut selection = Uniform::from(0.0..arc.2).sample(rng);
         // selection is like an index in a flattened weighted tree
         {
             let mut cur = &mut arc;
@@ -669,7 +670,7 @@ mod gp {
                 ar
             } else {
                 let total = viables.iter().map(|&(weight, _)| weight).sum();
-                let mut idx = Range::sample_single(0f64, total, rng);
+                let mut idx = Uniform::from(0f64..total).sample(rng);
                 viables
                     .into_iter()
                     .find(|&(weight, _)| {

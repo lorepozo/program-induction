@@ -388,7 +388,7 @@ use self::gen::make_examples;
 mod gen {
     use itertools::Itertools;
     use polytype::TypeSchema;
-    use rand::distributions::{Distribution, Range};
+    use rand::distributions::{Distribution, Uniform};
     use rand::{self, Rng};
     use std::iter;
 
@@ -397,29 +397,29 @@ mod gen {
     static DELIMITERS: [char; 9] = ['.', ',', ' ', '<', '>', '/', '@', '-', '|'];
 
     fn character<R: Rng>(rng: &mut R) -> char {
-        let c: u8 = Range::sample_single(0u8, 26u8, rng);
+        let c: u8 = Uniform::from(0..26u8).sample(rng);
         let c = c + if rng.gen() { 65 } else { 97 };
         c as char
     }
 
     fn word<R: Rng>(rng: &mut R) -> String {
-        let size = Range::sample_single(3, 6, rng);
+        let size = Uniform::from(3..6).sample(rng);
         (0..size).map(|_| character(rng)).collect()
     }
     fn words<R: Rng>(delim: char, rng: &mut R) -> String {
-        let size = Range::sample_single(2, 5, rng);
+        let size = Uniform::from(2..5).sample(rng);
         (0..size).map(|_| word(rng)).join(&delim.to_string())
     }
 
     fn white_word<R: Rng>(rng: &mut R) -> String {
-        let size = Range::sample_single(4, 7, rng);
+        let size = Uniform::from(4..7).sample(rng);
         let mut s: String = (0..size).map(|_| character(rng)).collect();
-        let n_spaces = Range::sample_single(0, 3, rng);
+        let n_spaces = Uniform::from(0..3).sample(rng);
         for _ in 0..n_spaces {
-            let j = Range::sample_single(1, s.len(), rng);
+            let j = Uniform::from(1..s.len()).sample(rng);
             s.insert(j, ' ');
         }
-        let between = Range::new(0usize, 3usize);
+        let between = Uniform::from(0..3usize);
         let mut starting = 0;
         let mut ending = 0;
         while starting == 0 && ending == 0 {
@@ -432,7 +432,7 @@ mod gen {
         s
     }
     fn white_words<R: Rng>(delim: char, rng: &mut R) -> String {
-        let size = Range::sample_single(2, 5, rng);
+        let size = Uniform::from(2..5).sample(rng);
         (0..size).map(|_| white_word(rng)).join(&delim.to_string())
     }
 
@@ -460,7 +460,7 @@ mod gen {
             "map strip",
             ptp!(@arrow[tp!(list(tp!(str))), tp!(list(tp!(str)))]),
             {
-                let n_words = Range::sample_single(1, 5, rng);
+                let n_words = Uniform::from(1..5).sample(rng);
                 let xs: Vec<_> = (0..n_words).map(|_| white_word(rng)).collect();
                 let ys = xs.iter().map(|s| Str(s.trim().to_owned())).collect();
                 let xs = xs.into_iter().map(Str).collect();
@@ -487,7 +487,7 @@ mod gen {
                 "map strip and then join with d",
                 ptp!(@arrow[tp!(list(tp!(str))), tp!(str)]),
                 {
-                    let n_words = Range::sample_single(1, 5, rng);
+                    let n_words = Uniform::from(1..5).sample(rng);
                     let xs: Vec<_> = (0..n_words).map(|_| word(rng)).collect();
                     let y = xs.iter().map(|s| s.trim().to_owned()).join(&d.to_string());
                     let xs = xs.into_iter().map(Str).collect();
@@ -619,7 +619,7 @@ mod gen {
                     concat!("map ", $name),
                     ptp!(@arrow[tp!(list(tp!(str))), tp!(list(tp!(str)))]),
                     {
-                        let n_words = Range::sample_single(1, 5, rng);
+                        let n_words = Uniform::from(1..5).sample(rng);
                         let xs: Vec<_> = (0..n_words).map(|_| word(rng)).collect();
                         let ys = xs.iter().map(|s| Str(($f)(s))).collect();
                         let xs = xs.into_iter().map(Str).collect();
@@ -641,7 +641,7 @@ mod gen {
                         concat!("map ", $name, " then join"),
                         ptp!(@arrow[tp!(list(tp!(str))), tp!(str)]),
                         {
-                            let n_words = Range::sample_single(1, 5, rng);
+                            let n_words = Uniform::from(1..5).sample(rng);
                             let xs: Vec<_> = (0..n_words).map(|_| word(rng)).collect();
                             let y = xs.iter().map(|s| ($f)(s)).join(&d.to_string());
                             let xs = xs.into_iter().map(Str).collect();
