@@ -187,12 +187,12 @@ impl Language {
             .iter()
             .map(|&(ref expr, _, loglikelihood)| {
                 let logprior = self.uses(f.0, expr).0;
-                (expr, logprior, loglikelihood)
+                (expr, logprior, loglikelihood, logprior + loglikelihood)
             })
-            .sorted_by(|&(_, _, ref x), &(_, _, ref y)| y.partial_cmp(x).unwrap())
+            .sorted_by(|&(_, _, _, ref x), &(_, _, _, ref y)| y.partial_cmp(x).unwrap())
             .into_iter()
             .take(topk)
-            .map(|(expr, logprior, loglikelihood)| (expr.clone(), logprior, loglikelihood))
+            .map(|(expr, logprior, loglikelihood, _)| (expr.clone(), logprior, loglikelihood))
             .collect();
         RescoredFrontier(f.0, xs)
     }
