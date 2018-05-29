@@ -33,6 +33,9 @@ pub struct CompressionParams {
     ///
     /// [`Expression`]: enum.Expression.html
     pub structure_penalty: f64,
+    /// Determines whether to use the maximum a-posteriori value for topk evaluation, or whether to
+    /// use only the likelihood. Leave this to `true` unless you know what you are doing.
+    pub use_map: bool,
     /// AIC is a penalty in the number of parameters, i.e. the number of primitives and invented
     /// expressions.
     pub aic: f64,
@@ -49,6 +52,7 @@ impl Default for CompressionParams {
     /// CompressionParams {
     ///     pseudocounts: 5,
     ///     topk: 2,
+    ///     use_map: true,
     ///     structure_penalty: 1f64,
     ///     aic: 1f64,
     ///     arity: 2,
@@ -59,6 +63,7 @@ impl Default for CompressionParams {
         CompressionParams {
             pseudocounts: 5,
             topk: 2,
+            use_map: true,
             structure_penalty: 1f64,
             aic: 1f64,
             arity: 2,
@@ -105,7 +110,7 @@ pub fn induce<O: Sync>(
             let fragment_expr = {
                 let rescored_frontiers: Vec<_> = frontiers
                     .par_iter()
-                    .map(|f| dsl.rescore_frontier(f, params.topk))
+                    .map(|f| dsl.rescore_frontier(f, params.topk, params.use_map))
                     .collect();
                 let (tx, rx) = bounded(100);
                 let (_, proposals) = join(
@@ -182,14 +187,25 @@ pub fn induce<O: Sync>(
 
 /// Extend the Language in our scope so we can do useful compression things.
 impl Language {
-    fn rescore_frontier<'a>(&self, f: &'a RescoredFrontier, topk: usize) -> RescoredFrontier<'a> {
+    fn rescore_frontier<'a>(
+        &self,
+        f: &'a RescoredFrontier,
+        topk: usize,
+        use_map: bool,
+    ) -> RescoredFrontier<'a> {
         let xs = f.1
             .iter()
             .map(|&(ref expr, _, loglikelihood)| {
                 let logprior = self.uses(f.0, expr).0;
                 (expr, logprior, loglikelihood, logprior + loglikelihood)
             })
-            .sorted_by(|&(_, _, _, ref x), &(_, _, _, ref y)| y.partial_cmp(x).unwrap())
+            .sorted_by(|&(_, _, ref xl, ref xpost), &(_, _, ref yl, ref ypost)| {
+                if use_map {
+                    ypost.partial_cmp(xpost).unwrap()
+                } else {
+                    yl.partial_cmp(xl).unwrap()
+                }
+            })
             .into_iter()
             .take(topk)
             .map(|(expr, logprior, loglikelihood, _)| (expr.clone(), logprior, loglikelihood))

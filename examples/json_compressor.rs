@@ -44,6 +44,7 @@ struct Invention {
 struct Params {
     pseudocounts: u64,
     topk: usize,
+    use_map: Option<bool>,
     structure_penalty: f64,
     aic: f64,
     arity: u32,
@@ -99,6 +100,7 @@ impl From<ExternalCompressionInput> for CompressionInput {
         let params = lambda::CompressionParams {
             pseudocounts: eci.params.pseudocounts,
             topk: eci.params.topk,
+            use_map: eci.params.use_map.unwrap_or(true),
             structure_penalty: eci.params.structure_penalty,
             aic: eci.params.aic,
             arity: eci.params.arity,
