@@ -35,7 +35,7 @@ pub struct CompressionParams {
     pub structure_penalty: f64,
     /// Determines whether to use the maximum a-posteriori value for topk evaluation, or whether to
     /// use only the likelihood. Leave this to `true` unless you know what you are doing.
-    pub use_map: bool,
+    pub topk_use_map: bool,
     /// AIC is a penalty in the number of parameters, i.e. the number of primitives and invented
     /// expressions.
     pub aic: f64,
@@ -52,7 +52,7 @@ impl Default for CompressionParams {
     /// CompressionParams {
     ///     pseudocounts: 5,
     ///     topk: 2,
-    ///     use_map: true,
+    ///     topk_use_map: true,
     ///     structure_penalty: 1f64,
     ///     aic: 1f64,
     ///     arity: 2,
@@ -63,7 +63,7 @@ impl Default for CompressionParams {
         CompressionParams {
             pseudocounts: 5,
             topk: 2,
-            use_map: true,
+            topk_use_map: true,
             structure_penalty: 1f64,
             aic: 1f64,
             arity: 2,
@@ -110,7 +110,7 @@ pub fn induce<O: Sync>(
             let fragment_expr = {
                 let rescored_frontiers: Vec<_> = frontiers
                     .par_iter()
-                    .map(|f| dsl.rescore_frontier(f, params.topk, params.use_map))
+                    .map(|f| dsl.rescore_frontier(f, params.topk, params.topk_use_map))
                     .collect();
                 let (tx, rx) = bounded(100);
                 let (_, proposals) = join(
@@ -191,7 +191,7 @@ impl Language {
         &self,
         f: &'a RescoredFrontier,
         topk: usize,
-        use_map: bool,
+        topk_use_map: bool,
     ) -> RescoredFrontier<'a> {
         let xs = f.1
             .iter()
@@ -200,7 +200,7 @@ impl Language {
                 (expr, logprior, loglikelihood, logprior + loglikelihood)
             })
             .sorted_by(|&(_, _, ref xl, ref xpost), &(_, _, ref yl, ref ypost)| {
-                if use_map {
+                if topk_use_map {
                     ypost.partial_cmp(xpost).unwrap()
                 } else {
                     yl.partial_cmp(xl).unwrap()
