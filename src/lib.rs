@@ -108,10 +108,12 @@ extern crate nom;
 extern crate polytype;
 extern crate rand;
 extern crate rayon;
+extern crate term_rewriting;
 
 pub mod domains;
 mod ec;
 mod gp;
+pub mod hmtrs;
 pub mod lambda;
 pub mod pcfg;
 pub use ec::*;
