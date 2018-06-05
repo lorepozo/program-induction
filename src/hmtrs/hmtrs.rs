@@ -6,7 +6,7 @@
 ///! - (TAPL; Pierce, 2002, ch. 22)
 use itertools::Itertools;
 use polytype::{Context, Type, TypeSchema, Variable as pVar};
-use term_rewriting::{Operator, Signature, Term, Variable as tVar, TRS};
+use term_rewriting::{Operator, Rule, Signature, Term, Variable as tVar, TRS};
 
 /// A Hindley-Milner Term Rewriting System (HMTRS): a first-order [term rewriting system][0] with a [Hindley-Milner type system][1].
 ///
@@ -100,6 +100,37 @@ impl HMTRS {
         } else {
             Err(TypeError)
         }
+    }
+    pub fn infer_rule(&self, r: &Rule, ctx: &mut Context) -> Result<TypeSchema, TypeError> {
+        let lhs_schema = self.infer_term(&r.lhs, ctx)?;
+        let lhs_type = lhs_schema.instantiate(ctx);
+        let mut rhs_types = vec![];
+        for rhs in r.rhs.iter() {
+            let rhs_schema = self.infer_term(&rhs, ctx)?;
+            rhs_types.push(rhs_schema.instantiate(ctx));
+        }
+        for rhs_type in rhs_types {
+            ctx.unify(&lhs_type, &rhs_type);
+        }
+        // Get the variables bound by the lexicon
+        let bound_vs = self.free_vars()
+            .iter()
+            .flat_map(|x| {
+                ctx.substitution()
+                    .get(x)
+                    .unwrap_or(&Type::Variable(*x))
+                    .vars()
+            })
+            .unique()
+            .collect::<Vec<u16>>();
+        Ok(lhs_type.apply(ctx).generalize(&bound_vs))
+    }
+    pub fn infer_trs(&self, t: &TRS, ctx: &mut Context) -> Result<(), TypeError> {
+        // TODO: Right now, this assumes the variables already exist in the signature. Is that sensible?
+        for rule in self.trs.rules.iter() {
+            self.infer_rule(rule, ctx)?;
+        }
+        Ok(())
     }
 }
 
