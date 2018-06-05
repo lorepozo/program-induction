@@ -35,3 +35,4 @@ verbose = []
 
 [patch.crates-io]
 term_rewriting = { path = "../term-rewriting-rs" }
+polytype = { path = "../polytype-rs" }
