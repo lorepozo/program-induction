@@ -835,7 +835,7 @@ mod proposals {
                         if *x == 0 {
                             true
                         } else {
-                            (1..*x).all(|y| xs.contains(&y))
+                            (0..*x).all(|y| xs.contains(&y))
                         }
                     } else {
                         true
