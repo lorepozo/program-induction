@@ -795,6 +795,7 @@ mod proposals {
 
     use super::super::Expression;
     use super::expression_count_kinds;
+    use itertools::Itertools;
     use std::collections::HashMap;
     use std::iter;
 
@@ -806,10 +807,50 @@ mod proposals {
         Expression(Expression),
     }
     impl Fragment {
-        fn canonicalize(mut self) -> Expression {
-            let mut c = Canonicalizer::default();
-            c.canonicalize(&mut self, 0);
-            self.into_expression()
+        fn fragvars(&self) -> usize {
+            match self {
+                Fragment::Expression(_) => 0,
+                Fragment::Application(f, x) => f.fragvars() + x.fragvars(),
+                Fragment::Abstraction(body) => body.fragvars(),
+                Fragment::Variable => 1,
+            }
+        }
+        fn free_reach(&self, depth: usize) -> usize {
+            match self {
+                Fragment::Expression(expr) => free_reach(expr, depth),
+                Fragment::Application(f, x) => f.free_reach(depth).max(x.free_reach(depth)),
+                Fragment::Abstraction(body) => body.free_reach(depth + 1),
+                Fragment::Variable => 0,
+            }
+        }
+        fn canonicalize(self) -> impl Iterator<Item = Expression> {
+            let fragvars = self.fragvars();
+            let free_reach = self.free_reach(0);
+            // 000 001 010 100 011 101 110 ~111~
+            iter::repeat(0..fragvars)
+                .take(fragvars)
+                .multi_cartesian_product()
+                .filter(|xs| {
+                    if let Some(x) = xs.iter().max() {
+                        if *x == 0 {
+                            true
+                        } else {
+                            (1..*x).all(|y| xs.contains(&y))
+                        }
+                    } else {
+                        true
+                    }
+                })
+                .pad_using(1, |_| Vec::new())
+                .map(move |mut assignment| {
+                    for x in &mut assignment {
+                        *x += free_reach
+                    }
+                    let mut c = Canonicalizer::new(assignment);
+                    let mut frag = self.clone();
+                    c.canonicalize(&mut frag, 0);
+                    frag.into_expression()
+                })
         }
         fn into_expression(self) -> Expression {
             match self {
@@ -835,15 +876,20 @@ mod proposals {
         fragment_expr
     }
 
-    #[derive(Default)]
     struct Canonicalizer {
-        n_abstractions: usize,
-        mapping: HashMap<usize, usize>,
+        assignment: Vec<usize>,
+        elapsed: usize,
     }
     impl Canonicalizer {
+        fn new(assignment: Vec<usize>) -> Canonicalizer {
+            Canonicalizer {
+                assignment,
+                elapsed: 0,
+            }
+        }
         fn canonicalize(&mut self, fr: &mut Fragment, depth: usize) {
             match *fr {
-                Fragment::Expression(ref mut expr) => self.canonicalize_expr(expr, depth),
+                Fragment::Expression(_) => (),
                 Fragment::Application(ref mut f, ref mut x) => {
                     self.canonicalize(f, depth);
                     self.canonicalize(x, depth);
@@ -852,31 +898,11 @@ mod proposals {
                     self.canonicalize(body, depth + 1);
                 }
                 Fragment::Variable => {
-                    *fr = Fragment::Expression(Expression::Index(self.n_abstractions + depth));
-                    self.n_abstractions += 1;
+                    *fr = Fragment::Expression(Expression::Index(
+                        self.assignment[self.elapsed] + depth,
+                    ));
+                    self.elapsed += 1;
                 }
-            }
-        }
-        fn canonicalize_expr(&mut self, expr: &mut Expression, depth: usize) {
-            match *expr {
-                Expression::Application(ref mut f, ref mut x) => {
-                    self.canonicalize_expr(f, depth);
-                    self.canonicalize_expr(x, depth);
-                }
-                Expression::Abstraction(ref mut body) => {
-                    self.canonicalize_expr(body, depth + 1);
-                }
-                Expression::Index(ref mut i) if *i >= depth => {
-                    let j = i.checked_sub(depth).unwrap();
-                    if let Some(k) = self.mapping.get(&j) {
-                        *i = k + depth;
-                        return;
-                    }
-                    self.mapping.insert(j, self.n_abstractions);
-                    *i = self.n_abstractions + depth;
-                    self.n_abstractions += 1;
-                }
-                _ => (),
             }
         }
     }
@@ -885,7 +911,7 @@ mod proposals {
     pub fn from_expression(expr: &Expression, arity: u32) -> Vec<Expression> {
         (0..arity + 1)
             .flat_map(move |b| from_subexpression(expr, b))
-            .map(Fragment::canonicalize)
+            .flat_map(Fragment::canonicalize)
             .filter(|fragment_expr| {
                 // determine if nontrivial
                 let (n_prims, n_free, n_bound) = expression_count_kinds(fragment_expr, 0);
