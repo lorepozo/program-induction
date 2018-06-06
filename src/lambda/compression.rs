@@ -815,17 +815,27 @@ mod proposals {
                 Fragment::Variable => 1,
             }
         }
-        fn free_reach(&self, depth: usize) -> usize {
+        fn n_free(&self, depth: usize) -> usize {
             match self {
-                Fragment::Expression(expr) => free_reach(expr, depth),
-                Fragment::Application(f, x) => f.free_reach(depth).max(x.free_reach(depth)),
-                Fragment::Abstraction(body) => body.free_reach(depth + 1),
+                Fragment::Expression(expr) => Fragment::n_free_expr(expr, depth),
+                Fragment::Application(f, x) => f.n_free(depth) + x.n_free(depth),
+                Fragment::Abstraction(body) => body.n_free(depth + 1),
                 Fragment::Variable => 0,
+            }
+        }
+        fn n_free_expr(expr: &Expression, depth: usize) -> usize {
+            match expr {
+                Expression::Application(f, x) => {
+                    Fragment::n_free_expr(f, depth) + Fragment::n_free_expr(x, depth)
+                }
+                Expression::Abstraction(body) => Fragment::n_free_expr(body, depth + 1),
+                Expression::Index(i) if *i >= depth => 1,
+                _ => 0,
             }
         }
         fn canonicalize(self) -> impl Iterator<Item = Expression> {
             let fragvars = self.fragvars();
-            let free_reach = self.free_reach(0);
+            let n_free = self.n_free(0);
             // 000 001 010 100 011 101 110 ~111~
             iter::repeat(0..fragvars)
                 .take(fragvars)
@@ -844,7 +854,7 @@ mod proposals {
                 .pad_using(1, |_| Vec::new())
                 .map(move |mut assignment| {
                     for x in &mut assignment {
-                        *x += free_reach
+                        *x += n_free
                     }
                     let mut c = Canonicalizer::new(assignment);
                     let mut frag = self.clone();
@@ -879,17 +889,21 @@ mod proposals {
     struct Canonicalizer {
         assignment: Vec<usize>,
         elapsed: usize,
+        free: usize,
+        mapping: HashMap<usize, usize>,
     }
     impl Canonicalizer {
         fn new(assignment: Vec<usize>) -> Canonicalizer {
             Canonicalizer {
                 assignment,
                 elapsed: 0,
+                free: 0,
+                mapping: HashMap::default(),
             }
         }
         fn canonicalize(&mut self, fr: &mut Fragment, depth: usize) {
             match *fr {
-                Fragment::Expression(_) => (),
+                Fragment::Expression(ref mut expr) => self.canonicalize_expr(expr, depth),
                 Fragment::Application(ref mut f, ref mut x) => {
                     self.canonicalize(f, depth);
                     self.canonicalize(x, depth);
@@ -903,6 +917,26 @@ mod proposals {
                     ));
                     self.elapsed += 1;
                 }
+            }
+        }
+        fn canonicalize_expr(&mut self, expr: &mut Expression, depth: usize) {
+            match *expr {
+                Expression::Application(ref mut f, ref mut x) => {
+                    self.canonicalize_expr(f, depth);
+                    self.canonicalize_expr(x, depth);
+                }
+                Expression::Abstraction(ref mut body) => self.canonicalize_expr(body, depth + 1),
+                Expression::Index(ref mut i) if *i >= depth => {
+                    let j = i.checked_sub(depth).unwrap();
+                    if let Some(k) = self.mapping.get(&j) {
+                        *i = k + depth;
+                        return;
+                    }
+                    self.mapping.insert(j, self.free);
+                    *i = self.free + depth;
+                    self.free += 1;
+                }
+                _ => (),
             }
         }
     }
