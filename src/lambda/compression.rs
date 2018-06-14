@@ -341,7 +341,7 @@ impl Language {
             let mut xs: VecDeque<&Expression> = VecDeque::new();
             loop {
                 // if we're dealing with an Application, we reiterate for every applicable f/xs
-                // combination.
+                // combination. (see the end of this block.)
                 for &(mut l, ref expr, ref tp, ref cctx) in &candidates {
                     let mut ctx = Cow::Borrowed(cctx);
                     let mut tp = Cow::Borrowed(tp);
@@ -354,19 +354,27 @@ impl Language {
                     } else if let Some(mut frag_tp) =
                         TreeMatcher::do_match(self, ctx.to_mut(), expr, f, &mut bindings, xs.len())
                     {
-                        let mut template: VecDeque<Type> =
-                            (0..xs.len()).map(|_| ctx.to_mut().new_variable()).collect();
-                        template.push_back(request.clone());
+                        let mut template = VecDeque::with_capacity(xs.len() + 1);
+                        template.push_front(request.clone());
+                        for _ in 0..xs.len() {
+                            template.push_front(ctx.to_mut().new_variable())
+                        }
                         // unification cannot fail, so we can safely unwrap:
-                        ctx.to_mut()
-                            .unify(&frag_tp, &Type::from(template))
-                            .expect(&format!(
-                                "likelihood unification failure against {} (type {} / {}) for {}",
+                        if ctx.to_mut()
+                            .unify(&frag_tp, &Type::from(template.clone()))
+                            .is_err()
+                        {
+                            eprintln!(
+                                "WARNING (please report to programinduction devs): likelihood unification failure against expr={} (tp={}) for f={} frag_tp={} tmpl_tp={} xs={:?}",
                                 self.display(expr),
                                 tp,
-                                frag_tp,
                                 self.display(f),
-                            ));
+                                frag_tp,
+                                Type::from(template),
+                                xs.iter().map(|x| self.display(x)).collect::<Vec<_>>(),
+                            );
+                            continue;
+                        }
                         frag_tp.apply_mut(&ctx);
                         tp = Cow::Owned(frag_tp);
                     } else {
@@ -374,7 +382,16 @@ impl Language {
                     }
 
                     let arg_tps: VecDeque<&Type> = tp.args().unwrap_or_else(VecDeque::new);
-                    debug_assert_eq!(xs.len(), arg_tps.len());
+                    if xs.len() != arg_tps.len() {
+                        eprintln!(
+                            "WARNING (please report to programinduction devs): xs and arg_tps did not correspond: expr={} (arg_tps={:?}) f={} xs={:?}",
+                            self.display(expr),
+                            arg_tps.iter().map(|t| t.to_string()).collect::<Vec<_>>(),
+                            self.display(f),
+                            xs.iter().map(|x| self.display(x)).collect::<Vec<_>>(),
+                        );
+                        continue;
+                    }
 
                     let mut u = Uses {
                         actual_vars: 0f64,
