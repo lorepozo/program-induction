@@ -1,6 +1,6 @@
 [package]
 name = "programinduction"
-version = "0.6.9"
+version = "0.6.10"
 authors = ["Lucas Morales <lucas@lucasem.com>"]
 license = "MIT"
 readme = "README.md"
@@ -19,7 +19,7 @@ crossbeam-channel = "0.1"
 itertools = "0.7"
 lazy_static = "1.0"
 maplit = "1.0"
-nom = "4.0.0"
+nom = "4.0"
 polytype = "5.0"
 rand = "0.5"
 rayon = "1.0"
