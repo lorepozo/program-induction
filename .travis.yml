@@ -10,8 +10,6 @@ script:
   - cargo rustdoc --verbose -- --html-in-header rustdoc-include-katex-header.html
 matrix:
   fast_failures: true
-  allow_failures:
-    - env: KCOV=1
   include:
     - rust: nightly-2018-05-04
       env:
@@ -22,22 +20,3 @@ matrix:
       script:
         - cargo fmt --all -- --write-mode=diff
         - cargo clippy || echo "clippy failure disregarded (see rust-clippy#2594)"
-    - env: KCOV=1
-      sudo: required # travis-ci/travis-ci#9061
-      before_script:
-        - cargo install cargo-update || echo "cargo-update already installed"
-        - cargo install cargo-travis || echo "cargo-travis already installed"
-        - cargo install-update -a
-      script:
-        - |
-          cargo build    --verbose &&
-          cargo coverage --verbose &&
-          bash <(curl -s https://codecov.io/bash) -s target/kcov
-      addons: # required for kcov
-        apt:
-          packages:
-            - libcurl4-openssl-dev
-            - libelf-dev
-            - libdw-dev
-            - binutils-dev
-            - cmake
