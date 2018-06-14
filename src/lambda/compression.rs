@@ -414,7 +414,14 @@ impl Language {
                         .chain(arg_tps.into_iter().zip(xs.iter().map(|&x| x)))
                     {
                         let mut free_tp = free_tp.clone();
-                        free_tp.apply_mut(&ctx);
+                        loop {
+                            let free_tp_new = free_tp.apply(&ctx);
+                            if free_tp_new != free_tp {
+                                free_tp = free_tp_new;
+                            } else {
+                                break;
+                            }
+                        }
                         let n = self.likelihood_uses(&free_tp, free_expr, &ctx, env);
                         if n.0.is_infinite() {
                             l = f64::NEG_INFINITY;
@@ -569,13 +576,9 @@ impl<'a> TreeMatcher<'a> {
     ) -> Option<Type> {
         if !Self::might_match(dsl, fragment, concrete, 0) {
             None
-        } else if let Some(tp) = {
+        } else {
             let mut tm = TreeMatcher { dsl, ctx, bindings };
             tm.execute(fragment, concrete, &Rc::new(LinkedList::default()), n_args)
-        } {
-            Some(tp)
-        } else {
-            None
         }
     }
 
