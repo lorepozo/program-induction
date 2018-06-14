@@ -124,7 +124,7 @@ impl Language {
         let env = VecDeque::new();
         let mut indices = HashMap::new();
         expr.infer(self, &mut ctx, &env, &mut indices)
-            .map(|t| t.generalize(&Context::default()))
+            .map(|t| t.generalize(&[]))
     }
 
     /// Enumerate expressions for a request type (including log-probabilities and appropriately
