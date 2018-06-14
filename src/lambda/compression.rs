@@ -34,8 +34,12 @@ pub struct CompressionParams {
     /// [`Expression`]: enum.Expression.html
     pub structure_penalty: f64,
     /// Determines whether to use the maximum a-posteriori value for topk evaluation, or whether to
-    /// use only the likelihood. Leave this to `true` unless you know what you are doing.
-    pub topk_use_map: bool,
+    /// use only the likelihood. Leave this to `false` unless you know what you are doing.
+    pub topk_use_only_likelihood: bool,
+    /// Determines whether to use the maximum a-posteriori value for the scoring of fragments, or
+    /// whether to use only the likelihood. Leave this to `false` unless you know what you are
+    /// doing.
+    pub joint_mdl_use_only_likelihood: bool,
     /// AIC is a penalty in the number of parameters, i.e. the number of primitives and invented
     /// expressions.
     pub aic: f64,
@@ -52,7 +56,8 @@ impl Default for CompressionParams {
     /// CompressionParams {
     ///     pseudocounts: 5,
     ///     topk: 2,
-    ///     topk_use_map: true,
+    ///     topk_use_only_likelihood: false,
+    ///     joint_mdl_use_only_likelihood: false,
     ///     structure_penalty: 1f64,
     ///     aic: 1f64,
     ///     arity: 2,
@@ -63,7 +68,8 @@ impl Default for CompressionParams {
         CompressionParams {
             pseudocounts: 5,
             topk: 2,
-            topk_use_map: true,
+            topk_use_only_likelihood: false,
+            joint_mdl_use_only_likelihood: false,
             structure_penalty: 1f64,
             aic: 1f64,
             arity: 2,
@@ -97,6 +103,7 @@ pub fn induce<O: Sync>(
 
     let mut best_score = dsl.score(
         &frontiers,
+        params.joint_mdl_use_only_likelihood,
         params.pseudocounts,
         params.aic,
         params.structure_penalty,
@@ -110,7 +117,7 @@ pub fn induce<O: Sync>(
             let fragment_expr = {
                 let rescored_frontiers: Vec<_> = frontiers
                     .par_iter()
-                    .map(|f| dsl.rescore_frontier(f, params.topk, params.topk_use_map))
+                    .map(|f| dsl.rescore_frontier(f, params.topk, params.topk_use_only_likelihood))
                     .collect();
                 let (tx, rx) = bounded(100);
                 let (_, proposals) = join(
@@ -127,6 +134,7 @@ pub fn induce<O: Sync>(
                         dsl.invent(fragment_expr, 0f64).unwrap();
                         let s = dsl.score(
                             &rescored_frontiers,
+                            params.joint_mdl_use_only_likelihood,
                             params.pseudocounts,
                             params.aic,
                             params.structure_penalty,
@@ -191,7 +199,7 @@ impl Language {
         &self,
         f: &'a RescoredFrontier,
         topk: usize,
-        topk_use_map: bool,
+        topk_use_only_likelihood: bool,
     ) -> RescoredFrontier<'a> {
         let xs = f.1
             .iter()
@@ -200,10 +208,10 @@ impl Language {
                 (expr, logprior, loglikelihood, logprior + loglikelihood)
             })
             .sorted_by(|&(_, _, ref xl, ref xpost), &(_, _, ref yl, ref ypost)| {
-                if topk_use_map {
-                    ypost.partial_cmp(xpost).unwrap()
-                } else {
+                if topk_use_only_likelihood {
                     yl.partial_cmp(xl).unwrap()
+                } else {
+                    ypost.partial_cmp(xpost).unwrap()
                 }
             })
             .into_iter()
@@ -216,19 +224,20 @@ impl Language {
     fn score(
         &mut self,
         frontiers: &[RescoredFrontier],
+        joint_mdl_use_only_likelihood: bool,
         pseudocounts: u64,
         aic: f64,
         structure_penalty: f64,
     ) -> f64 {
         self.reset_uniform();
-        let likelihood = self.inside_outside(frontiers, pseudocounts);
+        let joint_mdl = self.inside_outside(frontiers, joint_mdl_use_only_likelihood, pseudocounts);
         let nparams = self.primitives.len() + self.invented.len();
         let structure = (self.primitives.len() as f64)
             + self.invented
                 .iter()
                 .map(|&(ref expr, _, _)| expression_structure(expr))
                 .sum::<f64>();
-        likelihood - aic * (nparams as f64) - structure_penalty * structure
+        joint_mdl - aic * (nparams as f64) - structure_penalty * structure
     }
 
     fn reset_uniform(&mut self) {
@@ -241,9 +250,14 @@ impl Language {
         self.variable_logprob = 0f64;
     }
 
-    fn inside_outside(&mut self, frontiers: &[RescoredFrontier], pseudocounts: u64) -> f64 {
+    fn inside_outside(
+        &mut self,
+        frontiers: &[RescoredFrontier],
+        joint_mdl_use_only_likelihood: bool,
+        pseudocounts: u64,
+    ) -> f64 {
         let pseudocounts = pseudocounts as f64;
-        let (joint_mdl, u) = self.all_uses(frontiers);
+        let (joint_mdl, u) = self.all_uses(frontiers, joint_mdl_use_only_likelihood);
         self.variable_logprob = (u.actual_vars + pseudocounts).ln() - u.possible_vars.ln();
         if !self.variable_logprob.is_finite() {
             self.variable_logprob = u.actual_vars.max(1f64).ln()
@@ -262,7 +276,11 @@ impl Language {
         joint_mdl
     }
 
-    fn all_uses(&self, frontiers: &[RescoredFrontier]) -> (f64, Uses) {
+    fn all_uses(
+        &self,
+        frontiers: &[RescoredFrontier],
+        joint_mdl_use_only_likelihood: bool,
+    ) -> (f64, Uses) {
         let (tx, rx) = bounded(frontiers.len());
         let u = frontiers
             .par_iter()
@@ -275,7 +293,15 @@ impl Language {
                     })
                     .collect::<Vec<_>>();
                 let largest = lu.iter().fold(f64::NEG_INFINITY, |acc, &(l, _)| acc.max(l));
-                tx.send(largest).expect("send on closed channel");
+                if joint_mdl_use_only_likelihood {
+                    tx.send(
+                        f.1
+                            .iter()
+                            .fold(f64::NEG_INFINITY, |acc, &(_, _, l)| acc.max(l)),
+                    ).expect("send on closed channel");
+                } else {
+                    tx.send(largest).expect("send on closed channel");
+                }
                 let z = largest
                     + lu.iter()
                         .map(|&(l, _)| (l - largest).exp())
