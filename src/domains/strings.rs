@@ -3,8 +3,8 @@
 //! # Examples
 //!
 //! ```
-//! use programinduction::{ECParams, EC};
 //! use programinduction::domains::strings;
+//! use programinduction::{ECParams, EC};
 //!
 //! let dsl = strings::dsl();
 //! let tasks = strings::make_tasks(250, 4);
@@ -155,8 +155,8 @@ impl PartialEq for Space {
 /// #[macro_use]
 /// extern crate polytype;
 /// extern crate programinduction;
-/// use programinduction::{lambda, ECParams, EC};
 /// use programinduction::domains::strings;
+/// use programinduction::{lambda, ECParams, EC};
 ///
 /// # fn main() {
 /// let dsl = strings::dsl();

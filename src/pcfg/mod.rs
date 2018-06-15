@@ -94,7 +94,7 @@ impl Grammar {
     /// # #[macro_use]
     /// # extern crate polytype;
     /// # extern crate programinduction;
-    /// use programinduction::pcfg::{Grammar, Rule, AppliedRule};
+    /// use programinduction::pcfg::{AppliedRule, Grammar, Rule};
     ///
     /// # fn main() {
     /// let g = Grammar::new(
@@ -105,11 +105,7 @@ impl Grammar {
     ///         Rule::new("plus", tp!(@arrow[tp!(EXPR), tp!(EXPR), tp!(EXPR)]), 1.0),
     ///     ],
     /// );
-    /// let exprs: Vec<AppliedRule> = g.enumerate()
-    ///     .take(8)
-    ///     .map(|(ar, _logprior)| ar)
-    ///     .collect();
-    ///
+    /// let exprs: Vec<AppliedRule> = g.enumerate().take(8).map(|(ar, _logprior)| ar).collect();
     /// assert_eq!(
     ///     exprs,
     ///     vec![
@@ -177,7 +173,7 @@ impl Grammar {
     /// # #[macro_use]
     /// # extern crate polytype;
     /// # extern crate programinduction;
-    /// use programinduction::pcfg::{Grammar, Rule, task_by_evaluation};
+    /// use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
     ///
     /// fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
     ///     match name {
@@ -257,7 +253,7 @@ impl Grammar {
     ///         Rule::new("zero?", tp!(@arrow[tp!(EXPR), tp!(BOOL)]), 1.0),
     ///         Rule::new("if", tp!(@arrow[tp!(BOOL), tp!(EXPR), tp!(EXPR)]), 1.0),
     ///         Rule::new("nand", tp!(@arrow[tp!(BOOL), tp!(BOOL), tp!(BOOL)]), 1.0),
-    ///     ]
+    ///     ],
     /// );
     ///
     /// let expr = g.parse("plus(0,0)").unwrap();

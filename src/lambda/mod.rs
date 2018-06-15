@@ -99,14 +99,15 @@ impl Language {
     /// # fn main() {
     /// # use programinduction::lambda::{Expression, Language};
     /// let mut dsl = Language::uniform(vec![
-    ///         ("singleton", ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))])),
-    ///         (">=", ptp!(@arrow[tp!(int), tp!(int), tp!(bool)])),
-    ///         ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
-    ///         ("0", ptp!(int)),
-    ///         ("1", ptp!(int)),
+    ///     ("singleton", ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))])),
+    ///     (">=", ptp!(@arrow[tp!(int), tp!(int), tp!(bool)])),
+    ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+    ///     ("0", ptp!(int)),
+    ///     ("1", ptp!(int)),
     /// ]);
     /// dsl.invent(
-    ///     Expression::Application( // (+ 1)
+    ///     // (+ 1)
+    ///     Expression::Application(
     ///         Box::new(Expression::Primitive(2)),
     ///         Box::new(Expression::Primitive(4)),
     ///     ),
@@ -447,6 +448,7 @@ impl Language {
     /// assert!(dsl.violates_symmetry(f, 0, x));
     /// assert!(!dsl.violates_symmetry(f, 1, x));
     /// # }
+    /// ```
     pub fn violates_symmetry(&self, f: &Expression, index: usize, x: &Expression) -> bool {
         match (f, x) {
             (&Expression::Primitive(f), &Expression::Primitive(x)) => {

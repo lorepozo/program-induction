@@ -43,8 +43,8 @@ pub struct ECParams {
 ///
 /// ```
 /// extern crate programinduction;
-/// use programinduction::{lambda, ECParams, EC};
 /// use programinduction::domains::circuits;
+/// use programinduction::{lambda, ECParams, EC};
 ///
 /// fn main() {
 ///     let mut dsl = circuits::dsl();
@@ -64,7 +64,12 @@ pub struct ECParams {
 ///     }
 ///     let n_invented = dsl.invented.len();
 ///     let n_hit = frontiers.iter().filter(|f| !f.is_empty()).count();
-///     println!("hit {} of {} using {} invented primitives", n_hit, tasks.len(), n_invented);
+///     println!(
+///         "hit {} of {} using {} invented primitives",
+///         n_hit,
+///         tasks.len(),
+///         n_invented,
+///     );
 /// }
 /// ```
 ///
@@ -117,8 +122,8 @@ pub trait EC: Send + Sync + Sized {
     ///
     /// ```
     /// # extern crate programinduction;
-    /// use programinduction::{lambda, ECParams, EC};
     /// use programinduction::domains::circuits;
+    /// use programinduction::{lambda, ECParams, EC};
     ///
     /// # fn main() {
     /// let mut dsl = circuits::dsl();
@@ -203,8 +208,8 @@ pub trait EC: Send + Sync + Sized {
     /// # #[macro_use]
     /// # extern crate polytype;
     /// # extern crate programinduction;
-    /// use programinduction::{EC, ECParams};
     /// use programinduction::pcfg::{Grammar, Rule, task_by_evaluation};
+    /// use programinduction::{EC, ECParams};
     ///
     /// fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
     ///     match name {

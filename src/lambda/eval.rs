@@ -120,15 +120,15 @@ where
 ///         "+" => match (&inps[0], &inps[1]) {
 ///             (&Num(x), &Num(y)) => Ok(Num(x + y)),
 ///             _ => unreachable!(),
-///         }
+///         },
 ///         "eq" => match (&inps[0], &inps[1]) {
 ///             (&Num(x), &Num(y)) => Ok(Bool(x == y)),
 ///             _ => unreachable!(),
-///         }
+///         },
 ///         "not" => match inps[0] {
 ///             Bool(b) => Ok(Bool(!b)),
 ///             _ => unreachable!(),
-///         }
+///         },
 ///         _ => unreachable!(),
 ///     }
 /// }
@@ -182,11 +182,7 @@ where
 /// impl Evaluator for ListsEvaluator {
 ///     type Space = ListSpace;
 ///     type Error = ListError;
-///     fn evaluate(
-///         &self,
-///         primitive: &str,
-///         inps: &[Self::Space],
-///     ) -> Result<Self::Space, Self::Error> {
+///     fn evaluate(&self, primitive: &str, inps: &[Self::Space]) -> Result<Self::Space, Self::Error> {
 ///         match primitive {
 ///             "0" => Ok(Num(0)),
 ///             "1" => Ok(Num(1)),
@@ -201,21 +197,18 @@ where
 ///             "chain" => match (&inps[0], &inps[1]) {
 ///                 (&NumList(ref xs), &NumList(ref ys)) => {
 ///                     Ok(NumList(xs.into_iter().chain(ys).cloned().collect()))
-///                 },
+///                 }
 ///                 _ => unreachable!(),
 ///             },
 ///             "map" => match (&inps[0], &inps[1]) {
-///                 (&Func(ref f), &NumList(ref xs)) => {
-///                     Ok(NumList(xs.into_iter()
-///                         .map(|x| {
-///                             f.eval(&[Num(x.clone())])
-///                                 .and_then(|v| match v {
-///                                     Num(y) => Ok(y),
-///                                     _ => Err(ListError("map given invalid function")),
-///                                 })
+///                 (&Func(ref f), &NumList(ref xs)) => Ok(NumList(xs.into_iter()
+///                     .map(|x| {
+///                         f.eval(&[Num(x.clone())]).and_then(|v| match v {
+///                             Num(y) => Ok(y),
+///                             _ => Err(ListError("map given invalid function")),
 ///                         })
-///                         .collect::<Result<_, _>>()?))
-///                 }
+///                     })
+///                     .collect::<Result<_, _>>()?)),
 ///                 _ => unreachable!(),
 ///             },
 ///             _ => unreachable!(),
@@ -276,7 +269,7 @@ pub trait Evaluator: Sized + Sync {
 /// ```
 /// # #[macro_use] extern crate polytype;
 /// # extern crate programinduction;
-/// use programinduction::lambda::{LazyEvaluator, Language, LiftedLazyFunction};
+/// use programinduction::lambda::{Language, LazyEvaluator, LiftedLazyFunction};
 ///
 /// # fn early_let() {
 /// let dsl = Language::uniform(vec![
