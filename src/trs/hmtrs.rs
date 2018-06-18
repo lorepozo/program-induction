@@ -92,83 +92,72 @@ pub struct HMTRS {
     pub ctx: Context,
 }
 impl HMTRS {
-    /// the size of the HMTRS (the sum over the size of the rules in the [`TRS`])
+    /// The size of the HMTRS (the sum over the size of the rules in the [`TRS`])
     ///
     /// [`TRS`]: ../../term_rewriting/struct.TRS.html
     pub fn size(&self) -> usize {
         self.trs.size()
     }
-    /// All the free variables in the lexicon.
+    /// All the free type variables in the lexicon.
     pub fn free_vars(&self) -> Vec<TypeVar> {
         let vars_fvs = self.vars.iter().flat_map(|x| x.free_vars());
         let ops_fvs = self.ops.iter().flat_map(|x| x.free_vars());
         vars_fvs.chain(ops_fvs).unique().collect()
     }
-    fn infer_var(&self, v: &Variable) -> Result<TypeSchema, TypeError> {
+    fn var_tp(&self, v: &Variable) -> Result<TypeSchema, TypeError> {
         if let Some(idx) = self.signature.variables().iter().position(|x| x == v) {
             Ok(self.vars[idx].clone())
         } else {
             Err(TypeError::VarNotFound)
         }
     }
-    fn infer_op(&self, o: &Operator) -> Result<TypeSchema, TypeError> {
+    fn op_tp(&self, o: &Operator) -> Result<TypeSchema, TypeError> {
         if let Some(idx) = self.signature.operators().iter().position(|x| x == o) {
             Ok(self.ops[idx].clone())
         } else {
             Err(TypeError::OpNotFound)
         }
     }
-    /// Infer the [`TypeSchema`] of a [`Term`] and the corresponding [`Context`] or generate a [`TypeError`].
+    /// Infer the [`TypeSchema`] of a [`Term`].
     ///
-    /// [`Context`]: ../../polytype/struct.Context.html
     /// [`Term`]: ../../term_rewriting/enum.Term.html
     /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
-    /// [`TypeError`]: enum.TypeError.html
     pub fn infer_term(&self, term: &Term, ctx: &mut Context) -> Result<TypeSchema, TypeError> {
         let tp = self.infer_internal(term, ctx)?;
         // Get the variables bound by the lexicon
         let bound_vs = self.free_vars()
             .iter()
-            .flat_map(|x| {
-                ctx.substitution()
-                    .get(x)
-                    .unwrap_or(&Type::Variable(*x))
-                    .vars()
-            })
+            .flat_map(|x| Type::Variable(*x).apply(ctx).vars())
             .unique()
             .collect::<Vec<u16>>();
         Ok(tp.generalize(&bound_vs))
     }
-    // half the internal recursive workhorse of type inference.
     fn infer_internal(&self, term: &Term, ctx: &mut Context) -> Result<Type, TypeError> {
         match term {
             Term::Application { op, .. } if op.arity(&self.signature) == 0 => {
-                Ok(self.infer_op(op)?.instantiate(ctx).apply(ctx))
+                Ok(self.op_tp(op)?.instantiate(ctx).apply(ctx))
             }
-            Term::Variable(v) => Ok(self.infer_var(v)?.instantiate(ctx).apply(ctx)),
+            Term::Variable(v) => Ok(self.var_tp(v)?.instantiate(ctx).apply(ctx)),
             Term::Application { op, args } => {
-                let body_type = self.infer_args(args, ctx)?;
-                let head_type = self.infer_op(op)?.instantiate(ctx).apply(ctx);
+                let head_type = self.op_tp(op)?.instantiate(ctx).apply(ctx);
+                let body_type = {
+                    let mut pre_types = Vec::with_capacity(args.len() + 1);
+                    for a in args {
+                        pre_types.push(self.infer_internal(a, ctx)?);
+                    }
+                    pre_types.push(ctx.new_variable());
+                    Type::from(pre_types)
+                };
                 ctx.unify(&head_type, &body_type)?;
-                Ok(self.infer_op(op)?.instantiate(ctx).apply(ctx))
+                Ok(self.op_tp(op)?.instantiate(ctx).apply(ctx))
             }
         }
     }
-    // half the internal recursive workhorse of type inference.
-    fn infer_args(&self, args: &[Term], ctx: &mut Context) -> Result<Type, TypeError> {
-        let mut pre_types = vec![];
-        for a in args {
-            pre_types.push(self.infer_internal(a, ctx)?);
-        }
-        pre_types.push(ctx.new_variable());
-        Ok(Type::from(pre_types))
-    }
-    /// Infer the [`TypeSchema`] of a [`Rule`] and the corresponding [`Context`] or generate a [`TypeError`].
+    /// Infer the [`TypeSchema`] of a [`Rule`], along with schemas for the left-hand-side and
+    /// right-hand-sides of the rule.
     ///
-    /// [`Context`]: ../../polytype/struct.Context.html
     /// [`Rule`]: ../../term_rewriting/struct.Rule.html
     /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
-    /// [`TypeError`]: enum.TypeError.html
     pub fn infer_rule(
         &self,
         r: &Rule,
@@ -176,8 +165,8 @@ impl HMTRS {
     ) -> Result<(TypeSchema, TypeSchema, Vec<TypeSchema>), TypeError> {
         let lhs_schema = self.infer_term(&r.lhs, ctx)?;
         let lhs_type = lhs_schema.instantiate(ctx);
-        let mut rhs_types = vec![];
-        let mut rhs_schemas = vec![];
+        let mut rhs_types = Vec::with_capacity(r.rhs.len());
+        let mut rhs_schemas = Vec::with_capacity(r.rhs.len());
         for rhs in &r.rhs {
             let rhs_schema = self.infer_term(&rhs, ctx)?;
             rhs_types.push(rhs_schema.instantiate(ctx));
@@ -189,23 +178,17 @@ impl HMTRS {
         // Get the variables bound by the lexicon
         let bound_vs = self.free_vars()
             .iter()
-            .flat_map(|x| {
-                ctx.substitution()
-                    .get(x)
-                    .unwrap_or(&Type::Variable(*x))
-                    .vars()
-            })
+            .flat_map(|x| Type::Variable(*x).apply(&ctx).vars())
             .unique()
             .collect::<Vec<u16>>();
         let rule_schema = lhs_type.apply(ctx).generalize(&bound_vs);
         Ok((rule_schema, lhs_schema, rhs_schemas))
     }
-    /// Infer the [`Context`] allowing every [`Rule`] in a [`TRS`] to typecheck or generate a [`TypeError`].
+    /// Infer the [`Context`] where every [`Rule`] in a [`TRS`] typechecks.
     ///
     /// [`Context`]: ../../polytype/struct.Context.html
     /// [`Rule`]: ../../term_rewriting/struct.Rule.html
     /// [`TRS`]: ../../term_rewriting/struct.TRS.html
-    /// [`TypeError`]: enum.TypeError.html
     pub fn infer_trs(&self, ctx: &mut Context) -> Result<(), TypeError> {
         // TODO: Right now, this assumes the variables already exist in the signature. Is that sensible?
         for rule in &self.trs.rules {
@@ -278,7 +261,7 @@ impl HMTRS {
         // instantiate the typeschema
         let tp = schema.instantiate(ctx);
         // setup the existing options
-        let mut options = vec![];
+        let mut options = Vec::new();
         let atoms = self.signature.atoms();
         for atom in &atoms {
             if let Ok(bts) = self.check_option(atom, &tp, ctx) {
@@ -364,8 +347,8 @@ impl HMTRS {
     }
     fn fast_update(&self, atom: &Atom, ctx: &mut Context) -> Result<Type, TypeError> {
         let schema = match atom {
-            Atom::Operator(o) => self.infer_op(o)?,
-            Atom::Variable(v) => self.infer_var(v)?,
+            Atom::Operator(o) => self.op_tp(o)?,
+            Atom::Variable(v) => self.var_tp(v)?,
         };
         Ok(schema.instantiate(ctx).apply(ctx))
     }
