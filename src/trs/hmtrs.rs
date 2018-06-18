@@ -98,38 +98,20 @@ impl HMTRS {
     pub fn size(&self) -> usize {
         self.trs.size()
     }
-    /// Convert the `TRS` to a `String`.
-    pub fn display(&self) -> String {
-        self.trs.display(&self.signature)
-    }
     /// All the free variables in the lexicon.
     pub fn free_vars(&self) -> Vec<TypeVar> {
         let vars_fvs = self.vars.iter().flat_map(|x| x.free_vars());
         let ops_fvs = self.ops.iter().flat_map(|x| x.free_vars());
         vars_fvs.chain(ops_fvs).unique().collect()
     }
-    /// Infer the `Type` of a `Variable`.
-    ///
-    /// No [`Context`] is necessary for inference here; `self` either knows the correct [`TypeSchema`] or generates a [`TypeError::VarNotFound`].
-    ///
-    /// [`Context`]: ../../polytype/struct.Context.html
-    /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
-    /// [`TypeError::VarNotFound`]: enum.TypeError.html#variant.VarNotFound
-    pub fn infer_var(&self, v: &Variable) -> Result<TypeSchema, TypeError> {
+    fn infer_var(&self, v: &Variable) -> Result<TypeSchema, TypeError> {
         if let Some(idx) = self.signature.variables().iter().position(|x| x == v) {
             Ok(self.vars[idx].clone())
         } else {
             Err(TypeError::VarNotFound)
         }
     }
-    /// Infer the `Type` of a `Variable`.
-    ///
-    /// No [`Context`] is necessary for inference here; `self` either knows the correct [`TypeSchema`] or generates a [`TypeError::OpNotFound`].
-    ///
-    /// [`Context`]: ../../polytype/struct.Context.html
-    /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
-    /// [`TypeError::OpNotFound`]: enum.TypeError.html#variant.VarNotFound
-    pub fn infer_op(&self, o: &Operator) -> Result<TypeSchema, TypeError> {
+    fn infer_op(&self, o: &Operator) -> Result<TypeSchema, TypeError> {
         if let Some(idx) = self.signature.operators().iter().position(|x| x == o) {
             Ok(self.ops[idx].clone())
         } else {
@@ -263,7 +245,30 @@ impl HMTRS {
         }
         Err(SampleError::OptionsExhausted)
     }
-    pub fn lp_term(
+    /// Sample a Rule.
+    pub fn sample_rule(
+        &mut self,
+        schema: &TypeSchema,
+        ctx: &mut Context,
+        invent: bool,
+        max_d: usize,
+        d: usize,
+    ) -> Result<Rule, SampleError> {
+        let orig_self = self.clone();
+        let orig_ctx = ctx.clone();
+        loop {
+            let lhs = self.sample_term(schema, ctx, invent, max_d, d)?;
+            let rhs = self.sample_term(schema, ctx, false, max_d, d)?;
+            if let Some(rule) = Rule::new(lhs, vec![rhs]) {
+                return Ok(rule);
+            } else {
+                *self = orig_self.clone();
+                *ctx = orig_ctx.clone();
+            }
+        }
+    }
+    /// Give the log probability of sampling a Term.
+    pub fn logprior_term(
         &self,
         term: &Term,
         schema: &TypeSchema,
@@ -304,7 +309,7 @@ impl HMTRS {
                 for (subterm, body_type) in term.args().iter().zip(bts) {
                     let subtype = body_type.apply(ctx);
                     let subschema = TypeSchema::Monotype(subtype.clone());
-                    let tmp_lp = self.lp_term(subterm, &subschema, ctx, invent)?;
+                    let tmp_lp = self.logprior_term(subterm, &subschema, ctx, invent)?;
                     lp += tmp_lp;
                     let final_schema = self.infer_term(subterm, ctx)?;
                     let final_type = final_schema.instantiate(ctx);
@@ -318,30 +323,8 @@ impl HMTRS {
             None => Ok(NEG_INFINITY),
         }
     }
-    /// Sample a Rule.
-    pub fn sample_rule(
-        &mut self,
-        schema: &TypeSchema,
-        ctx: &mut Context,
-        invent: bool,
-        max_d: usize,
-        d: usize,
-    ) -> Result<Rule, SampleError> {
-        let orig_self = self.clone();
-        let orig_ctx = ctx.clone();
-        loop {
-            let lhs = self.sample_term(schema, ctx, invent, max_d, d)?;
-            let rhs = self.sample_term(schema, ctx, false, max_d, d)?;
-            if let Some(rule) = Rule::new(lhs, vec![rhs]) {
-                return Ok(rule);
-            } else {
-                *self = orig_self.clone();
-                *ctx = orig_ctx.clone();
-            }
-        }
-    }
     /// Give the log probability of sampling a Rule.
-    pub fn lp_rule(
+    pub fn logprior_rule(
         &self,
         rule: &Rule,
         schema: &TypeSchema,
@@ -349,15 +332,15 @@ impl HMTRS {
         invent: bool,
     ) -> Result<f64, SampleError> {
         let mut lp = 0.0;
-        let lp_lhs = self.lp_term(&rule.lhs, schema, ctx, invent)?;
+        let lp_lhs = self.logprior_term(&rule.lhs, schema, ctx, invent)?;
         for rhs in &rule.rhs {
-            let tmp_lp = self.lp_term(&rhs, schema, ctx, false)?;
+            let tmp_lp = self.logprior_term(&rhs, schema, ctx, false)?;
             lp += tmp_lp + lp_lhs;
         }
         Ok(lp)
     }
     /// Give the log probability of sampling a TRS.
-    pub fn lp_trs(
+    pub fn logprior_trs(
         &self,
         trs: &TRS,
         schemas: &[TypeSchema],
@@ -372,7 +355,7 @@ impl HMTRS {
         for rule in &trs.rules {
             let mut rule_ps = vec![];
             for schema in schemas {
-                let tmp_lp = self.lp_rule(&rule, schema, ctx, invent)?;
+                let tmp_lp = self.logprior_rule(&rule, schema, ctx, invent)?;
                 rule_ps.push(tmp_lp);
             }
             p_rules += logsumexp(&rule_ps);
@@ -464,22 +447,6 @@ impl HMTRS {
         var
     }
 
-    pub fn posterior(
-        &self,
-        data: &[Rule],
-        p_partial: f64,
-        temperature: f64,
-        prior_temperature: f64,
-        ll_temperature: f64,
-    ) -> f64 {
-        let prior = self.pseudo_log_prior(temperature, prior_temperature);
-        if prior == NEG_INFINITY {
-            NEG_INFINITY
-        } else {
-            prior + self.log_likelihood(data, p_partial, temperature, ll_temperature)
-        }
-    }
-
     pub fn pseudo_log_prior(&self, temp: f64, prior_temp: f64) -> f64 {
         let raw_prior = -(self.size() as f64);
         raw_prior / ((temp + 1.0) * prior_temp)
@@ -491,7 +458,7 @@ impl HMTRS {
             .sum()
     }
 
-    pub fn single_log_likelihood(&self, datum: &Rule, p_partial: f64, temp: f64) -> f64 {
+    fn single_log_likelihood(&self, datum: &Rule, p_partial: f64, temp: f64) -> f64 {
         let p_observe = 0.0;
         let max_steps = 50;
         let max_size = 500;
@@ -509,5 +476,26 @@ impl HMTRS {
         } else {
             (1.0 - p_partial + temp).ln() + ll
         }
+    }
+
+    pub fn posterior(
+        &self,
+        data: &[Rule],
+        p_partial: f64,
+        temperature: f64,
+        prior_temperature: f64,
+        ll_temperature: f64,
+    ) -> f64 {
+        let prior = self.pseudo_log_prior(temperature, prior_temperature);
+        if prior == NEG_INFINITY {
+            NEG_INFINITY
+        } else {
+            prior + self.log_likelihood(data, p_partial, temperature, ll_temperature)
+        }
+    }
+}
+impl fmt::Display for HMTRS {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.trs.display(&self.signature))
     }
 }
