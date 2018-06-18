@@ -7,11 +7,11 @@ use super::utils::{log_n_of, logsumexp};
 ///! - https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system
 ///! - (TAPL; Pierce, 2002, ch. 22)
 use itertools::Itertools;
-use polytype::{Context, Type, TypeSchema, Variable as pVar};
+use polytype::{Context, Type, TypeSchema, Variable as TypeVar};
 use rand::{thread_rng, Rng};
 use std::f64::NEG_INFINITY;
 use std::iter::repeat;
-use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable as tVar, TRS};
+use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable, TRS};
 
 #[derive(Debug, Clone, Copy)]
 pub struct TypeError;
@@ -19,7 +19,7 @@ pub struct TypeError;
 #[derive(Debug, Clone)]
 pub struct SampleError(String);
 
-/// A Hindley-Milner Term Rewriting System (HMTRS): a first-order [term rewriting system][0] with a [Hindley-Milner type system][1].
+/// A first-order [Term Rewriting System][0] (TRS) with a [Hindley-Milner type system][1].
 ///
 /// [0]: https://wikipedia.org/wiki/Hindley–Milner_type_system
 ///      "Wikipedia - Hindley-Milner Type System"
@@ -41,12 +41,12 @@ impl HMTRS {
     pub fn size(&self) -> usize {
         self.trs.size()
     }
-    /// Convert the `HMTRS` to a `String`.
+    /// Convert the `TRS` to a `String`.
     pub fn display(&self) -> String {
         self.trs.display(&self.signature)
     }
     /// All the free variables in the lexicon.
-    pub fn free_vars(&self) -> Vec<pVar> {
+    pub fn free_vars(&self) -> Vec<TypeVar> {
         let vars_fvs = self.vars.iter().flat_map(|x| x.free_vars());
         let ops_fvs = self.ops.iter().flat_map(|x| x.free_vars());
         vars_fvs.chain(ops_fvs).unique().collect()
@@ -58,7 +58,7 @@ impl HMTRS {
     /// [`Context`]: ../../polytype/struct.Context.html
     /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
     /// [`TypeError`]: struct.TypeError.html
-    pub fn infer_var(&self, v: &tVar) -> Result<TypeSchema, TypeError> {
+    pub fn infer_var(&self, v: &Variable) -> Result<TypeSchema, TypeError> {
         if let Some(idx) = self.signature.variables().iter().position(|x| x == v) {
             Ok(self.vars[idx].clone())
         } else {
@@ -142,7 +142,7 @@ impl HMTRS {
         let lhs_type = lhs_schema.instantiate(ctx);
         let mut rhs_types = vec![];
         let mut rhs_schemas = vec![];
-        for rhs in r.rhs.iter() {
+        for rhs in &r.rhs {
             let rhs_schema = self.infer_term(&rhs, ctx)?;
             rhs_types.push(rhs_schema.instantiate(ctx));
             rhs_schemas.push(rhs_schema);
@@ -172,7 +172,7 @@ impl HMTRS {
     /// [`TypeError`]: struct.TypeError.html
     pub fn infer_trs(&self, ctx: &mut Context) -> Result<(), TypeError> {
         // TODO: Right now, this assumes the variables already exist in the signature. Is that sensible?
-        for rule in self.trs.rules.iter() {
+        for rule in &self.trs.rules {
             self.infer_rule(rule, ctx)?;
         }
         Ok(())
@@ -193,11 +193,7 @@ impl HMTRS {
 
         let tp = schema.instantiate(ctx);
 
-        let mut options: Vec<Option<Atom>> = self.signature
-            .atoms()
-            .into_iter()
-            .map(|x| Some(x))
-            .collect();
+        let mut options: Vec<Option<Atom>> = self.signature.atoms().into_iter().map(Some).collect();
         if invent {
             options.push(None);
         }
@@ -225,7 +221,7 @@ impl HMTRS {
         // setup the existing options
         let mut options = vec![];
         let atoms = self.signature.atoms();
-        for atom in atoms.iter() {
+        for atom in &atoms {
             if let Ok(bts) = self.check_option(atom, &tp, ctx) {
                 options.push((Some(*atom), bts))
             }
@@ -247,29 +243,26 @@ impl HMTRS {
             .into_iter()
             .filter(|(o, _)| o == &Some(term.head()))
             .collect();
-        // fail if not exactly 1 match
-        if matches.len() == 0 {
-            return Ok(NEG_INFINITY);
-        }
         // process the match
-        match matches[0] {
-            (Some(Atom::Variable(_)), _) => Ok(lp),
-            (Some(Atom::Operator(_)), ref bts) => {
+        match matches.get(0) {
+            Some((Some(Atom::Variable(_)), _)) => Ok(lp),
+            Some((Some(Atom::Operator(_)), ref bts)) => {
                 for (subterm, body_type) in term.args().iter().zip(bts) {
                     let subtype = body_type.apply(ctx);
                     let subschema = TypeSchema::Monotype(subtype.clone());
                     let tmp_lp = self.lp_term(subterm, &subschema, ctx, invent)?;
                     lp += tmp_lp;
                     let final_schema = self.infer_term(subterm, ctx)
-                        .or(Err(SampleError("untypable".to_string())))?;
+                        .or_else(|_| Err(SampleError("untypable".to_string())))?;
                     let final_type = final_schema.instantiate(ctx);
                     if ctx.unify(&subtype, &final_type).is_err() {
                         return Ok(NEG_INFINITY);
                     }
                 }
-                return Ok(lp);
+                Ok(lp)
             }
-            _ => Err(SampleError("Should never happen -- FIXME!".to_string())),
+            Some(_) => Err(SampleError("Should never happen -- FIXME!".to_string())),
+            None => Ok(NEG_INFINITY),
         }
     }
     /// Sample a Rule.
@@ -304,7 +297,7 @@ impl HMTRS {
     ) -> Result<f64, SampleError> {
         let mut lp = 0.0;
         let lp_lhs = self.lp_term(&rule.lhs, schema, ctx, invent)?;
-        for rhs in rule.rhs.iter() {
+        for rhs in &rule.rhs {
             let tmp_lp = self.lp_term(&rhs, schema, ctx, false)?;
             lp += tmp_lp + lp_lhs;
         }
@@ -323,7 +316,7 @@ impl HMTRS {
         // geometric distribution over number of rules
         let p_n_rules = p_rule.ln() * (trs.clauses().len() as f64);
         let mut p_rules = 0.0;
-        for rule in trs.rules.iter() {
+        for rule in &trs.rules {
             let mut rule_ps = vec![];
             for schema in schemas {
                 let tmp_lp = self.lp_rule(&rule, schema, ctx, invent)?;
@@ -331,7 +324,7 @@ impl HMTRS {
             }
             p_rules += logsumexp(&rule_ps);
         }
-        return Ok(p_n_rules + p_rules);
+        Ok(p_n_rules + p_rules)
     }
     fn fast_update(&self, atom: &Atom, ctx: &mut Context) -> Result<Type, TypeError> {
         let schema = match atom {
@@ -359,16 +352,16 @@ impl HMTRS {
                 let structural_type = Type::from(arg_types.clone());
 
                 ctx.unify(&lexicon_type, &structural_type)
-                    .or(Err(SampleError("failed unification".to_string())))?;
+                    .or_else(|_| Err(SampleError("failed unification".to_string())))?;
 
                 let result_type = arg_types.pop().unwrap();
                 ctx.unify(&result_type, tp)
-                    .or(Err(SampleError("failed unification".to_string())))?;
+                    .or_else(|_| Err(SampleError("failed unification".to_string())))?;
                 Ok(arg_types)
             }
             Atom::Variable(_) => {
                 ctx.unify(&lexicon_type, tp)
-                    .or(Err(SampleError("failed unification".to_string())))?;
+                    .or_else(|_| Err(SampleError("failed unification".to_string())))?;
                 Ok(vec![])
             }
         }
@@ -392,17 +385,17 @@ impl HMTRS {
                     let d_i = (d + 1) * ((i == 0) as usize);
                     let result =
                         self.sample_term(&TypeSchema::Monotype(bt), ctx, invent, max_d, d_i)
-                            .or(Err(SampleError("cannot sample subterm".to_string())))
+                            .or_else(|_| Err(SampleError("cannot sample subterm".to_string())))
                             .and_then(|subterm| {
                                 self.infer_term(&subterm, ctx)
                                     .map(|schema| (subterm, schema))
-                                    .or(Err(SampleError("untypable term".to_string())))
+                                    .or_else(|_| Err(SampleError("untypable term".to_string())))
                             })
                             .and_then(|(subterm, schema)| {
                                 let tp = schema.instantiate(ctx);
                                 ctx.unify(&subtype, &tp)
                                     .map(|_| subterm)
-                                    .or(Err(SampleError("type mismatch".to_string())))
+                                    .or_else(|_| Err(SampleError("type mismatch".to_string())))
                             });
                     if let Ok(subterm) = result {
                         subterms.push(subterm);
@@ -419,7 +412,7 @@ impl HMTRS {
         }
     }
     /// Create a brand-new variable.
-    fn invent_variable(&mut self, tp: &Type) -> tVar {
+    fn invent_variable(&mut self, tp: &Type) -> Variable {
         let var = self.signature.new_var(None);
         self.vars.push(TypeSchema::Monotype(tp.clone()));
         var

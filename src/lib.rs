@@ -113,9 +113,9 @@ extern crate term_rewriting;
 pub mod domains;
 mod ec;
 mod gp;
-pub mod hmtrs;
 pub mod lambda;
 pub mod pcfg;
+pub mod trs;
 pub use ec::*;
 pub use gp::*;
 

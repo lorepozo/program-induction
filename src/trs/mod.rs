@@ -1,10 +1,4 @@
-//! (representation)
-//! A [Hindley-Milner][1] [Term Rewriting System][0] (HMTRS).
-//!
-//! [0]: https://wikipedia.org/wiki/Hindley–Milner_type_system
-//!      "Wikipedia - Hindley-Milner Type System"
-//! [1]: https://en.wikipedia.org/wiki/Rewriting#Term_rewriting_systems
-//!      "Wikipedia - Term Rewriting Systems"
+//! (representation) Polymorphically-typed term rewriting system.
 mod hmtrs;
 mod trace;
 mod utils;
