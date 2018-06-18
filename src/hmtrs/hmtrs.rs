@@ -1,3 +1,4 @@
+use super::trace::Trace;
 use super::utils::{log_n_of, logsumexp};
 ///! Hindley-Milner Typing for First-Order Term Rewriting Systems (no abstraction)
 ///!
@@ -10,7 +11,7 @@ use polytype::{Context, Type, TypeSchema, Variable as pVar};
 use rand::{thread_rng, Rng};
 use std::f64::NEG_INFINITY;
 use std::iter::repeat;
-use term_rewriting::{Atom, MergeStrategy, Operator, Rule, Signature, Term, Variable as tVar, TRS};
+use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable as tVar, TRS};
 
 #[derive(Debug, Clone, Copy)]
 pub struct TypeError;
@@ -271,7 +272,7 @@ impl HMTRS {
             _ => Err(SampleError("Should never happen -- FIXME!".to_string())),
         }
     }
-    // Sample a Rule.
+    /// Sample a Rule.
     pub fn sample_rule(
         &mut self,
         schema: &TypeSchema,
@@ -293,7 +294,7 @@ impl HMTRS {
             }
         }
     }
-    // Give the log probability of sampling a Rule.
+    /// Give the log probability of sampling a Rule.
     pub fn lp_rule(
         &self,
         rule: &Rule,
@@ -309,7 +310,7 @@ impl HMTRS {
         }
         Ok(lp)
     }
-    // Give the log probability of sampling a TRS.
+    /// Give the log probability of sampling a TRS.
     pub fn lp_trs(
         &self,
         trs: &TRS,
@@ -339,7 +340,6 @@ impl HMTRS {
         };
         Ok(schema.instantiate(ctx).apply(ctx))
     }
-    // check_option
     fn check_option(
         &self,
         atom: &Atom,
@@ -373,7 +373,6 @@ impl HMTRS {
             }
         }
     }
-    // try_option
     fn try_option(
         &mut self,
         atom: &Atom,
@@ -419,11 +418,57 @@ impl HMTRS {
             }
         }
     }
-    // Create a brand-new variable.
+    /// Create a brand-new variable.
     fn invent_variable(&mut self, tp: &Type) -> tVar {
         let var = self.signature.new_var(None);
         self.vars.push(TypeSchema::Monotype(tp.clone()));
         var
     }
-}
 
+    pub fn posterior(
+        &self,
+        data: &[Rule],
+        p_partial: f64,
+        temperature: f64,
+        prior_temperature: f64,
+        ll_temperature: f64,
+    ) -> f64 {
+        let prior = self.pseudo_log_prior(temperature, prior_temperature);
+        if prior == NEG_INFINITY {
+            NEG_INFINITY
+        } else {
+            prior + self.log_likelihood(data, p_partial, temperature, ll_temperature)
+        }
+    }
+
+    pub fn pseudo_log_prior(&self, temp: f64, prior_temp: f64) -> f64 {
+        let raw_prior = -(self.size() as f64);
+        raw_prior / ((temp + 1.0) * prior_temp)
+    }
+
+    pub fn log_likelihood(&self, data: &[Rule], p_partial: f64, temp: f64, ll_temp: f64) -> f64 {
+        data.iter()
+            .map(|x| self.single_log_likelihood(x, p_partial, temp) / ll_temp)
+            .sum()
+    }
+
+    pub fn single_log_likelihood(&self, datum: &Rule, p_partial: f64, temp: f64) -> f64 {
+        let p_observe = 0.0;
+        let max_steps = 50;
+        let max_size = 500;
+        let mut trace = Trace::new(&self.trs, &datum.lhs, p_observe, max_steps, max_size);
+        trace.run();
+
+        let ll = if let Some(ref rhs) = datum.rhs() {
+            trace.rewrites_to(rhs)
+        } else {
+            NEG_INFINITY
+        };
+
+        if ll == NEG_INFINITY {
+            (p_partial + temp).ln()
+        } else {
+            (1.0 - p_partial + temp).ln() + ll
+        }
+    }
+}
