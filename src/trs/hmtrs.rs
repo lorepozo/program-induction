@@ -1,23 +1,80 @@
-use super::trace::Trace;
-use super::utils::{log_n_of, logsumexp};
 ///! Hindley-Milner Typing for First-Order Term Rewriting Systems (no abstraction)
 ///!
 ///! Much thanks to:
 ///! - https://github.com/rob-smallshire/hindley-milner-python
 ///! - https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system
 ///! - (TAPL; Pierce, 2002, ch. 22)
+use super::trace::Trace;
+use super::utils::{log_n_of, logsumexp};
+
 use itertools::Itertools;
-use polytype::{Context, Type, TypeSchema, Variable as TypeVar};
+use polytype::{self, Context, Type, TypeSchema, Variable as TypeVar};
 use rand::{thread_rng, Rng};
 use std::f64::NEG_INFINITY;
+use std::fmt;
 use std::iter::repeat;
 use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable, TRS};
 
-#[derive(Debug, Clone, Copy)]
-pub struct TypeError;
+#[derive(Debug, Clone)]
+pub enum TypeError {
+    Unification(polytype::UnificationError),
+    OpNotFound,
+    VarNotFound,
+}
+impl From<polytype::UnificationError> for TypeError {
+    fn from(e: polytype::UnificationError) -> TypeError {
+        TypeError::Unification(e)
+    }
+}
+impl fmt::Display for TypeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            TypeError::Unification(ref e) => write!(f, "unification error: {}", e),
+            TypeError::OpNotFound => write!(f, "operator not found"),
+            TypeError::VarNotFound => write!(f, "variable not found"),
+        }
+    }
+}
+impl ::std::error::Error for TypeError {
+    fn description(&self) -> &'static str {
+        "type error"
+    }
+}
 
 #[derive(Debug, Clone)]
-pub struct SampleError(String);
+pub enum SampleError {
+    TypeError(TypeError),
+    DepthExceeded(usize, usize),
+    OptionsExhausted,
+    Subterm,
+}
+impl From<TypeError> for SampleError {
+    fn from(e: TypeError) -> SampleError {
+        SampleError::TypeError(e)
+    }
+}
+impl From<polytype::UnificationError> for SampleError {
+    fn from(e: polytype::UnificationError) -> SampleError {
+        SampleError::TypeError(TypeError::Unification(e))
+    }
+}
+impl fmt::Display for SampleError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            SampleError::TypeError(ref e) => write!(f, "type error: {}", e),
+            SampleError::DepthExceeded(depth, max_depth) => {
+                write!(f, "depth {} exceeded maximum of {}", depth, max_depth)
+            }
+            SampleError::OptionsExhausted => write!(f, "failed to sample (options exhausted)"),
+            SampleError::Subterm => write!(f, "cannot sample subterm"),
+        }
+    }
+}
+impl ::std::error::Error for SampleError {
+    fn description(&self) -> &'static str {
+        "sample error"
+    }
+}
 
 /// A first-order [Term Rewriting System][0] (TRS) with a [Hindley-Milner type system][1].
 ///
@@ -53,30 +110,30 @@ impl HMTRS {
     }
     /// Infer the `Type` of a `Variable`.
     ///
-    /// No [`Context`] is necessary for inference here; `self` either knows the correct [`TypeSchema`] or generates a [`TypeError`].
+    /// No [`Context`] is necessary for inference here; `self` either knows the correct [`TypeSchema`] or generates a [`TypeError::VarNotFound`].
     ///
     /// [`Context`]: ../../polytype/struct.Context.html
     /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
-    /// [`TypeError`]: struct.TypeError.html
+    /// [`TypeError::VarNotFound`]: enum.TypeError.html#variant.VarNotFound
     pub fn infer_var(&self, v: &Variable) -> Result<TypeSchema, TypeError> {
         if let Some(idx) = self.signature.variables().iter().position(|x| x == v) {
             Ok(self.vars[idx].clone())
         } else {
-            Err(TypeError)
+            Err(TypeError::VarNotFound)
         }
     }
     /// Infer the `Type` of a `Variable`.
     ///
-    /// No [`Context`] is necessary for inference here; `self` either knows the correct [`TypeSchema`] or generates a [`TypeError`].
+    /// No [`Context`] is necessary for inference here; `self` either knows the correct [`TypeSchema`] or generates a [`TypeError::OpNotFound`].
     ///
     /// [`Context`]: ../../polytype/struct.Context.html
     /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
-    /// [`TypeError`]: struct.TypeError.html
+    /// [`TypeError::OpNotFound`]: enum.TypeError.html#variant.VarNotFound
     pub fn infer_op(&self, o: &Operator) -> Result<TypeSchema, TypeError> {
         if let Some(idx) = self.signature.operators().iter().position(|x| x == o) {
             Ok(self.ops[idx].clone())
         } else {
-            Err(TypeError)
+            Err(TypeError::OpNotFound)
         }
     }
     /// Infer the [`TypeSchema`] of a [`Term`] and the corresponding [`Context`] or generate a [`TypeError`].
@@ -84,7 +141,7 @@ impl HMTRS {
     /// [`Context`]: ../../polytype/struct.Context.html
     /// [`Term`]: ../../term_rewriting/enum.Term.html
     /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
-    /// [`TypeError`]: struct.TypeError.html
+    /// [`TypeError`]: enum.TypeError.html
     pub fn infer_term(&self, term: &Term, ctx: &mut Context) -> Result<TypeSchema, TypeError> {
         let tp = self.infer_internal(term, ctx)?;
         // Get the variables bound by the lexicon
@@ -110,11 +167,8 @@ impl HMTRS {
             Term::Application { op, args } => {
                 let body_type = self.infer_args(args, ctx)?;
                 let head_type = self.infer_op(op)?.instantiate(ctx).apply(ctx);
-                if ctx.unify(&head_type, &body_type).is_ok() {
-                    Ok(self.infer_op(op)?.instantiate(ctx).apply(ctx))
-                } else {
-                    Err(TypeError)
-                }
+                ctx.unify(&head_type, &body_type)?;
+                Ok(self.infer_op(op)?.instantiate(ctx).apply(ctx))
             }
         }
     }
@@ -132,7 +186,7 @@ impl HMTRS {
     /// [`Context`]: ../../polytype/struct.Context.html
     /// [`Rule`]: ../../term_rewriting/struct.Rule.html
     /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
-    /// [`TypeError`]: struct.TypeError.html
+    /// [`TypeError`]: enum.TypeError.html
     pub fn infer_rule(
         &self,
         r: &Rule,
@@ -148,7 +202,7 @@ impl HMTRS {
             rhs_schemas.push(rhs_schema);
         }
         for rhs_type in rhs_types {
-            ctx.unify(&lhs_type, &rhs_type).or(Err(TypeError))?;
+            ctx.unify(&lhs_type, &rhs_type)?;
         }
         // Get the variables bound by the lexicon
         let bound_vs = self.free_vars()
@@ -169,7 +223,7 @@ impl HMTRS {
     /// [`Context`]: ../../polytype/struct.Context.html
     /// [`Rule`]: ../../term_rewriting/struct.Rule.html
     /// [`TRS`]: ../../term_rewriting/struct.TRS.html
-    /// [`TypeError`]: struct.TypeError.html
+    /// [`TypeError`]: enum.TypeError.html
     pub fn infer_trs(&self, ctx: &mut Context) -> Result<(), TypeError> {
         // TODO: Right now, this assumes the variables already exist in the signature. Is that sensible?
         for rule in &self.trs.rules {
@@ -188,7 +242,7 @@ impl HMTRS {
     ) -> Result<Term, SampleError> {
         // fail if we've gone too deep
         if d > max_d {
-            return Err(SampleError(format!("depth bound {} < {}", max_d, d)));
+            return Err(SampleError::DepthExceeded(d, max_d));
         }
 
         let tp = schema.instantiate(ctx);
@@ -207,7 +261,7 @@ impl HMTRS {
                 return result;
             }
         }
-        Err(SampleError("failed to sample term".to_string()))
+        Err(SampleError::OptionsExhausted)
     }
     pub fn lp_term(
         &self,
@@ -252,8 +306,7 @@ impl HMTRS {
                     let subschema = TypeSchema::Monotype(subtype.clone());
                     let tmp_lp = self.lp_term(subterm, &subschema, ctx, invent)?;
                     lp += tmp_lp;
-                    let final_schema = self.infer_term(subterm, ctx)
-                        .or_else(|_| Err(SampleError("untypable".to_string())))?;
+                    let final_schema = self.infer_term(subterm, ctx)?;
                     let final_type = final_schema.instantiate(ctx);
                     if ctx.unify(&subtype, &final_type).is_err() {
                         return Ok(NEG_INFINITY);
@@ -261,7 +314,7 @@ impl HMTRS {
                 }
                 Ok(lp)
             }
-            Some(_) => Err(SampleError("Should never happen -- FIXME!".to_string())),
+            Some(_) => panic!("Should never happen -- FIXME!"),
             None => Ok(NEG_INFINITY),
         }
     }
@@ -339,8 +392,7 @@ impl HMTRS {
         tp: &Type,
         ctx: &mut Context,
     ) -> Result<Vec<Type>, SampleError> {
-        let lexicon_type = self.fast_update(atom, ctx)
-            .or_else(|_| Err(SampleError("could not find item in lexicon".to_string())))?;
+        let lexicon_type = self.fast_update(atom, ctx)?;
         match atom {
             Atom::Operator(o) => {
                 let mut arg_types: Vec<Type> = repeat(0)
@@ -351,17 +403,14 @@ impl HMTRS {
                 arg_types.push(result_type);
                 let structural_type = Type::from(arg_types.clone());
 
-                ctx.unify(&lexicon_type, &structural_type)
-                    .or_else(|_| Err(SampleError("failed unification".to_string())))?;
+                ctx.unify(&lexicon_type, &structural_type)?;
 
                 let result_type = arg_types.pop().unwrap();
-                ctx.unify(&result_type, tp)
-                    .or_else(|_| Err(SampleError("failed unification".to_string())))?;
+                ctx.unify(&result_type, tp)?;
                 Ok(arg_types)
             }
             Atom::Variable(_) => {
-                ctx.unify(&lexicon_type, tp)
-                    .or_else(|_| Err(SampleError("failed unification".to_string())))?;
+                ctx.unify(&lexicon_type, tp)?;
                 Ok(vec![])
             }
         }
@@ -383,25 +432,22 @@ impl HMTRS {
                 for (i, bt) in body_types.into_iter().enumerate() {
                     let subtype = bt.apply(ctx);
                     let d_i = (d + 1) * ((i == 0) as usize);
+                    // done functionally so we can revert the ctx in the event of failure
                     let result =
                         self.sample_term(&TypeSchema::Monotype(bt), ctx, invent, max_d, d_i)
-                            .or_else(|_| Err(SampleError("cannot sample subterm".to_string())))
+                            .map_err(|_| SampleError::Subterm)
                             .and_then(|subterm| {
-                                self.infer_term(&subterm, ctx)
-                                    .map(|schema| (subterm, schema))
-                                    .or_else(|_| Err(SampleError("untypable term".to_string())))
-                            })
-                            .and_then(|(subterm, schema)| {
+                                let schema = self.infer_term(&subterm, ctx)?;
                                 let tp = schema.instantiate(ctx);
-                                ctx.unify(&subtype, &tp)
-                                    .map(|_| subterm)
-                                    .or_else(|_| Err(SampleError("type mismatch".to_string())))
+                                ctx.unify_fast(subtype, tp)?;
+                                Ok(subterm)
                             });
-                    if let Ok(subterm) = result {
-                        subterms.push(subterm);
-                    } else {
-                        *ctx = orig_ctx;
-                        return result;
+                    match result {
+                        Ok(subterm) => subterms.push(subterm),
+                        Err(e) => {
+                            *ctx = orig_ctx;
+                            return Err(e);
+                        }
                     }
                 }
                 Ok(Term::Application {

@@ -3,7 +3,7 @@ mod hmtrs;
 mod trace;
 mod utils;
 
-pub use self::hmtrs::HMTRS;
+pub use self::hmtrs::{SampleError, TypeError, HMTRS};
 use polytype::TypeSchema;
 use term_rewriting::Rule;
 use Task;
