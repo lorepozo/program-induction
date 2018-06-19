@@ -118,6 +118,22 @@ impl HMTRS {
             Err(TypeError::OpNotFound)
         }
     }
+    /// Infer (lookup) the [`TypeSchema`] of an [`Operator`] or [`Variable`].
+    ///
+    /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
+    /// [`Operator`]: ../../term_rewriting/enum.Operator.html
+    /// [`Variable`]: ../../term_rewriting/type.Variable.html
+    pub fn infer_atom(&self, atom: &Atom) -> Result<TypeSchema, TypeError> {
+        match *atom {
+            Atom::Operator(ref o) => self.op_tp(o),
+            Atom::Variable(ref v) => self.var_tp(v),
+        }
+    }
+    fn instantiate_atom(&self, atom: &Atom, ctx: &mut Context) -> Result<Type, TypeError> {
+        let mut tp = self.infer_atom(atom)?.instantiate_owned(ctx);
+        tp.apply_mut(ctx);
+        Ok(tp)
+    }
     /// Infer the [`TypeSchema`] of a [`Term`].
     ///
     /// [`Term`]: ../../term_rewriting/enum.Term.html
@@ -133,13 +149,9 @@ impl HMTRS {
         Ok(tp.generalize(&bound_vs))
     }
     fn infer_internal(&self, term: &Term, ctx: &mut Context) -> Result<Type, TypeError> {
-        match term {
-            Term::Application { op, .. } if op.arity(&self.signature) == 0 => {
-                Ok(self.op_tp(op)?.instantiate(ctx).apply(ctx))
-            }
-            Term::Variable(v) => Ok(self.var_tp(v)?.instantiate(ctx).apply(ctx)),
-            Term::Application { op, args } => {
-                let head_type = self.op_tp(op)?.instantiate(ctx).apply(ctx);
+        if let Term::Application { op, ref args } = *term {
+            if op.arity(&self.signature) > 0 {
+                let head_type = self.instantiate_atom(&Atom::from(op), ctx)?;
                 let body_type = {
                     let mut pre_types = Vec::with_capacity(args.len() + 1);
                     for a in args {
@@ -149,9 +161,9 @@ impl HMTRS {
                     Type::from(pre_types)
                 };
                 ctx.unify(&head_type, &body_type)?;
-                Ok(self.op_tp(op)?.instantiate(ctx).apply(ctx))
             }
         }
+        self.instantiate_atom(&term.head(), ctx)
     }
     /// Infer the [`TypeSchema`] of a [`Rule`], along with schemas for the left-hand-side and
     /// right-hand-sides of the rule.
@@ -203,6 +215,15 @@ impl HMTRS {
         ctx: &mut Context,
         invent: bool,
         max_d: usize,
+    ) -> Result<Term, SampleError> {
+        self.sample_term_internal(schema, ctx, invent, max_d, 0)
+    }
+    fn sample_term_internal(
+        &mut self,
+        schema: &TypeSchema,
+        ctx: &mut Context,
+        invent: bool,
+        max_d: usize,
         d: usize,
     ) -> Result<Term, SampleError> {
         // fail if we've gone too deep
@@ -228,8 +249,17 @@ impl HMTRS {
         }
         Err(SampleError::OptionsExhausted)
     }
-    /// Sample a Rule.
+    /// Sample a `Rule`.
     pub fn sample_rule(
+        &mut self,
+        schema: &TypeSchema,
+        ctx: &mut Context,
+        invent: bool,
+        max_d: usize,
+    ) -> Result<Rule, SampleError> {
+        self.sample_rule_internal(schema, ctx, invent, max_d, 0)
+    }
+    fn sample_rule_internal(
         &mut self,
         schema: &TypeSchema,
         ctx: &mut Context,
@@ -240,8 +270,8 @@ impl HMTRS {
         let orig_self = self.clone();
         let orig_ctx = ctx.clone();
         loop {
-            let lhs = self.sample_term(schema, ctx, invent, max_d, d)?;
-            let rhs = self.sample_term(schema, ctx, false, max_d, d)?;
+            let lhs = self.sample_term_internal(schema, ctx, invent, max_d, d)?;
+            let rhs = self.sample_term_internal(schema, ctx, false, max_d, d)?;
             if let Some(rule) = Rule::new(lhs, vec![rhs]) {
                 return Ok(rule);
             } else {
@@ -280,13 +310,11 @@ impl HMTRS {
         }
         // compute the log probability of selecting this head
         let mut lp = log_n_of(&options, 1, 0.0);
-        // filter the matches
-        let matches: Vec<(Option<Atom>, Vec<Type>)> = options
-            .into_iter()
-            .filter(|(o, _)| o == &Some(term.head()))
-            .collect();
         // process the match
-        match matches.get(0) {
+        match options
+            .into_iter()
+            .find(|&(ref o, _)| o == &Some(term.head()))
+        {
             Some((Some(Atom::Variable(_)), _)) => Ok(lp),
             Some((Some(Atom::Operator(_)), ref bts)) => {
                 for (subterm, body_type) in term.args().iter().zip(bts) {
@@ -294,15 +322,14 @@ impl HMTRS {
                     let subschema = TypeSchema::Monotype(subtype.clone());
                     let tmp_lp = self.logprior_term(subterm, &subschema, ctx, invent)?;
                     lp += tmp_lp;
-                    let final_schema = self.infer_term(subterm, ctx)?;
-                    let final_type = final_schema.instantiate(ctx);
+                    let final_type = self.infer_term(subterm, ctx)?.instantiate_owned(ctx);
                     if ctx.unify(&subtype, &final_type).is_err() {
                         return Ok(NEG_INFINITY);
                     }
                 }
                 Ok(lp)
             }
-            Some(_) => panic!("Should never happen -- FIXME!"),
+            Some((None, _)) => panic!("Should never happen -- FIXME!"),
             None => Ok(NEG_INFINITY),
         }
     }
@@ -345,20 +372,13 @@ impl HMTRS {
         }
         Ok(p_n_rules + p_rules)
     }
-    fn fast_update(&self, atom: &Atom, ctx: &mut Context) -> Result<Type, TypeError> {
-        let schema = match atom {
-            Atom::Operator(o) => self.op_tp(o)?,
-            Atom::Variable(v) => self.var_tp(v)?,
-        };
-        Ok(schema.instantiate(ctx).apply(ctx))
-    }
     fn check_option(
         &self,
         atom: &Atom,
         tp: &Type,
         ctx: &mut Context,
     ) -> Result<Vec<Type>, SampleError> {
-        let lexicon_type = self.fast_update(atom, ctx)?;
+        let lexicon_type = self.instantiate_atom(atom, ctx)?;
         match atom {
             Atom::Operator(o) => {
                 let mut arg_types: Vec<Type> = repeat(0)
@@ -399,15 +419,18 @@ impl HMTRS {
                     let subtype = bt.apply(ctx);
                     let d_i = (d + 1) * ((i == 0) as usize);
                     // done functionally so we can revert the ctx in the event of failure
-                    let result =
-                        self.sample_term(&TypeSchema::Monotype(bt), ctx, invent, max_d, d_i)
-                            .map_err(|_| SampleError::Subterm)
-                            .and_then(|subterm| {
-                                let schema = self.infer_term(&subterm, ctx)?;
-                                let tp = schema.instantiate(ctx);
-                                ctx.unify_fast(subtype, tp)?;
-                                Ok(subterm)
-                            });
+                    let result = self.sample_term_internal(
+                        &TypeSchema::Monotype(bt),
+                        ctx,
+                        invent,
+                        max_d,
+                        d_i,
+                    ).map_err(|_| SampleError::Subterm)
+                        .and_then(|subterm| {
+                            let tp = self.infer_term(&subterm, ctx)?.instantiate_owned(ctx);
+                            ctx.unify_fast(subtype, tp)?;
+                            Ok(subterm)
+                        });
                     match result {
                         Ok(subterm) => subterms.push(subterm),
                         Err(e) => {
