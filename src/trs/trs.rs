@@ -9,10 +9,12 @@ use polytype::{self, Context, Type, TypeSchema, Variable as TypeVar};
 use rand::{thread_rng, Rng};
 use std::f64::NEG_INFINITY;
 use std::fmt;
-use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable, TRS as UntypedTRS};
+use std::iter::{once, repeat};
+use term_rewriting::{Atom, MergeStrategy, Operator, Rule, Signature, Term, Variable, TRS as UntypedTRS};
 
 use super::trace::Trace;
 use utils::logsumexp;
+use GP;
 
 #[derive(Debug, Clone)]
 pub enum TypeError {
@@ -471,9 +473,137 @@ impl TRS {
             prior + self.log_likelihood(data, p_partial, temperature, ll_temperature)
         }
     }
+
+    /// Sample a rule and add it to the TRS.
+    pub fn add_rule<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
+        let mut new_trs = self.clone();
+
+        let var = new_trs.ctx.new_variable();
+        let schema = TypeSchema::Monotype(var);
+
+        new_trs.ctx.reset();
+        let mut ctx = new_trs.ctx.clone();
+
+        let rule = new_trs.sample_rule(&schema, &mut ctx, true, 4)?;
+        self.infer_rule(&rule, &mut ctx)?;
+        new_trs.trs.push(rule);
+        new_trs.ctx = ctx;
+
+        Ok(new_trs)
+    }
+    /// Delete a rule from the TRS if possible.
+    pub fn delete_rule<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
+        let mut new_trs = self.clone();
+        if !self.trs.is_empty() {
+            let idx = rng.gen_range(0, self.trs.len());
+            new_trs.trs.rules.remove(idx);
+            Ok(new_trs)
+        } else {
+            Err(SampleError::OptionsExhausted)
+        }
+    }
+    /// merge two `TRS` into a single `TRS`.
+    pub fn combine(trs1: &TRS, trs2: &TRS) -> TRS {
+        // merge the Signatures
+        let mut signature = trs1.signature.clone();
+        let sig2 = trs2.signature.clone();
+        let sig_change = signature.merge(sig2, MergeStrategy::SameOperators);
+        // merge the Contexts
+        let mut ctx = trs1.ctx.clone();
+        let ctx2 = trs2.ctx.clone();
+        let p2_op_free_typevars = trs1
+            .ops
+            .iter()
+            .flat_map(TypeSchema::free_vars)
+            .unique()
+            .collect();
+        let ctx_change = ctx.merge(ctx2, p2_op_free_typevars);
+        // merge/reify the variable types
+        let mut vars = trs1.vars.clone();
+        let mut vars2 = trs2
+            .vars
+            .clone()
+            .into_iter()
+            .map(|mut x| {
+                ctx_change.reify_typeschema(&mut x);
+                x
+            })
+            .collect();
+        vars.append(&mut vars2);
+        // merge/reify the operator types -- assuming they're the same makes this easy
+        let ops = trs1.ops.clone();
+        // merge/reify the ruleset
+        let mut trs = trs1.trs.clone();
+        trs.rules.append(&mut sig_change.reify_trs(trs2.trs.clone()).rules);
+        // create the TRS
+        TRS {
+            signature,
+            ctx,
+            trs,
+            vars,
+            ops,
+        }
+    }
 }
 impl fmt::Display for TRS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.trs.display(&self.signature))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TRSParams {
+    h0: TRS,
+    n_crosses: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct TRSSpace;
+impl GP for TRSSpace {
+    type Expression = TRS;
+    type Params = TRSParams;
+    fn genesis<R: Rng>(
+        &self,
+        params: &Self::Params,
+        rng: &mut R,
+        pop_size: usize,
+        tp: &TypeSchema,
+    ) -> Vec<Self::Expression> {
+        repeat(params.h0.clone()).take(pop_size).collect()
+    }
+    fn mutate<R: Rng>(
+        &self,
+        params: &Self::Params,
+        rng: &mut R,
+        prog: &Self::Expression,
+    ) -> Self::Expression {
+        loop {
+            if rng.gen_bool(0.5) {
+                if let Ok(new_expr) = prog.add_rule(rng) {
+                    return new_expr;
+                }
+            } else if let Ok(new_expr) = prog.delete_rule(rng) {
+                return new_expr;
+            }
+        }
+    }
+    fn crossover<R: Rng>(
+        &self,
+        params: &Self::Params,
+        rng: &mut R,
+        parent1: &Self::Expression,
+        parent2: &Self::Expression,
+    ) -> Vec<Self::Expression> {
+        let trs = TRS::combine(parent1, parent2);
+        let trss = repeat(trs.clone()).take(params.n_crosses).map(|mut x| {
+            x.trs.rules = x
+                .trs
+                .rules
+                .into_iter()
+                .filter(|_| rng.gen_bool(0.5))
+                .collect();
+            x
+        });
+        once(trs).chain(trss).collect()
     }
 }
