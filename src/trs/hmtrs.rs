@@ -12,7 +12,6 @@ use polytype::{self, Context, Type, TypeSchema, Variable as TypeVar};
 use rand::{thread_rng, Rng};
 use std::f64::NEG_INFINITY;
 use std::fmt;
-use std::iter::repeat;
 use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable, TRS};
 
 #[derive(Debug, Clone)]
@@ -237,12 +236,11 @@ impl HMTRS {
         if invent {
             options.push(None);
         }
-        let mut rng = thread_rng();
-        rng.shuffle(&mut options);
+        thread_rng().shuffle(&mut options);
         for option in options {
             let atom = option.unwrap_or_else(|| Atom::Variable(self.invent_variable(&tp)));
-            let body_types = self.check_option(&atom, &tp, ctx)?;
-            let result = self.try_option(&atom, body_types, ctx, invent, max_d, d);
+            let arg_types = self.fit_atom(&atom, &tp, ctx)?;
+            let result = self.place_atom(&atom, arg_types, ctx, invent, max_d, d);
             if result.is_ok() {
                 return result;
             }
@@ -294,18 +292,18 @@ impl HMTRS {
         let mut options = Vec::new();
         let atoms = self.signature.atoms();
         for atom in &atoms {
-            if let Ok(bts) = self.check_option(atom, &tp, ctx) {
-                options.push((Some(*atom), bts))
+            if let Ok(arg_types) = self.fit_atom(atom, &tp, ctx) {
+                options.push((Some(*atom), arg_types))
             }
         }
         // add a variable if needed
         if invent {
             if let Term::Variable(v) = *term {
                 if !atoms.contains(&Atom::Variable(v)) {
-                    options.push((Some(Atom::Variable(v)), vec![tp]));
+                    options.push((Some(Atom::Variable(v)), Vec::new()));
                 }
             } else {
-                options.push((None, vec![tp]));
+                options.push((None, Vec::new()));
             }
         }
         // compute the log probability of selecting this head
@@ -314,22 +312,21 @@ impl HMTRS {
         match options
             .into_iter()
             .find(|&(ref o, _)| o == &Some(term.head()))
+            .map(|(o, arg_types)| (o.unwrap(), arg_types))
         {
-            Some((Some(Atom::Variable(_)), _)) => Ok(lp),
-            Some((Some(Atom::Operator(_)), ref bts)) => {
-                for (subterm, body_type) in term.args().iter().zip(bts) {
-                    let subtype = body_type.apply(ctx);
-                    let subschema = TypeSchema::Monotype(subtype.clone());
-                    let tmp_lp = self.logprior_term(subterm, &subschema, ctx, invent)?;
-                    lp += tmp_lp;
+            Some((Atom::Variable(_), _)) => Ok(lp),
+            Some((Atom::Operator(_), arg_types)) => {
+                for (subterm, mut arg_tp) in term.args().iter().zip(arg_types) {
+                    arg_tp.apply_mut(ctx);
+                    let arg_schema = TypeSchema::Monotype(arg_tp.clone());
+                    lp += self.logprior_term(subterm, &arg_schema, ctx, invent)?;
                     let final_type = self.infer_term(subterm, ctx)?.instantiate_owned(ctx);
-                    if ctx.unify(&subtype, &final_type).is_err() {
+                    if ctx.unify(&arg_tp, &final_type).is_err() {
                         return Ok(NEG_INFINITY);
                     }
                 }
                 Ok(lp)
             }
-            Some((None, _)) => panic!("Should never happen -- FIXME!"),
             None => Ok(NEG_INFINITY),
         }
     }
@@ -372,77 +369,53 @@ impl HMTRS {
         }
         Ok(p_n_rules + p_rules)
     }
-    fn check_option(
+    fn fit_atom(
         &self,
         atom: &Atom,
         tp: &Type,
         ctx: &mut Context,
     ) -> Result<Vec<Type>, SampleError> {
-        let lexicon_type = self.instantiate_atom(atom, ctx)?;
-        match atom {
-            Atom::Operator(o) => {
-                let mut arg_types: Vec<Type> = repeat(0)
-                    .take(o.arity(&self.signature) as usize)
-                    .map(|_| ctx.new_variable())
-                    .collect();
-                let result_type = ctx.new_variable();
-                arg_types.push(result_type);
-                let structural_type = Type::from(arg_types.clone());
-
-                ctx.unify(&lexicon_type, &structural_type)?;
-
-                let result_type = arg_types.pop().unwrap();
-                ctx.unify(&result_type, tp)?;
-                Ok(arg_types)
-            }
-            Atom::Variable(_) => {
-                ctx.unify(&lexicon_type, tp)?;
-                Ok(vec![])
-            }
-        }
+        let atom_tp = self.instantiate_atom(atom, ctx)?;
+        ctx.unify(&atom_tp, tp)?;
+        Ok(atom_tp
+            .args()
+            .map(|o| o.into_iter().cloned().collect())
+            .unwrap_or_else(Vec::new))
     }
-    fn try_option(
+    fn place_atom(
         &mut self,
         atom: &Atom,
-        body_types: Vec<Type>,
+        arg_types: Vec<Type>,
         ctx: &mut Context,
         invent: bool,
         max_d: usize,
         d: usize,
     ) -> Result<Term, SampleError> {
-        match atom {
-            Atom::Variable(v) => Ok(Term::Variable(*v)),
-            Atom::Operator(o) => {
-                let mut subterms = vec![];
-                let orig_ctx = ctx.clone();
-                for (i, bt) in body_types.into_iter().enumerate() {
-                    let subtype = bt.apply(ctx);
+        match *atom {
+            Atom::Variable(v) => Ok(Term::Variable(v)),
+            Atom::Operator(op) => {
+                let orig_ctx = ctx.clone(); // for "undo" semantics
+                let mut args = Vec::with_capacity(arg_types.len());
+                for (i, arg_tp) in arg_types.into_iter().enumerate() {
+                    let subtype = arg_tp.apply(ctx);
+                    let arg_schema = TypeSchema::Monotype(arg_tp);
                     let d_i = (d + 1) * ((i == 0) as usize);
-                    // done functionally so we can revert the ctx in the event of failure
-                    let result = self.sample_term_internal(
-                        &TypeSchema::Monotype(bt),
-                        ctx,
-                        invent,
-                        max_d,
-                        d_i,
-                    ).map_err(|_| SampleError::Subterm)
+                    let result = self.sample_term_internal(&arg_schema, ctx, invent, max_d, d_i)
+                        .map_err(|_| SampleError::Subterm)
                         .and_then(|subterm| {
                             let tp = self.infer_term(&subterm, ctx)?.instantiate_owned(ctx);
                             ctx.unify_fast(subtype, tp)?;
                             Ok(subterm)
                         });
                     match result {
-                        Ok(subterm) => subterms.push(subterm),
+                        Ok(subterm) => args.push(subterm),
                         Err(e) => {
                             *ctx = orig_ctx;
                             return Err(e);
                         }
                     }
                 }
-                Ok(Term::Application {
-                    op: *o,
-                    args: subterms,
-                })
+                Ok(Term::Application { op, args })
             }
         }
     }
