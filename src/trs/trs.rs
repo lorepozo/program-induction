@@ -9,7 +9,7 @@ use polytype::{self, Context, Type, TypeSchema, Variable as TypeVar};
 use rand::{thread_rng, Rng};
 use std::f64::NEG_INFINITY;
 use std::fmt;
-use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable, TRS};
+use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable, TRS as UntypedTRS};
 
 use super::trace::Trace;
 use utils::logsumexp;
@@ -82,16 +82,16 @@ impl ::std::error::Error for SampleError {
 /// [1]: https://en.wikipedia.org/wiki/Rewriting#Term_rewriting_systems
 ///      "Wikipedia - Term Rewriting Systems"
 #[derive(Debug, PartialEq, Clone)]
-pub struct HMTRS {
+pub struct TRS {
     // TODO: may also want to track background knowledge here.
     ops: Vec<TypeSchema>,
     vars: Vec<TypeSchema>,
     pub signature: Signature,
-    pub trs: TRS,
+    pub trs: UntypedTRS,
     pub ctx: Context,
 }
-impl HMTRS {
-    /// The size of the HMTRS (the sum over the size of the rules in the [`TRS`])
+impl TRS {
+    /// The size of the TRS (the sum over the size of the rules in the underlying [`TRS`])
     ///
     /// [`TRS`]: ../../term_rewriting/struct.TRS.html
     pub fn size(&self) -> usize {
@@ -348,7 +348,7 @@ impl HMTRS {
     /// Give the log probability of sampling a TRS.
     pub fn logprior_trs(
         &self,
-        trs: &TRS,
+        trs: &UntypedTRS,
         schemas: &[TypeSchema],
         p_rule: f64,
         ctx: &mut Context,
@@ -472,7 +472,7 @@ impl HMTRS {
         }
     }
 }
-impl fmt::Display for HMTRS {
+impl fmt::Display for TRS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.trs.display(&self.signature))
     }

@@ -1,8 +1,8 @@
 //! (representation) Polymorphically-typed term rewriting system.
 
-mod hmtrs;
 mod trace;
-pub use self::hmtrs::{SampleError, TypeError, HMTRS};
+mod trs;
+pub use self::trs::{SampleError, TypeError, TRS};
 use Task;
 
 use polytype::TypeSchema;
@@ -15,9 +15,9 @@ pub fn make_task_from_data(
     temperature: f64,
     prior_temperature: f64,
     ll_temperature: f64,
-) -> Task<HMTRS, (), ()> {
+) -> Task<TRS, (), ()> {
     Task {
-        oracle: Box::new(move |h: &HMTRS, _x| {
+        oracle: Box::new(move |h: &TRS, _x| {
             // TODO: only getting information from temperature-adjusted evaluation
             h.posterior(
                 data,
