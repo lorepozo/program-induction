@@ -1,9 +1,10 @@
-use super::utils::*;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::f64::NEG_INFINITY;
 use std::iter::once;
 use term_rewriting::{Term, TRS};
+
+use utils::{logsumexp, weighted_sample};
 
 pub struct Trace<'a> {
     nodes: Vec<TraceNodeStore>,
@@ -134,8 +135,11 @@ impl<'a> Trace<'a> {
     /// Give one possible outcome in proportion to its probability.
     pub fn sample(&self) -> TraceNode {
         let leaves = self.leaves(self.root(), &[]);
-        let ps = leaves.iter().map(|x| x.log_p(self)).collect::<Vec<f64>>();
-        weighted_sample(&leaves, ps.as_slice()).unwrap_or_else(|| self.root())
+        let ws = leaves
+            .iter()
+            .map(|x| x.log_p(self).exp())
+            .collect::<Vec<f64>>();
+        weighted_sample(&leaves, &ws).clone()
     }
     /// Return the leaf terms of the Trace.
     pub fn leaf_terms(&self, states: &[TraceState]) -> Vec<Term> {
@@ -153,9 +157,10 @@ impl<'a> Trace<'a> {
             Some(handle) if self.steps < self.max_steps => {
                 match self.trs.rewrite(&self.nodes[handle.id].term) {
                     Some(ref rewrites) if !rewrites.is_empty() => {
+                        let term_selection_p = -(rewrites.len() as f64).ln();
                         for term in rewrites {
                             let new_p = self.node(handle).log_p + (1.0 - self.p_observe).ln()
-                                - log_n_of(rewrites, 1, 0.0);
+                                - term_selection_p;
                             let unobserved = self.new_node(
                                 term.clone(),
                                 Some(handle),

@@ -4,15 +4,15 @@
 ///! - https://github.com/rob-smallshire/hindley-milner-python
 ///! - https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system
 ///! - (TAPL; Pierce, 2002, ch. 22)
-use super::trace::Trace;
-use super::utils::{log_n_of, logsumexp};
-
 use itertools::Itertools;
 use polytype::{self, Context, Type, TypeSchema, Variable as TypeVar};
 use rand::{thread_rng, Rng};
 use std::f64::NEG_INFINITY;
 use std::fmt;
 use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable, TRS};
+
+use super::trace::Trace;
+use utils::logsumexp;
 
 #[derive(Debug, Clone)]
 pub enum TypeError {
@@ -307,8 +307,7 @@ impl HMTRS {
             }
         }
         // compute the log probability of selecting this head
-        let mut lp = log_n_of(&options, 1, 0.0);
-        // process the match
+        let mut lp = -(options.len() as f64).ln(); // unused if undefined
         match options
             .into_iter()
             .find(|&(ref o, _)| o == &Some(term.head()))

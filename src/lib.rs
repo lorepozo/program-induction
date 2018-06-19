@@ -116,6 +116,7 @@ mod gp;
 pub mod lambda;
 pub mod pcfg;
 pub mod trs;
+mod utils;
 pub use ec::*;
 pub use gp::*;
 
