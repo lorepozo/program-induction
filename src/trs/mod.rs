@@ -15,9 +15,9 @@ pub fn make_task_from_data(
     temperature: f64,
     prior_temperature: f64,
     ll_temperature: f64,
-) -> Task<TRS, (), ()> {
+) -> Task<TRSSpace, TRS, ()> {
     Task {
-        oracle: Box::new(move |h: &TRS, _x| {
+        oracle: Box::new(move |_s: &TRSSpace, h: &TRS| {
             // TODO: only getting information from temperature-adjusted evaluation
             h.posterior(
                 data,
