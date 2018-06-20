@@ -86,8 +86,8 @@ impl ::std::error::Error for SampleError {
 #[derive(Debug, PartialEq, Clone)]
 pub struct TRS {
     // TODO: may also want to track background knowledge here.
-    ops: Vec<TypeSchema>,
-    vars: Vec<TypeSchema>,
+    pub ops: Vec<TypeSchema>,
+    pub vars: Vec<TypeSchema>,
     pub signature: Signature,
     pub trs: UntypedTRS,
     pub ctx: Context,
@@ -553,8 +553,8 @@ impl fmt::Display for TRS {
 
 #[derive(Debug, Clone)]
 pub struct TRSParams {
-    h0: TRS,
-    n_crosses: usize,
+    pub h0: TRS,
+    pub n_crosses: usize,
 }
 
 #[derive(Debug, Clone)]

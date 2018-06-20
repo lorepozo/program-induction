@@ -2,7 +2,7 @@
 
 mod trace;
 mod trs;
-pub use self::trs::{SampleError, TypeError, TRS};
+pub use self::trs::{SampleError, TypeError, TRS, TRSParams, TRSSpace};
 use Task;
 
 use polytype::TypeSchema;
