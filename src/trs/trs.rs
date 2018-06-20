@@ -550,6 +550,17 @@ impl fmt::Display for TRS {
         write!(f, "{}", self.trs.display(&self.signature))
     }
 }
+impl Default for TRS {
+    fn default() -> Self {
+        TRS {
+            ops: vec![],
+            vars: vec![],
+            trs: UntypedTRS { rules: vec![] },
+            signature: Signature::new(vec![]).0,
+            ctx: Context::default(),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct TRSParams {
