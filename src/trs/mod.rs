@@ -12,7 +12,7 @@ mod lexicon;
 mod rewrite;
 mod trace;
 pub use self::lexicon::{GeneticParams, Lexicon};
-pub use self::rewrite::{RewriteStrategy, RewriteSystem};
+pub use self::rewrite::RewriteSystem;
 use Task;
 
 use polytype;

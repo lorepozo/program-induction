@@ -14,12 +14,6 @@ use term_rewriting as trs;
 use super::trace::Trace;
 use super::{Lexicon, SampleError, TypeError};
 
-/// An evaluation strategy for a rewrite system.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum RewriteStrategy {
-    NormalOrder,
-}
-
 /// Manages the semantics of a term rewriting system.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RewriteSystem {
@@ -27,22 +21,16 @@ pub struct RewriteSystem {
     pub(crate) lex: Lexicon,
     pub(crate) trs: trs::TRS,
     pub(crate) ctx: Context,
-    // TODO: behavior should change depending on this value
-    st: RewriteStrategy,
 }
 impl RewriteSystem {
-    pub fn new(
-        lex: &Lexicon,
-        trs: trs::TRS,
-        st: RewriteStrategy,
-    ) -> Result<RewriteSystem, TypeError> {
+    pub fn new(lex: &Lexicon, trs: trs::TRS) -> Result<RewriteSystem, TypeError> {
         let lex = lex.clone();
         let mut ctx = Context::default();
         {
             let lex = lex.0.read().expect("poisoned lexicon");
             lex.infer_trs(&trs, &mut ctx)?;
         }
-        Ok(RewriteSystem { lex, trs, ctx, st })
+        Ok(RewriteSystem { lex, trs, ctx })
     }
 
     /// The size of the TRS (the sum over the size of the rules in the underlying [`TRS`])
