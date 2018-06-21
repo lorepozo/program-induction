@@ -304,16 +304,16 @@ mod gates {
         Mux4,
     }
     impl Gate {
-        fn n_inputs(&self) -> u32 {
-            match *self {
+        fn n_inputs(self) -> u32 {
+            match self {
                 Gate::Not => 1,
                 Gate::And | Gate::Or => 2,
                 Gate::Mux2 => 3,
                 Gate::Mux4 => 6,
             }
         }
-        fn eval(&self, inp: &[bool]) -> bool {
-            match *self {
+        fn eval(self, inp: &[bool]) -> bool {
+            match self {
                 Gate::Not => !inp[0],
                 Gate::And => inp[0] & inp[1],
                 Gate::Or => inp[0] | inp[1],

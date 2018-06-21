@@ -11,12 +11,15 @@ script:
 matrix:
   fast_failures: true
   include:
-    - rust: nightly-2018-05-04
-      env:
-        - CLIPPY_VERSION=0.0.196
+    - rust: stable
+      env: FMT=1
       before_script:
         - rustup component add rustfmt-preview
-        - cargo install clippy --version $CLIPPY_VERSION || echo "clippy already installed"
       script:
         - cargo fmt --all -- --write-mode=diff
-        - cargo clippy || echo "clippy failure disregarded (see rust-clippy#2594)"
+    - rust: nightly
+      env: CLIPPY=1
+      before_script:
+        - cargo install clippy --git https://github.com/rust-lang-nursery/rust-clippy || echo "clippy already installed"
+      script:
+        - cargo clippy

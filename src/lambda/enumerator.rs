@@ -110,7 +110,7 @@ fn likelihood_internal<'a>(
                     "expression {} (with type {}) is not in candidates for request type {}",
                     s,
                     dsl.infer(expr)
-                        .expect(&format!("could not infer type for {}", s)),
+                        .unwrap_or_else(|_| panic!("could not infer type for {}", s)),
                     request,
                 );
             }

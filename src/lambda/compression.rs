@@ -511,6 +511,7 @@ impl Language {
     }
 
     /// Yields expressions that may have free variables.
+    #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
     fn propose_inventions(
         &self,
         frontiers: &[RescoredFrontier],
