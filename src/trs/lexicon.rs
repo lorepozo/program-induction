@@ -25,44 +25,6 @@ impl Lexicon {
     pub fn free_vars(&self) -> Vec<TypeVar> {
         self.0.read().expect("poisoned lexicon").free_vars()
     }
-    /// Infer (lookup) the [`TypeSchema`] of an [`Operator`] or [`Variable`].
-    ///
-    /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
-    /// [`Operator`]: ../../term_rewriting/enum.Operator.html
-    /// [`Variable`]: ../../term_rewriting/type.Variable.html
-    pub fn infer_atom(&self, atom: &Atom) -> Result<TypeSchema, TypeError> {
-        self.0.read().expect("poisoned lexicon").infer_atom(atom)
-    }
-    /// Infer the [`TypeSchema`] of a [`Term`].
-    ///
-    /// [`Term`]: ../../term_rewriting/enum.Term.html
-    /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
-    pub fn infer_term(&self, term: &Term, ctx: &mut Context) -> Result<TypeSchema, TypeError> {
-        self.0
-            .read()
-            .expect("poisoned lexicon")
-            .infer_term(term, ctx)
-    }
-    /// Infer the [`TypeSchema`] of a [`Rule`], along with schemas for the left-hand-side and
-    /// right-hand-sides of the rule.
-    ///
-    /// [`Rule`]: ../../term_rewriting/struct.Rule.html
-    /// [`TypeSchema`]: ../../polytype/struct.TypeSchema.html
-    pub fn infer_rule(
-        &self,
-        r: &Rule,
-        ctx: &mut Context,
-    ) -> Result<(TypeSchema, TypeSchema, Vec<TypeSchema>), TypeError> {
-        self.0.read().expect("poisoned lexicon").infer_rule(r, ctx)
-    }
-    /// Infer the [`Context`] where every [`Rule`] in a [`TRS`] typechecks.
-    ///
-    /// [`Context`]: ../../polytype/struct.Context.html
-    /// [`Rule`]: ../../term_rewriting/struct.Rule.html
-    /// [`TRS`]: ../../term_rewriting/struct.TRS.html
-    pub fn infer_trs(&self, trs: &TRS, ctx: &mut Context) -> Result<(), TypeError> {
-        self.0.read().expect("poisoned lexicon").infer_trs(trs, ctx)
-    }
     /// Sample a `Term`.
     pub fn sample_term(
         &mut self,
@@ -72,7 +34,7 @@ impl Lexicon {
         max_d: usize,
     ) -> Result<Term, SampleError> {
         let mut lex = self.0.write().expect("poisoned lexicon");
-        lex.sample_term_internal(schema, ctx, invent, max_d, 0)
+        lex.sample_term(schema, ctx, invent, max_d, 0)
     }
     /// Sample a `Rule`.
     pub fn sample_rule(
@@ -83,7 +45,7 @@ impl Lexicon {
         max_d: usize,
     ) -> Result<Rule, SampleError> {
         let mut lex = self.0.write().expect("poisoned lexicon");
-        lex.sample_rule_internal(schema, ctx, invent, max_d, 0)
+        lex.sample_rule(schema, ctx, invent, max_d, 0)
     }
     /// Give the log probability of sampling a Term.
     pub fn logprior_term(
@@ -121,14 +83,24 @@ impl Lexicon {
     }
 
     /// merge two `TRS` into a single `TRS`.
-    pub fn combine(&self, rs1: &RewriteSystem, rs2: &RewriteSystem) -> RewriteSystem {
+    pub fn combine(
+        &self,
+        rs1: &RewriteSystem,
+        rs2: &RewriteSystem,
+    ) -> Result<RewriteSystem, TypeError> {
         assert_eq!(rs1.lex, rs2.lex);
+        let mut new_rs = rs1.clone();
         // because the lexicon is the same, we only need to transfer rules
-        let mut trs = rs1.trs.clone();
         let mut new_rules = rs2.trs.rules.clone();
-        trs.rules.append(&mut new_rules);
-        // create the TRS
-        RewriteSystem::new(self, trs, rs1.st)
+        new_rs.trs.rules.append(&mut new_rules);
+        // update the context
+        let mut ctx = Context::default();
+        {
+            let lex = rs1.lex.0.read().expect("poisoned lexicon");
+            lex.infer_trs(&new_rs.trs, &mut ctx)?;
+        }
+        new_rs.ctx = ctx;
+        Ok(new_rs)
     }
 }
 impl fmt::Debug for Lexicon {
@@ -148,13 +120,19 @@ pub(crate) struct Lex {
     ops: Vec<TypeSchema>,
     vars: Vec<TypeSchema>,
     pub(crate) signature: Signature,
-    pub(crate) ctx: Context,
 }
 impl Lex {
     fn free_vars(&self) -> Vec<TypeVar> {
-        let vars_fvs = self.vars.iter().flat_map(|x| x.free_vars());
-        let ops_fvs = self.ops.iter().flat_map(|x| x.free_vars());
+        let vars_fvs = self.vars.iter().flat_map(TypeSchema::free_vars);
+        let ops_fvs = self.ops.iter().flat_map(TypeSchema::free_vars);
         vars_fvs.chain(ops_fvs).unique().collect()
+    }
+    fn free_vars_applied(&self, ctx: &Context) -> Vec<TypeVar> {
+        self.free_vars()
+            .iter()
+            .flat_map(|x| Type::Variable(*x).apply(ctx).vars())
+            .unique()
+            .collect::<Vec<_>>()
     }
     fn invent_variable(&mut self, tp: &Type) -> Variable {
         let var = self.signature.new_var(None);
@@ -186,15 +164,10 @@ impl Lex {
         tp.apply_mut(ctx);
         Ok(tp)
     }
-    fn infer_term(&self, term: &Term, ctx: &mut Context) -> Result<TypeSchema, TypeError> {
+    pub fn infer_term(&self, term: &Term, ctx: &mut Context) -> Result<TypeSchema, TypeError> {
         let tp = self.infer_term_internal(term, ctx)?;
-        // Get the variables bound by the lexicon
-        let bound_vs = self.free_vars()
-            .iter()
-            .flat_map(|x| Type::Variable(*x).apply(ctx).vars())
-            .unique()
-            .collect::<Vec<u16>>();
-        Ok(tp.generalize(&bound_vs))
+        let lex_vars = self.free_vars_applied(ctx);
+        Ok(tp.generalize(&lex_vars))
     }
     fn infer_term_internal(&self, term: &Term, ctx: &mut Context) -> Result<Type, TypeError> {
         if let Term::Application { op, ref args } = *term {
@@ -213,7 +186,7 @@ impl Lex {
         }
         self.instantiate_atom(&term.head(), ctx)
     }
-    fn infer_rule(
+    pub fn infer_rule(
         &self,
         r: &Rule,
         ctx: &mut Context,
@@ -230,16 +203,11 @@ impl Lex {
         for rhs_type in rhs_types {
             ctx.unify(&lhs_type, &rhs_type)?;
         }
-        // Get the variables bound by the lexicon
-        let bound_vs = self.free_vars()
-            .iter()
-            .flat_map(|x| Type::Variable(*x).apply(&ctx).vars())
-            .unique()
-            .collect::<Vec<u16>>();
-        let rule_schema = lhs_type.apply(ctx).generalize(&bound_vs);
+        let lex_vars = self.free_vars_applied(&ctx);
+        let rule_schema = lhs_type.apply(ctx).generalize(&lex_vars);
         Ok((rule_schema, lhs_schema, rhs_schemas))
     }
-    fn infer_trs(&self, trs: &TRS, ctx: &mut Context) -> Result<(), TypeError> {
+    pub fn infer_trs(&self, trs: &TRS, ctx: &mut Context) -> Result<(), TypeError> {
         // TODO: Right now, this assumes the variables already exist in the signature. Is that sensible?
         for rule in &trs.rules {
             self.infer_rule(rule, ctx)?;
@@ -247,7 +215,7 @@ impl Lex {
         Ok(())
     }
 
-    fn sample_term_internal(
+    pub fn sample_term(
         &mut self,
         schema: &TypeSchema,
         ctx: &mut Context,
@@ -277,7 +245,7 @@ impl Lex {
         }
         Err(SampleError::OptionsExhausted)
     }
-    fn sample_rule_internal(
+    pub fn sample_rule(
         &mut self,
         schema: &TypeSchema,
         ctx: &mut Context,
@@ -288,8 +256,8 @@ impl Lex {
         let orig_self = self.clone();
         let orig_ctx = ctx.clone();
         loop {
-            let lhs = self.sample_term_internal(schema, ctx, invent, max_d, d)?;
-            let rhs = self.sample_term_internal(schema, ctx, false, max_d, d)?;
+            let lhs = self.sample_term(schema, ctx, invent, max_d, d)?;
+            let rhs = self.sample_term(schema, ctx, false, max_d, d)?;
             if let Some(rule) = Rule::new(lhs, vec![rhs]) {
                 return Ok(rule);
             } else {
@@ -330,7 +298,7 @@ impl Lex {
                     let subtype = arg_tp.apply(ctx);
                     let arg_schema = TypeSchema::Monotype(arg_tp);
                     let d_i = (d + 1) * ((i == 0) as usize);
-                    let result = self.sample_term_internal(&arg_schema, ctx, invent, max_d, d_i)
+                    let result = self.sample_term(&arg_schema, ctx, invent, max_d, d_i)
                         .map_err(|_| SampleError::Subterm)
                         .and_then(|subterm| {
                             let tp = self.infer_term(&subterm, ctx)?.instantiate_owned(ctx);
@@ -473,7 +441,8 @@ impl GP for Lexicon {
         parent1: &Self::Expression,
         parent2: &Self::Expression,
     ) -> Vec<Self::Expression> {
-        let trs = self.combine(parent1, parent2);
+        let trs = self.combine(parent1, parent2)
+            .expect("poorly-typed TRS in crossover");
         let trss = repeat(trs.clone()).take(params.n_crosses).map(|mut x| {
             x.trs.rules = x.trs
                 .rules

@@ -5,14 +5,14 @@
 //! - https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system
 //! - (TAPL; Pierce, 2002, ch. 22)
 
-use polytype::TypeSchema;
+use polytype::{Context, TypeSchema};
 use rand::Rng;
 use std::f64::NEG_INFINITY;
 use std::fmt;
 use term_rewriting as trs;
 
 use super::trace::Trace;
-use super::{Lexicon, SampleError};
+use super::{Lexicon, SampleError, TypeError};
 
 /// An evaluation strategy for a rewrite system.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -24,15 +24,25 @@ pub enum RewriteStrategy {
 #[derive(Debug, PartialEq, Clone)]
 pub struct RewriteSystem {
     // TODO: may also want to track background knowledge here.
-    pub(crate) trs: trs::TRS,
     pub(crate) lex: Lexicon,
+    pub(crate) trs: trs::TRS,
+    pub(crate) ctx: Context,
     // TODO: behavior should change depending on this value
-    pub(crate) st: RewriteStrategy,
+    st: RewriteStrategy,
 }
 impl RewriteSystem {
-    pub fn new(lex: &Lexicon, trs: trs::TRS, st: RewriteStrategy) -> RewriteSystem {
+    pub fn new(
+        lex: &Lexicon,
+        trs: trs::TRS,
+        st: RewriteStrategy,
+    ) -> Result<RewriteSystem, TypeError> {
         let lex = lex.clone();
-        RewriteSystem { lex, trs, st }
+        let mut ctx = Context::default();
+        {
+            let lex = lex.0.read().expect("poisoned lexicon");
+            lex.infer_trs(&trs, &mut ctx)?;
+        }
+        Ok(RewriteSystem { lex, trs, ctx, st })
     }
 
     /// The size of the TRS (the sum over the size of the rules in the underlying [`TRS`])
@@ -98,16 +108,14 @@ impl RewriteSystem {
     /// Sample a rule and add it to the rewrite system.
     pub fn add_rule<R: Rng>(&self, _rng: &mut R) -> Result<RewriteSystem, SampleError> {
         let mut rs = self.clone();
-        let (mut ctx, schema) = {
-            let mut lex = rs.lex.0.write().expect("poisoned lexicon");
-            let var = lex.ctx.new_variable();
-            (lex.ctx.clone(), TypeSchema::Monotype(var))
+        let schema = TypeSchema::Monotype(rs.ctx.new_variable());
+        let rule = {
+            let mut lex = self.lex.0.write().expect("poisoned lexicon");
+            lex.sample_rule(&schema, &mut rs.ctx, true, 4, 0)?
         };
-        let rule = rs.lex.sample_rule(&schema, &mut ctx, true, 4)?;
-        rs.lex.infer_rule(&rule, &mut ctx)?;
         {
-            let mut lex = rs.lex.0.write().expect("poisoned lexicon");
-            lex.ctx = ctx;
+            let lex = self.lex.0.write().expect("poisoned lexicon");
+            lex.infer_rule(&rule, &mut rs.ctx)?;
         }
         rs.trs.push(rule);
         Ok(rs)
