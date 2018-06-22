@@ -3,7 +3,7 @@ use polytype::{Context as TypeContext, Type, TypeSchema, Variable as TypeVar};
 use rand::{thread_rng, Rng};
 use std::f64::NEG_INFINITY;
 use std::fmt;
-use std::iter::{once, repeat};
+use std::iter;
 use std::sync::{Arc, RwLock};
 use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable, TRS as UntypedTRS};
 
@@ -70,33 +70,33 @@ impl Lexicon {
         lex.logprior_rule(rule, schema, ctx, invent)
     }
     /// Give the log probability of sampling a TRS.
-    pub fn logprior_trs(
+    pub fn logprior_utrs(
         &self,
-        trs: &UntypedTRS,
+        utrs: &UntypedTRS,
         schemas: &[TypeSchema],
         p_rule: f64,
         ctx: &mut TypeContext,
         invent: bool,
     ) -> Result<f64, SampleError> {
         let lex = self.0.read().expect("poisoned lexicon");
-        lex.logprior_trs(trs, schemas, p_rule, ctx, invent)
+        lex.logprior_utrs(utrs, schemas, p_rule, ctx, invent)
     }
 
     /// merge two `TRS` into a single `TRS`.
-    pub fn combine(&self, rs1: &TRS, rs2: &TRS) -> Result<TRS, TypeError> {
-        assert_eq!(rs1.lex, rs2.lex);
-        let mut new_rs = rs1.clone();
+    pub fn combine(&self, trs1: &TRS, trs2: &TRS) -> Result<TRS, TypeError> {
+        assert_eq!(trs1.lex, trs2.lex);
+        let mut new_trs = trs1.clone();
         // because the lexicon is the same, we only need to transfer rules
-        let mut new_rules = rs2.trs.rules.clone();
-        new_rs.trs.rules.append(&mut new_rules);
+        let mut new_rules = trs2.utrs.rules.clone();
+        new_trs.utrs.rules.append(&mut new_rules);
         // update the context
         let mut ctx = TypeContext::default();
         {
-            let lex = rs1.lex.0.read().expect("poisoned lexicon");
-            lex.infer_trs(&new_rs.trs, &mut ctx)?;
+            let lex = trs1.lex.0.read().expect("poisoned lexicon");
+            lex.infer_utrs(&new_trs.utrs, &mut ctx)?;
         }
-        new_rs.ctx = ctx;
-        Ok(new_rs)
+        new_trs.ctx = ctx;
+        Ok(new_trs)
     }
 }
 impl fmt::Debug for Lexicon {
@@ -203,9 +203,9 @@ impl Lex {
         let rule_schema = lhs_type.apply(ctx).generalize(&lex_vars);
         Ok((rule_schema, lhs_schema, rhs_schemas))
     }
-    pub fn infer_trs(&self, trs: &UntypedTRS, ctx: &mut TypeContext) -> Result<(), TypeError> {
+    pub fn infer_utrs(&self, utrs: &UntypedTRS, ctx: &mut TypeContext) -> Result<(), TypeError> {
         // TODO: Right now, this assumes the variables already exist in the signature. Is that sensible?
-        for rule in &trs.rules {
+        for rule in &utrs.rules {
             self.infer_rule(rule, ctx)?;
         }
         Ok(())
@@ -379,9 +379,9 @@ impl Lex {
         }
         Ok(lp)
     }
-    fn logprior_trs(
+    fn logprior_utrs(
         &self,
-        trs: &UntypedTRS,
+        utrs: &UntypedTRS,
         schemas: &[TypeSchema],
         p_rule: f64,
         ctx: &mut TypeContext,
@@ -389,9 +389,9 @@ impl Lex {
     ) -> Result<f64, SampleError> {
         // TODO: this might not be numerically stable
         // geometric distribution over number of rules
-        let p_n_rules = p_rule.ln() * (trs.clauses().len() as f64);
+        let p_n_rules = p_rule.ln() * (utrs.clauses().len() as f64);
         let mut p_rules = 0.0;
-        for rule in &trs.rules {
+        for rule in &utrs.rules {
             let mut rule_ps = vec![];
             for schema in schemas {
                 let tmp_lp = self.logprior_rule(&rule, schema, ctx, invent)?;
@@ -412,7 +412,7 @@ impl GP for Lexicon {
         pop_size: usize,
         _tp: &TypeSchema,
     ) -> Vec<Self::Expression> {
-        repeat(params.h0.clone()).take(pop_size).collect()
+        iter::repeat(params.h0.clone()).take(pop_size).collect()
     }
     fn mutate<R: Rng>(
         &self,
@@ -439,14 +439,9 @@ impl GP for Lexicon {
     ) -> Vec<Self::Expression> {
         let trs = self.combine(parent1, parent2)
             .expect("poorly-typed TRS in crossover");
-        let trss = repeat(trs.clone()).take(params.n_crosses).map(|mut x| {
-            x.trs.rules = x.trs
-                .rules
-                .into_iter()
-                .filter(|_| rng.gen_bool(0.5))
-                .collect();
-            x
-        });
-        once(trs).chain(trss).collect()
+        let trss = iter::repeat(trs.clone())
+            .take(params.n_crosses)
+            .update(|trs| trs.utrs.rules.retain(|_| rng.gen_bool(0.5)));
+        iter::once(trs).chain(trss).collect()
     }
 }

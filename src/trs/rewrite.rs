@@ -19,25 +19,25 @@ use super::{Lexicon, SampleError, TypeError};
 pub struct TRS {
     // TODO: may also want to track background knowledge here.
     pub(crate) lex: Lexicon,
-    pub(crate) trs: UntypedTRS,
+    pub(crate) utrs: UntypedTRS,
     pub(crate) ctx: TypeContext,
 }
 impl TRS {
-    pub fn new(lex: &Lexicon, trs: UntypedTRS) -> Result<TRS, TypeError> {
+    pub fn new(lex: &Lexicon, utrs: UntypedTRS) -> Result<TRS, TypeError> {
         let lex = lex.clone();
         let mut ctx = TypeContext::default();
         {
             let lex = lex.0.read().expect("poisoned lexicon");
-            lex.infer_trs(&trs, &mut ctx)?;
+            lex.infer_utrs(&utrs, &mut ctx)?;
         }
-        Ok(TRS { lex, trs, ctx })
+        Ok(TRS { lex, utrs, ctx })
     }
 
     /// The size of the TRS (the sum over the size of the rules in the underlying [`TRS`])
     ///
     /// [`TRS`]: ../../term_rewriting/struct.TRS.html
     pub fn size(&self) -> usize {
-        self.trs.size()
+        self.utrs.size()
     }
 
     pub fn pseudo_log_prior(&self, temp: f64, prior_temp: f64) -> f64 {
@@ -55,7 +55,7 @@ impl TRS {
         let p_observe = 0.0;
         let max_steps = 50;
         let max_size = 500;
-        let mut trace = Trace::new(&self.trs, &datum.lhs, p_observe, max_steps, max_size);
+        let mut trace = Trace::new(&self.utrs, &datum.lhs, p_observe, max_steps, max_size);
         trace.run();
 
         let ll = if let Some(ref rhs) = datum.rhs() {
@@ -89,26 +89,26 @@ impl TRS {
 
     /// Sample a rule and add it to the rewrite system.
     pub fn add_rule<R: Rng>(&self, _rng: &mut R) -> Result<TRS, SampleError> {
-        let mut rs = self.clone();
-        let schema = TypeSchema::Monotype(rs.ctx.new_variable());
+        let mut trs = self.clone();
+        let schema = TypeSchema::Monotype(trs.ctx.new_variable());
         let rule = {
             let mut lex = self.lex.0.write().expect("poisoned lexicon");
-            lex.sample_rule(&schema, &mut rs.ctx, true, 4, 0)?
+            lex.sample_rule(&schema, &mut trs.ctx, true, 4, 0)?
         };
         {
             let lex = self.lex.0.write().expect("poisoned lexicon");
-            lex.infer_rule(&rule, &mut rs.ctx)?;
+            lex.infer_rule(&rule, &mut trs.ctx)?;
         }
-        rs.trs.push(rule);
-        Ok(rs)
+        trs.utrs.push(rule);
+        Ok(trs)
     }
     /// Delete a rule from the rewrite system if possible.
     pub fn delete_rule<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
-        let mut rs = self.clone();
-        if !self.trs.is_empty() {
-            let idx = rng.gen_range(0, self.trs.len());
-            rs.trs.rules.remove(idx);
-            Ok(rs)
+        let mut trs = self.clone();
+        if !trs.utrs.is_empty() {
+            let idx = rng.gen_range(0, trs.utrs.len());
+            trs.utrs.rules.remove(idx);
+            Ok(trs)
         } else {
             Err(SampleError::OptionsExhausted)
         }
@@ -117,6 +117,6 @@ impl TRS {
 impl fmt::Display for TRS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let lex = self.lex.0.read().expect("poisoned lexicon");
-        write!(f, "{}", self.trs.display(&lex.signature))
+        write!(f, "{}", self.utrs.display(&lex.signature))
     }
 }
