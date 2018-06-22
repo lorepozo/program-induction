@@ -1,4 +1,4 @@
-//! Hindley-Milner Typing for First-Order Term Rewriting Systems (no abstraction)
+//! Polymorphically typed (Hindley-Milner) First-Order Term Rewriting Systems (no abstraction)
 //!
 //! Much thanks to:
 //! - https://github.com/rob-smallshire/hindley-milner-python
