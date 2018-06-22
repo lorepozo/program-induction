@@ -33,8 +33,10 @@ impl Lexicon {
         invent: bool,
         max_d: usize,
     ) -> Result<Term, SampleError> {
-        let mut lex = self.0.write().expect("poisoned lexicon");
-        lex.sample_term(schema, ctx, invent, max_d, 0)
+        self.0
+            .write()
+            .expect("poisoned lexicon")
+            .sample_term(schema, ctx, invent, max_d, 0)
     }
     /// Sample a `Rule`.
     pub fn sample_rule(
@@ -44,8 +46,10 @@ impl Lexicon {
         invent: bool,
         max_d: usize,
     ) -> Result<Rule, SampleError> {
-        let mut lex = self.0.write().expect("poisoned lexicon");
-        lex.sample_rule(schema, ctx, invent, max_d, 0)
+        self.0
+            .write()
+            .expect("poisoned lexicon")
+            .sample_rule(schema, ctx, invent, max_d, 0)
     }
     /// Give the log probability of sampling a Term.
     pub fn logprior_term(
@@ -55,8 +59,10 @@ impl Lexicon {
         ctx: &mut TypeContext,
         invent: bool,
     ) -> Result<f64, SampleError> {
-        let lex = self.0.read().expect("poisoned lexicon");
-        lex.logprior_term(term, schema, ctx, invent)
+        self.0
+            .read()
+            .expect("poisoned lexicon")
+            .logprior_term(term, schema, ctx, invent)
     }
     /// Give the log probability of sampling a Rule.
     pub fn logprior_rule(
@@ -66,8 +72,10 @@ impl Lexicon {
         ctx: &mut TypeContext,
         invent: bool,
     ) -> Result<f64, SampleError> {
-        let lex = self.0.read().expect("poisoned lexicon");
-        lex.logprior_rule(rule, schema, ctx, invent)
+        self.0
+            .read()
+            .expect("poisoned lexicon")
+            .logprior_rule(rule, schema, ctx, invent)
     }
     /// Give the log probability of sampling a TRS.
     pub fn logprior_utrs(
@@ -78,8 +86,10 @@ impl Lexicon {
         ctx: &mut TypeContext,
         invent: bool,
     ) -> Result<f64, SampleError> {
-        let lex = self.0.read().expect("poisoned lexicon");
-        lex.logprior_utrs(utrs, schemas, p_rule, ctx, invent)
+        self.0
+            .read()
+            .expect("poisoned lexicon")
+            .logprior_utrs(utrs, schemas, p_rule, ctx, invent)
     }
 
     /// merge two `TRS` into a single `TRS`.

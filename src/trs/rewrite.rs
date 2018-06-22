@@ -26,10 +26,10 @@ impl TRS {
     pub fn new(lex: &Lexicon, utrs: UntypedTRS) -> Result<TRS, TypeError> {
         let lex = lex.clone();
         let mut ctx = TypeContext::default();
-        {
-            let lex = lex.0.read().expect("poisoned lexicon");
-            lex.infer_utrs(&utrs, &mut ctx)?;
-        }
+        lex.0
+            .read()
+            .expect("poisoned lexicon")
+            .infer_utrs(&utrs, &mut ctx)?;
         Ok(TRS { lex, utrs, ctx })
     }
 
@@ -91,14 +91,18 @@ impl TRS {
     pub fn add_rule<R: Rng>(&self, _rng: &mut R) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
         let schema = TypeSchema::Monotype(trs.ctx.new_variable());
-        let rule = {
-            let mut lex = self.lex.0.write().expect("poisoned lexicon");
-            lex.sample_rule(&schema, &mut trs.ctx, true, 4, 0)?
-        };
-        {
-            let lex = self.lex.0.write().expect("poisoned lexicon");
-            lex.infer_rule(&rule, &mut trs.ctx)?;
-        }
+        let rule = self.lex.0.write().expect("poisoned lexicon").sample_rule(
+            &schema,
+            &mut trs.ctx,
+            true,
+            4,
+            0,
+        )?;
+        self.lex
+            .0
+            .write()
+            .expect("poisoned lexicon")
+            .infer_rule(&rule, &mut trs.ctx)?;
         trs.utrs.push(rule);
         Ok(trs)
     }
@@ -116,7 +120,7 @@ impl TRS {
 }
 impl fmt::Display for TRS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let lex = self.lex.0.read().expect("poisoned lexicon");
-        write!(f, "{}", self.utrs.display(&lex.signature))
+        let sig = &self.lex.0.read().expect("poisoned lexicon").signature;
+        write!(f, "{}", self.utrs.display(sig))
     }
 }
