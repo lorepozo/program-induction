@@ -21,6 +21,36 @@ pub struct GeneticParams {
 #[derive(Clone)]
 pub struct Lexicon(pub(crate) Arc<RwLock<Lex>>);
 impl Lexicon {
+    pub fn new(
+        operators: Vec<(u32, Option<String>, TypeSchema)>,
+        background: Vec<Rule>,
+    ) -> Lexicon {
+        let mut signature = Signature::default();
+        let mut ops = Vec::with_capacity(operators.len());
+        for (id, name, tp) in operators {
+            signature.new_op(id, name);
+            ops.push(tp)
+        }
+        Lexicon(Arc::new(RwLock::new(Lex {
+            ops,
+            vars: Vec::new(),
+            signature,
+            background,
+        })))
+    }
+    pub fn from_signature(
+        signature: Signature,
+        ops: Vec<TypeSchema>,
+        vars: Vec<TypeSchema>,
+        background: Vec<Rule>,
+    ) -> Lexicon {
+        Lexicon(Arc::new(RwLock::new(Lex {
+            ops,
+            vars,
+            signature,
+            background,
+        })))
+    }
     /// All the free type variables in the lexicon.
     pub fn free_vars(&self) -> Vec<TypeVar> {
         self.0.read().expect("poisoned lexicon").free_vars()
@@ -118,6 +148,7 @@ pub(crate) struct Lex {
     ops: Vec<TypeSchema>,
     vars: Vec<TypeSchema>,
     pub(crate) signature: Signature,
+    pub(crate) background: Vec<Rule>,
 }
 impl Lex {
     fn free_vars(&self) -> Vec<TypeVar> {
