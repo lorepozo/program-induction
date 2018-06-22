@@ -5,32 +5,32 @@
 //! - https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system
 //! - (TAPL; Pierce, 2002, ch. 22)
 
-use polytype::{Context, TypeSchema};
+use polytype::{Context as TypeContext, TypeSchema};
 use rand::Rng;
 use std::f64::NEG_INFINITY;
 use std::fmt;
-use term_rewriting as trs;
+use term_rewriting::{Rule, TRS as UntypedTRS};
 
 use super::trace::Trace;
 use super::{Lexicon, SampleError, TypeError};
 
 /// Manages the semantics of a term rewriting system.
 #[derive(Debug, PartialEq, Clone)]
-pub struct RewriteSystem {
+pub struct TRS {
     // TODO: may also want to track background knowledge here.
     pub(crate) lex: Lexicon,
-    pub(crate) trs: trs::TRS,
-    pub(crate) ctx: Context,
+    pub(crate) trs: UntypedTRS,
+    pub(crate) ctx: TypeContext,
 }
-impl RewriteSystem {
-    pub fn new(lex: &Lexicon, trs: trs::TRS) -> Result<RewriteSystem, TypeError> {
+impl TRS {
+    pub fn new(lex: &Lexicon, trs: UntypedTRS) -> Result<TRS, TypeError> {
         let lex = lex.clone();
-        let mut ctx = Context::default();
+        let mut ctx = TypeContext::default();
         {
             let lex = lex.0.read().expect("poisoned lexicon");
             lex.infer_trs(&trs, &mut ctx)?;
         }
-        Ok(RewriteSystem { lex, trs, ctx })
+        Ok(TRS { lex, trs, ctx })
     }
 
     /// The size of the TRS (the sum over the size of the rules in the underlying [`TRS`])
@@ -45,19 +45,13 @@ impl RewriteSystem {
         raw_prior / ((temp + 1.0) * prior_temp)
     }
 
-    pub fn log_likelihood(
-        &self,
-        data: &[trs::Rule],
-        p_partial: f64,
-        temp: f64,
-        ll_temp: f64,
-    ) -> f64 {
+    pub fn log_likelihood(&self, data: &[Rule], p_partial: f64, temp: f64, ll_temp: f64) -> f64 {
         data.iter()
             .map(|x| self.single_log_likelihood(x, p_partial, temp) / ll_temp)
             .sum()
     }
 
-    fn single_log_likelihood(&self, datum: &trs::Rule, p_partial: f64, temp: f64) -> f64 {
+    fn single_log_likelihood(&self, datum: &Rule, p_partial: f64, temp: f64) -> f64 {
         let p_observe = 0.0;
         let max_steps = 50;
         let max_size = 500;
@@ -79,7 +73,7 @@ impl RewriteSystem {
 
     pub fn posterior(
         &self,
-        data: &[trs::Rule],
+        data: &[Rule],
         p_partial: f64,
         temperature: f64,
         prior_temperature: f64,
@@ -94,7 +88,7 @@ impl RewriteSystem {
     }
 
     /// Sample a rule and add it to the rewrite system.
-    pub fn add_rule<R: Rng>(&self, _rng: &mut R) -> Result<RewriteSystem, SampleError> {
+    pub fn add_rule<R: Rng>(&self, _rng: &mut R) -> Result<TRS, SampleError> {
         let mut rs = self.clone();
         let schema = TypeSchema::Monotype(rs.ctx.new_variable());
         let rule = {
@@ -109,7 +103,7 @@ impl RewriteSystem {
         Ok(rs)
     }
     /// Delete a rule from the rewrite system if possible.
-    pub fn delete_rule<R: Rng>(&self, rng: &mut R) -> Result<RewriteSystem, SampleError> {
+    pub fn delete_rule<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
         let mut rs = self.clone();
         if !self.trs.is_empty() {
             let idx = rng.gen_range(0, self.trs.len());
@@ -120,7 +114,7 @@ impl RewriteSystem {
         }
     }
 }
-impl fmt::Display for RewriteSystem {
+impl fmt::Display for TRS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let lex = self.lex.0.read().expect("poisoned lexicon");
         write!(f, "{}", self.trs.display(&lex.signature))

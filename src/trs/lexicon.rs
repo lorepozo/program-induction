@@ -1,19 +1,19 @@
 use itertools::Itertools;
-use polytype::{Context, Type, TypeSchema, Variable as TypeVar};
+use polytype::{Context as TypeContext, Type, TypeSchema, Variable as TypeVar};
 use rand::{thread_rng, Rng};
 use std::f64::NEG_INFINITY;
 use std::fmt;
 use std::iter::{once, repeat};
 use std::sync::{Arc, RwLock};
-use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable, TRS};
+use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable, TRS as UntypedTRS};
 
-use super::{RewriteSystem, SampleError, TypeError};
+use super::{SampleError, TypeError, TRS};
 use utils::logsumexp;
 use GP;
 
 #[derive(Debug, Clone)]
 pub struct GeneticParams {
-    pub h0: RewriteSystem,
+    pub h0: TRS,
     pub n_crosses: usize,
 }
 
@@ -29,7 +29,7 @@ impl Lexicon {
     pub fn sample_term(
         &mut self,
         schema: &TypeSchema,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
         invent: bool,
         max_d: usize,
     ) -> Result<Term, SampleError> {
@@ -40,7 +40,7 @@ impl Lexicon {
     pub fn sample_rule(
         &mut self,
         schema: &TypeSchema,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
         invent: bool,
         max_d: usize,
     ) -> Result<Rule, SampleError> {
@@ -52,7 +52,7 @@ impl Lexicon {
         &self,
         term: &Term,
         schema: &TypeSchema,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
         invent: bool,
     ) -> Result<f64, SampleError> {
         let lex = self.0.read().expect("poisoned lexicon");
@@ -63,7 +63,7 @@ impl Lexicon {
         &self,
         rule: &Rule,
         schema: &TypeSchema,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
         invent: bool,
     ) -> Result<f64, SampleError> {
         let lex = self.0.read().expect("poisoned lexicon");
@@ -72,10 +72,10 @@ impl Lexicon {
     /// Give the log probability of sampling a TRS.
     pub fn logprior_trs(
         &self,
-        trs: &TRS,
+        trs: &UntypedTRS,
         schemas: &[TypeSchema],
         p_rule: f64,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
         invent: bool,
     ) -> Result<f64, SampleError> {
         let lex = self.0.read().expect("poisoned lexicon");
@@ -83,18 +83,14 @@ impl Lexicon {
     }
 
     /// merge two `TRS` into a single `TRS`.
-    pub fn combine(
-        &self,
-        rs1: &RewriteSystem,
-        rs2: &RewriteSystem,
-    ) -> Result<RewriteSystem, TypeError> {
+    pub fn combine(&self, rs1: &TRS, rs2: &TRS) -> Result<TRS, TypeError> {
         assert_eq!(rs1.lex, rs2.lex);
         let mut new_rs = rs1.clone();
         // because the lexicon is the same, we only need to transfer rules
         let mut new_rules = rs2.trs.rules.clone();
         new_rs.trs.rules.append(&mut new_rules);
         // update the context
-        let mut ctx = Context::default();
+        let mut ctx = TypeContext::default();
         {
             let lex = rs1.lex.0.read().expect("poisoned lexicon");
             lex.infer_trs(&new_rs.trs, &mut ctx)?;
@@ -127,7 +123,7 @@ impl Lex {
         let ops_fvs = self.ops.iter().flat_map(TypeSchema::free_vars);
         vars_fvs.chain(ops_fvs).unique().collect()
     }
-    fn free_vars_applied(&self, ctx: &Context) -> Vec<TypeVar> {
+    fn free_vars_applied(&self, ctx: &TypeContext) -> Vec<TypeVar> {
         self.free_vars()
             .iter()
             .flat_map(|x| Type::Variable(*x).apply(ctx).vars())
@@ -159,17 +155,17 @@ impl Lex {
             Atom::Variable(v) => self.var_tp(v),
         }
     }
-    fn instantiate_atom(&self, atom: &Atom, ctx: &mut Context) -> Result<Type, TypeError> {
+    fn instantiate_atom(&self, atom: &Atom, ctx: &mut TypeContext) -> Result<Type, TypeError> {
         let mut tp = self.infer_atom(atom)?.instantiate_owned(ctx);
         tp.apply_mut(ctx);
         Ok(tp)
     }
-    pub fn infer_term(&self, term: &Term, ctx: &mut Context) -> Result<TypeSchema, TypeError> {
+    pub fn infer_term(&self, term: &Term, ctx: &mut TypeContext) -> Result<TypeSchema, TypeError> {
         let tp = self.infer_term_internal(term, ctx)?;
         let lex_vars = self.free_vars_applied(ctx);
         Ok(tp.generalize(&lex_vars))
     }
-    fn infer_term_internal(&self, term: &Term, ctx: &mut Context) -> Result<Type, TypeError> {
+    fn infer_term_internal(&self, term: &Term, ctx: &mut TypeContext) -> Result<Type, TypeError> {
         if let Term::Application { op, ref args } = *term {
             if op.arity(&self.signature) > 0 {
                 let head_type = self.instantiate_atom(&Atom::from(op), ctx)?;
@@ -189,7 +185,7 @@ impl Lex {
     pub fn infer_rule(
         &self,
         r: &Rule,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
     ) -> Result<(TypeSchema, TypeSchema, Vec<TypeSchema>), TypeError> {
         let lhs_schema = self.infer_term(&r.lhs, ctx)?;
         let lhs_type = lhs_schema.instantiate(ctx);
@@ -207,7 +203,7 @@ impl Lex {
         let rule_schema = lhs_type.apply(ctx).generalize(&lex_vars);
         Ok((rule_schema, lhs_schema, rhs_schemas))
     }
-    pub fn infer_trs(&self, trs: &TRS, ctx: &mut Context) -> Result<(), TypeError> {
+    pub fn infer_trs(&self, trs: &UntypedTRS, ctx: &mut TypeContext) -> Result<(), TypeError> {
         // TODO: Right now, this assumes the variables already exist in the signature. Is that sensible?
         for rule in &trs.rules {
             self.infer_rule(rule, ctx)?;
@@ -218,7 +214,7 @@ impl Lex {
     pub fn sample_term(
         &mut self,
         schema: &TypeSchema,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
         invent: bool,
         max_d: usize,
         d: usize,
@@ -248,7 +244,7 @@ impl Lex {
     pub fn sample_rule(
         &mut self,
         schema: &TypeSchema,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
         invent: bool,
         max_d: usize,
         d: usize,
@@ -271,7 +267,7 @@ impl Lex {
         &self,
         atom: &Atom,
         tp: &Type,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
     ) -> Result<Vec<Type>, SampleError> {
         let atom_tp = self.instantiate_atom(atom, ctx)?;
         ctx.unify(&atom_tp, tp)?;
@@ -284,7 +280,7 @@ impl Lex {
         &mut self,
         atom: &Atom,
         arg_types: Vec<Type>,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
         invent: bool,
         max_d: usize,
         d: usize,
@@ -322,7 +318,7 @@ impl Lex {
         &self,
         term: &Term,
         schema: &TypeSchema,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
         invent: bool,
     ) -> Result<f64, SampleError> {
         // instantiate the typeschema
@@ -372,7 +368,7 @@ impl Lex {
         &self,
         rule: &Rule,
         schema: &TypeSchema,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
         invent: bool,
     ) -> Result<f64, SampleError> {
         let mut lp = 0.0;
@@ -385,10 +381,10 @@ impl Lex {
     }
     fn logprior_trs(
         &self,
-        trs: &TRS,
+        trs: &UntypedTRS,
         schemas: &[TypeSchema],
         p_rule: f64,
-        ctx: &mut Context,
+        ctx: &mut TypeContext,
         invent: bool,
     ) -> Result<f64, SampleError> {
         // TODO: this might not be numerically stable
@@ -407,7 +403,7 @@ impl Lex {
     }
 }
 impl GP for Lexicon {
-    type Expression = RewriteSystem;
+    type Expression = TRS;
     type Params = GeneticParams;
     fn genesis<R: Rng>(
         &self,

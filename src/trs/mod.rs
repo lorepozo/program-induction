@@ -12,7 +12,7 @@ mod lexicon;
 mod rewrite;
 mod trace;
 pub use self::lexicon::{GeneticParams, Lexicon};
-pub use self::rewrite::RewriteSystem;
+pub use self::rewrite::TRS;
 use Task;
 
 use polytype;
@@ -87,9 +87,9 @@ pub fn make_task_from_data(
     temperature: f64,
     prior_temperature: f64,
     ll_temperature: f64,
-) -> Task<Lexicon, RewriteSystem, ()> {
+) -> Task<Lexicon, TRS, ()> {
     Task {
-        oracle: Box::new(move |_s: &Lexicon, h: &RewriteSystem| {
+        oracle: Box::new(move |_s: &Lexicon, h: &TRS| {
             // TODO: only getting information from temperature-adjusted evaluation
             h.posterior(
                 data,
