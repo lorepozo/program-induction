@@ -85,18 +85,10 @@ impl Lexicon {
     /// merge two `TRS` into a single `TRS`.
     pub fn combine(&self, trs1: &TRS, trs2: &TRS) -> Result<TRS, TypeError> {
         assert_eq!(trs1.lex, trs2.lex);
-        let mut new_trs = trs1.clone();
-        // because the lexicon is the same, we only need to transfer rules
+        let mut utrs = trs1.utrs.clone();
         let mut new_rules = trs2.utrs.rules.clone();
-        new_trs.utrs.rules.append(&mut new_rules);
-        // update the context
-        let mut ctx = TypeContext::default();
-        {
-            let lex = trs1.lex.0.read().expect("poisoned lexicon");
-            lex.infer_utrs(&new_trs.utrs, &mut ctx)?;
-        }
-        new_trs.ctx = ctx;
-        Ok(new_trs)
+        utrs.rules.append(&mut new_rules);
+        TRS::new(&trs1.lex, utrs)
     }
 }
 impl fmt::Debug for Lexicon {
