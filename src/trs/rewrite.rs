@@ -19,17 +19,23 @@ use super::{Lexicon, SampleError, TypeError};
 pub struct TRS {
     // TODO: may also want to track background knowledge here.
     pub(crate) lex: Lexicon,
+    // INVARIANT: UntypedTRS.rules ends with lex.background
     pub(crate) utrs: UntypedTRS,
     pub(crate) ctx: TypeContext,
 }
 impl TRS {
-    pub fn new(lex: &Lexicon, utrs: UntypedTRS) -> Result<TRS, TypeError> {
+    /// Create a new `TRS` under the given `Lexicon`. Any background knowledge will be appended to
+    /// the given ruleset.
+    pub fn new(lex: &Lexicon, mut rules: Vec<Rule>) -> Result<TRS, TypeError> {
         let lex = lex.clone();
         let mut ctx = TypeContext::default();
-        lex.0
-            .read()
-            .expect("poisoned lexicon")
-            .infer_utrs(&utrs, &mut ctx)?;
+        let utrs = {
+            let lex = lex.0.read().expect("poisoned lexicon");
+            rules.append(&mut lex.background.clone());
+            let utrs = UntypedTRS::new(rules);
+            lex.infer_utrs(&utrs, &mut ctx)?;
+            utrs
+        };
         Ok(TRS { lex, utrs, ctx })
     }
 
@@ -91,30 +97,37 @@ impl TRS {
     pub fn add_rule<R: Rng>(&self, _rng: &mut R) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
         let schema = TypeSchema::Monotype(trs.ctx.new_variable());
-        let rule = self.lex.0.write().expect("poisoned lexicon").sample_rule(
+        let rule = trs.lex.0.write().expect("poisoned lexicon").sample_rule(
             &schema,
             &mut trs.ctx,
             true,
             4,
             0,
         )?;
-        self.lex
+        trs.lex
             .0
             .write()
             .expect("poisoned lexicon")
             .infer_rule(&rule, &mut trs.ctx)?;
-        trs.utrs.push(rule);
+        trs.utrs.rules.insert(0, rule);
         Ok(trs)
     }
-    /// Delete a rule from the rewrite system if possible.
-    pub fn delete_rule<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
-        let mut trs = self.clone();
-        if !trs.utrs.is_empty() {
-            let idx = rng.gen_range(0, trs.utrs.len());
-            trs.utrs.rules.remove(idx);
-            Ok(trs)
+    /// Delete a rule from the rewrite system if possible. Background knowledge cannot be deleted.
+    pub fn delete_rule<R: Rng>(&self, rng: &mut R) -> Option<TRS> {
+        let background_size = self.lex
+            .0
+            .read()
+            .expect("poisoned lexicon")
+            .background
+            .len();
+        let deletable = self.utrs.len() - background_size;
+        if deletable == 0 {
+            None
         } else {
-            Err(SampleError::OptionsExhausted)
+            let mut trs = self.clone();
+            let idx = rng.gen_range(0, deletable);
+            trs.utrs.rules.remove(idx);
+            Some(trs)
         }
     }
 }
