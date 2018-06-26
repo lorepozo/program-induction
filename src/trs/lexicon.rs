@@ -13,7 +13,6 @@ use GP;
 
 #[derive(Debug, Clone)]
 pub struct GeneticParams {
-    pub h0: TRS,
     pub n_crosses: usize,
 }
 
@@ -21,6 +20,36 @@ pub struct GeneticParams {
 #[derive(Clone)]
 pub struct Lexicon(pub(crate) Arc<RwLock<Lex>>);
 impl Lexicon {
+    pub fn new(
+        operators: Vec<(u32, Option<String>, TypeSchema)>,
+        background: Vec<Rule>,
+    ) -> Lexicon {
+        let mut signature = Signature::default();
+        let mut ops = Vec::with_capacity(operators.len());
+        for (id, name, tp) in operators {
+            signature.new_op(id, name);
+            ops.push(tp)
+        }
+        Lexicon(Arc::new(RwLock::new(Lex {
+            ops,
+            vars: Vec::new(),
+            signature,
+            background,
+        })))
+    }
+    pub fn from_signature(
+        signature: Signature,
+        ops: Vec<TypeSchema>,
+        vars: Vec<TypeSchema>,
+        background: Vec<Rule>,
+    ) -> Lexicon {
+        Lexicon(Arc::new(RwLock::new(Lex {
+            ops,
+            vars,
+            signature,
+            background,
+        })))
+    }
     /// All the free type variables in the lexicon.
     pub fn free_vars(&self) -> Vec<TypeVar> {
         self.0.read().expect("poisoned lexicon").free_vars()
@@ -95,10 +124,16 @@ impl Lexicon {
     /// merge two `TRS` into a single `TRS`.
     pub fn combine(&self, trs1: &TRS, trs2: &TRS) -> Result<TRS, TypeError> {
         assert_eq!(trs1.lex, trs2.lex);
-        let mut utrs = trs1.utrs.clone();
-        let mut new_rules = trs2.utrs.rules.clone();
-        utrs.rules.append(&mut new_rules);
-        TRS::new(&trs1.lex, utrs)
+        let background_size = trs1.lex
+            .0
+            .read()
+            .expect("poisoned lexicon")
+            .background
+            .len();
+        let mut rules1 = trs1.utrs.rules[..trs1.utrs.len() - background_size].to_vec();
+        let mut rules2 = trs2.utrs.rules.clone(); // includes background
+        rules1.append(&mut rules2);
+        TRS::new(&trs1.lex, rules1)
     }
 }
 impl fmt::Debug for Lexicon {
@@ -118,6 +153,7 @@ pub(crate) struct Lex {
     ops: Vec<TypeSchema>,
     vars: Vec<TypeSchema>,
     pub(crate) signature: Signature,
+    pub(crate) background: Vec<Rule>,
 }
 impl Lex {
     fn free_vars(&self) -> Vec<TypeVar> {
@@ -394,6 +430,11 @@ impl Lex {
         let p_n_rules = p_rule.ln() * (utrs.clauses().len() as f64);
         let mut p_rules = 0.0;
         for rule in &utrs.rules {
+            if self.background.contains(rule) {
+                // TODO: if we can guarantee that UntypedTRS has self.background at the end,
+                // then we wouldn't need to do this slow check
+                continue;
+            }
             let mut rule_ps = vec![];
             for schema in schemas {
                 let tmp_lp = self.logprior_rule(&rule, schema, ctx, invent)?;
@@ -409,26 +450,37 @@ impl GP for Lexicon {
     type Params = GeneticParams;
     fn genesis<R: Rng>(
         &self,
-        params: &Self::Params,
+        _params: &Self::Params,
         _rng: &mut R,
         pop_size: usize,
         _tp: &TypeSchema,
     ) -> Vec<Self::Expression> {
-        iter::repeat(params.h0.clone()).take(pop_size).collect()
+        match TRS::new(self, Vec::new()) {
+            Ok(trs) => iter::repeat(trs).take(pop_size).collect(),
+            Err(err) => {
+                let lex = self.0.read().expect("poisoned lexicon");
+                let background_trs = UntypedTRS::new(lex.background.clone());
+                panic!(
+                    "invalid background knowledge {}: {}",
+                    background_trs.display(&lex.signature),
+                    err
+                )
+            }
+        }
     }
     fn mutate<R: Rng>(
         &self,
         _params: &Self::Params,
         rng: &mut R,
-        prog: &Self::Expression,
+        trs: &Self::Expression,
     ) -> Self::Expression {
         loop {
             if rng.gen_bool(0.5) {
-                if let Ok(new_expr) = prog.add_rule(rng) {
-                    return new_expr;
+                if let Ok(new_trs) = trs.add_rule(rng) {
+                    return new_trs;
                 }
-            } else if let Ok(new_expr) = prog.delete_rule(rng) {
-                return new_expr;
+            } else if let Some(new_trs) = trs.delete_rule(rng) {
+                return new_trs;
             }
         }
     }
@@ -441,9 +493,9 @@ impl GP for Lexicon {
     ) -> Vec<Self::Expression> {
         let trs = self.combine(parent1, parent2)
             .expect("poorly-typed TRS in crossover");
-        let trss = iter::repeat(trs.clone())
+        iter::repeat(trs)
             .take(params.n_crosses)
-            .update(|trs| trs.utrs.rules.retain(|_| rng.gen_bool(0.5)));
-        iter::once(trs).chain(trss).collect()
+            .update(|trs| trs.utrs.rules.retain(|_| rng.gen_bool(0.5)))
+            .collect()
     }
 }
