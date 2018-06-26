@@ -46,18 +46,18 @@ impl TRS {
         self.utrs.size()
     }
 
-    pub fn pseudo_log_prior(&self, temp: f64, prior_temp: f64) -> f64 {
-        let raw_prior = -(self.size() as f64);
-        raw_prior / ((temp + 1.0) * prior_temp)
+    pub fn pseudo_log_prior(&self) -> f64 {
+        -(self.size() as f64)
     }
 
-    pub fn log_likelihood(&self, data: &[Rule], p_partial: f64, temp: f64, ll_temp: f64) -> f64 {
+    pub fn log_likelihood(&self, data: &[Rule], p_partial: f64) -> f64 {
         data.iter()
-            .map(|x| self.single_log_likelihood(x, p_partial, temp) / ll_temp)
+            .map(|x| self.single_log_likelihood(x, p_partial))
             .sum()
     }
 
-    fn single_log_likelihood(&self, datum: &Rule, p_partial: f64, temp: f64) -> f64 {
+    fn single_log_likelihood(&self, datum: &Rule, p_partial: f64) -> f64 {
+        // TODO: move these into GPParams?
         let p_observe = 0.0;
         let max_steps = 50;
         let max_size = 500;
@@ -71,25 +71,18 @@ impl TRS {
         };
 
         if ll == NEG_INFINITY {
-            (p_partial + temp).ln()
+            p_partial.ln()
         } else {
-            (1.0 - p_partial + temp).ln() + ll
+            (1.0 - p_partial).ln() + ll
         }
     }
 
-    pub fn posterior(
-        &self,
-        data: &[Rule],
-        p_partial: f64,
-        temperature: f64,
-        prior_temperature: f64,
-        ll_temperature: f64,
-    ) -> f64 {
-        let prior = self.pseudo_log_prior(temperature, prior_temperature);
+    pub fn posterior(&self, data: &[Rule], p_partial: f64) -> f64 {
+        let prior = self.pseudo_log_prior();
         if prior == NEG_INFINITY {
             NEG_INFINITY
         } else {
-            prior + self.log_likelihood(data, p_partial, temperature, ll_temperature)
+            prior + self.log_likelihood(data, p_partial)
         }
     }
 

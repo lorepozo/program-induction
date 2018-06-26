@@ -84,21 +84,9 @@ pub fn make_task_from_data(
     data: &[Rule],
     tp: polytype::TypeSchema,
     p_partial: f64,
-    temperature: f64,
-    prior_temperature: f64,
-    ll_temperature: f64,
 ) -> Task<Lexicon, TRS, ()> {
     Task {
-        oracle: Box::new(move |_s: &Lexicon, h: &TRS| {
-            // TODO: only getting information from temperature-adjusted evaluation
-            -h.posterior(
-                data,
-                p_partial,
-                temperature,
-                prior_temperature,
-                ll_temperature,
-            )
-        }),
+        oracle: Box::new(move |_s: &Lexicon, h: &TRS| -h.posterior(data, p_partial)),
         // TODO: compute type schema from the data
         tp,
         observation: (),
