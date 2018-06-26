@@ -9,9 +9,9 @@ use polytype::{Context as TypeContext, TypeSchema};
 use rand::Rng;
 use std::f64::NEG_INFINITY;
 use std::fmt;
+use term_rewriting::trace::Trace;
 use term_rewriting::{Rule, TRS as UntypedTRS};
 
-use super::trace::Trace;
 use super::{Lexicon, SampleError, TypeError};
 
 /// Manages the semantics of a term rewriting system.
@@ -60,12 +60,11 @@ impl TRS {
         // TODO: move these into GPParams?
         let p_observe = 0.0;
         let max_steps = 50;
-        let max_size = 500;
-        let mut trace = Trace::new(&self.utrs, &datum.lhs, p_observe, max_steps, max_size);
-        trace.run();
+        let max_size = Some(500);
+        let mut trace = Trace::new(&self.utrs, &datum.lhs, p_observe, max_size);
 
         let ll = if let Some(ref rhs) = datum.rhs() {
-            trace.rewrites_to(rhs)
+            trace.rewrites_to(max_steps, rhs)
         } else {
             NEG_INFINITY
         };

@@ -10,7 +10,6 @@
 
 mod lexicon;
 mod rewrite;
-mod trace;
 pub use self::lexicon::{GeneticParams, Lexicon};
 pub use self::rewrite::TRS;
 use Task;
