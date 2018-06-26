@@ -79,13 +79,36 @@ impl ::std::error::Error for SampleError {
     }
 }
 
+/// Parameters for a TRS-based probabilistic model.
+#[derive(Debug, Copy, Clone)]
+pub struct ModelParams {
+    /// How much partial credit is given for incorrect answers
+    p_partial: f64,
+    /// The (non-log) probability of generating observations at arbitrary evaluation steps (i.e. not just normal forms). Typically 0.0.
+    p_observe: f64,
+    /// The number of evaluation steps you would like to explore in the trace.
+    max_steps: usize,
+    /// The largest term that will be considered for evaluation. `None` will evaluate all terms.
+    max_size: Option<usize>,
+}
+impl Default for ModelParams {
+    fn default() -> ModelParams {
+        ModelParams {
+            p_partial: 0.0,
+            p_observe: 0.0,
+            max_steps: 50,
+            max_size: Some(500),
+        }
+    }
+}
+
 pub fn make_task_from_data(
     data: &[Rule],
     tp: polytype::TypeSchema,
-    p_partial: f64,
+    params: ModelParams,
 ) -> Task<Lexicon, TRS, ()> {
     Task {
-        oracle: Box::new(move |_s: &Lexicon, h: &TRS| -h.posterior(data, p_partial)),
+        oracle: Box::new(move |_s: &Lexicon, h: &TRS| -h.posterior(data, params)),
         // TODO: compute type schema from the data
         tp,
         observation: (),

@@ -12,7 +12,7 @@ use std::fmt;
 use term_rewriting::trace::Trace;
 use term_rewriting::{Rule, TRS as UntypedTRS};
 
-use super::{Lexicon, SampleError, TypeError};
+use super::{Lexicon, ModelParams, SampleError, TypeError};
 
 /// Manages the semantics of a term rewriting system.
 #[derive(Debug, PartialEq, Clone)]
@@ -50,50 +50,45 @@ impl TRS {
         -(self.size() as f64)
     }
 
-    pub fn log_likelihood(&self, data: &[Rule], p_partial: f64) -> f64 {
+    pub fn log_likelihood(&self, data: &[Rule], params: ModelParams) -> f64 {
         data.iter()
-            .map(|x| self.single_log_likelihood(x, p_partial))
+            .map(|x| self.single_log_likelihood(x, params))
             .sum()
     }
 
-    fn single_log_likelihood(&self, datum: &Rule, p_partial: f64) -> f64 {
-        // TODO: move these into GPParams?
-        let p_observe = 0.0;
-        let max_steps = 50;
-        let max_size = Some(500);
-        let mut trace = Trace::new(&self.utrs, &datum.lhs, p_observe, max_size);
-
+    fn single_log_likelihood(&self, datum: &Rule, params: ModelParams) -> f64 {
         let ll = if let Some(ref rhs) = datum.rhs() {
-            trace.rewrites_to(max_steps, rhs)
+            let mut trace = Trace::new(&self.utrs, &datum.lhs, params.p_observe, params.max_size);
+            trace.rewrites_to(params.max_steps, rhs)
         } else {
             NEG_INFINITY
         };
 
         if ll == NEG_INFINITY {
-            p_partial.ln()
+            params.p_partial.ln()
         } else {
-            (1.0 - p_partial).ln() + ll
+            (1.0 - params.p_partial).ln() + ll
         }
     }
 
-    pub fn posterior(&self, data: &[Rule], p_partial: f64) -> f64 {
+    pub fn posterior(&self, data: &[Rule], params: ModelParams) -> f64 {
         let prior = self.pseudo_log_prior();
         if prior == NEG_INFINITY {
             NEG_INFINITY
         } else {
-            prior + self.log_likelihood(data, p_partial)
+            prior + self.log_likelihood(data, params)
         }
     }
 
     /// Sample a rule and add it to the rewrite system.
-    pub fn add_rule<R: Rng>(&self, _rng: &mut R) -> Result<TRS, SampleError> {
+    pub fn add_rule<R: Rng>(&self, max_depth: usize, _rng: &mut R) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
         let schema = TypeSchema::Monotype(trs.ctx.new_variable());
         let rule = trs.lex.0.write().expect("poisoned lexicon").sample_rule(
             &schema,
             &mut trs.ctx,
             true,
-            4,
+            max_depth,
             0,
         )?;
         trs.lex

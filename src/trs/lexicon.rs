@@ -11,9 +11,12 @@ use super::{SampleError, TypeError, TRS};
 use utils::logsumexp;
 use GP;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct GeneticParams {
     pub n_crosses: usize,
+    pub max_sample_depth: usize,
+    pub p_add: f64,
+    pub p_keep: f64,
 }
 
 /// Manages the syntax of a term rewriting system.
@@ -470,13 +473,13 @@ impl GP for Lexicon {
     }
     fn mutate<R: Rng>(
         &self,
-        _params: &Self::Params,
+        params: &Self::Params,
         rng: &mut R,
         trs: &Self::Expression,
     ) -> Self::Expression {
         loop {
-            if rng.gen_bool(0.5) {
-                if let Ok(new_trs) = trs.add_rule(rng) {
+            if rng.gen_bool(params.p_add) {
+                if let Ok(new_trs) = trs.add_rule(params.max_sample_depth, rng) {
                     return new_trs;
                 }
             } else if let Some(new_trs) = trs.delete_rule(rng) {
@@ -495,7 +498,7 @@ impl GP for Lexicon {
             .expect("poorly-typed TRS in crossover");
         iter::repeat(trs)
             .take(params.n_crosses)
-            .update(|trs| trs.utrs.rules.retain(|_| rng.gen_bool(0.5)))
+            .update(|trs| trs.utrs.rules.retain(|_| rng.gen_bool(params.p_keep)))
             .collect()
     }
 }
