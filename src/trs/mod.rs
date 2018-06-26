@@ -91,7 +91,7 @@ pub fn make_task_from_data(
     Task {
         oracle: Box::new(move |_s: &Lexicon, h: &TRS| {
             // TODO: only getting information from temperature-adjusted evaluation
-            h.posterior(
+            -h.posterior(
                 data,
                 p_partial,
                 temperature,
