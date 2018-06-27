@@ -7,7 +7,7 @@ use std::fmt;
 use std::iter;
 use std::sync::{Arc, RwLock};
 use term_rewriting::{
-    Atom, Context, Operator, Place, Rule, Signature, Term, Variable, TRS as UntypedTRS,
+    Atom, Context, Operator, Place, Rule, RuleContext, Signature, Term, Variable, TRS as UntypedTRS,
 };
 
 use super::{SampleError, TypeError, TRS};
@@ -73,6 +73,19 @@ impl Lexicon {
             .expect("poisoned lexicon")
             .sample_term(schema, ctx, invent, max_d, 0)
     }
+    /// Sample a `Term` conditioned on a `Context` rather than a `TypeSchema`.
+    pub fn sample_term_from_context(
+        &mut self,
+        context: &Context,
+        ctx: &mut TypeContext,
+        invent: bool,
+        max_d: usize,
+    ) -> Result<Term, SampleError> {
+        self.0
+            .write()
+            .expect("poisoned lexicon")
+            .sample_term_from_context(context, ctx, invent, max_d, 0)
+    }
     /// Sample a `Rule`.
     pub fn sample_rule(
         &mut self,
@@ -85,6 +98,19 @@ impl Lexicon {
             .write()
             .expect("poisoned lexicon")
             .sample_rule(schema, ctx, invent, max_d, 0)
+    }
+    /// Sample a `Rule` conditioned on a `Context` rather than a `TypeSchema`.
+    pub fn sample_rule_from_context(
+        &mut self,
+        context: &RuleContext,
+        ctx: &mut TypeContext,
+        invent: bool,
+        max_d: usize,
+    ) -> Result<Rule, SampleError> {
+        self.0
+            .write()
+            .expect("poisoned lexicon")
+            .sample_rule_from_context(context, ctx, invent, max_d, 0)
     }
     /// Give the log probability of sampling a Term.
     pub fn logprior_term(
@@ -349,6 +375,23 @@ impl Lex {
         }
         Err(SampleError::OptionsExhausted)
     }
+    pub fn sample_term_from_context(
+        &mut self,
+        context: &Context,
+        ctx: &mut TypeContext,
+        invent: bool,
+        max_d: usize,
+        d: usize,
+    ) -> Result<Term, SampleError> {
+        let context = context.clone();
+        let hole_places = context.holes();
+        let schemas = self.infer_context_some(&context, ctx, &hole_places)?;
+        for (p, schema) in schemas {
+            let subterm = self.sample_term(&schema, ctx, invent, max_d, d)?;
+            context.replace(&p, Context::from(subterm));
+        }
+        context.to_term().or(Err(SampleError::Subterm))
+    }
     pub fn sample_rule(
         &mut self,
         schema: &TypeSchema,
@@ -363,6 +406,31 @@ impl Lex {
             let lhs = self.sample_term(schema, ctx, invent, max_d, d)?;
             let rhs = self.sample_term(schema, ctx, false, max_d, d)?;
             if let Some(rule) = Rule::new(lhs, vec![rhs]) {
+                return Ok(rule);
+            } else {
+                *self = orig_self.clone();
+                *ctx = orig_ctx.clone();
+            }
+        }
+    }
+    pub fn sample_rule_from_context(
+        &mut self,
+        context: &RuleContext,
+        ctx: &mut TypeContext,
+        invent: bool,
+        max_d: usize,
+        d: usize,
+    ) -> Result<Rule, SampleError> {
+        let orig_self = self.clone();
+        let orig_ctx = ctx.clone();
+        loop {
+            let lhs = self.sample_term_from_context(&context.lhs, ctx, invent, max_d, d)?;
+            let rhss = context
+                .rhs
+                .iter()
+                .map(|rhs| self.sample_term_from_context(rhs, ctx, false, max_d, d))
+                .collect::<Result<Vec<_>, _>>()?;
+            if let Some(rule) = Rule::new(lhs, rhss) {
                 return Ok(rule);
             } else {
                 *self = orig_self.clone();
