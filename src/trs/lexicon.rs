@@ -1,11 +1,14 @@
 use itertools::Itertools;
 use polytype::{Context as TypeContext, Type, TypeSchema, Variable as TypeVar};
 use rand::{thread_rng, Rng};
+use std::collections::HashMap;
 use std::f64::NEG_INFINITY;
 use std::fmt;
 use std::iter;
 use std::sync::{Arc, RwLock};
-use term_rewriting::{Atom, Context, Operator, Rule, Signature, Term, Variable, TRS as UntypedTRS};
+use term_rewriting::{
+    Atom, Context, Operator, Place, Rule, Signature, Term, Variable, TRS as UntypedTRS,
+};
 
 use super::{SampleError, TypeError, TRS};
 use utils::logsumexp;
@@ -206,34 +209,64 @@ impl Lex {
         context: &Context,
         ctx: &mut TypeContext,
     ) -> Result<TypeSchema, TypeError> {
-        let tp = self.infer_context_internal(context, ctx)?;
+        let tp = self.infer_context_internal(context, ctx, vec![], &mut HashMap::new())?;
         let lex_vars = self.free_vars_applied(ctx);
         Ok(tp.generalize(&lex_vars))
+    }
+    pub fn infer_context_all(
+        &self,
+        context: &Context,
+        ctx: &mut TypeContext,
+    ) -> Result<HashMap<Place, TypeSchema>, TypeError> {
+        let mut tps = HashMap::new();
+        self.infer_context_internal(context, ctx, vec![], &mut tps)?;
+        let lex_vars = self.free_vars_applied(ctx);
+        Ok(tps.into_iter()
+            .map(|(p, tp)| (p, tp.generalize(&lex_vars)))
+            .collect())
+    }
+    pub fn infer_context_some(
+        &self,
+        context: &Context,
+        ctx: &mut TypeContext,
+        places: &[Place],
+    ) -> Result<HashMap<Place, TypeSchema>, TypeError> {
+        let mut tps = HashMap::new();
+        self.infer_context_internal(context, ctx, vec![], &mut tps)?;
+        let lex_vars = self.free_vars_applied(ctx);
+        Ok(tps.into_iter()
+            .filter(|(p, _)| places.contains(p))
+            .map(|(p, tp)| (p, tp.generalize(&lex_vars)))
+            .collect())
     }
     fn infer_context_internal(
         &self,
         context: &Context,
         ctx: &mut TypeContext,
+        place: Place,
+        tps: &mut HashMap<Place, Type>,
     ) -> Result<Type, TypeError> {
-        match *context {
-            Context::Hole => Ok(ctx.new_variable()),
-            Context::Variable(v) => self.instantiate_atom(&Atom::from(v), ctx),
+        let tp = match *context {
+            Context::Hole => ctx.new_variable(),
+            Context::Variable(v) => self.instantiate_atom(&Atom::from(v), ctx)?,
             Context::Application { op, ref args } => {
-                if op.arity(&self.signature) > 0 {
-                    let head_type = self.instantiate_atom(&Atom::from(op), ctx)?;
-                    let body_type = {
-                        let mut pre_types = Vec::with_capacity(args.len() + 1);
-                        for a in args {
-                            pre_types.push(self.infer_context_internal(a, ctx)?);
-                        }
-                        pre_types.push(ctx.new_variable());
-                        Type::from(pre_types)
-                    };
-                    ctx.unify(&head_type, &body_type)?;
-                }
-                self.instantiate_atom(&Atom::from(op), ctx)
+                let head_type = self.instantiate_atom(&Atom::from(op), ctx)?;
+                let body_type = {
+                    let mut pre_types = Vec::with_capacity(args.len() + 1);
+                    for (i, a) in args.iter().enumerate() {
+                        let mut new_place = place.clone();
+                        new_place.push(i);
+                        pre_types.push(self.infer_context_internal(a, ctx, new_place, tps)?);
+                    }
+                    pre_types.push(ctx.new_variable());
+                    Type::from(pre_types)
+                };
+                ctx.unify(&head_type, &body_type)?;
+                head_type.apply(ctx)
             }
-        }
+        };
+        tps.insert(place, tp.clone());
+        Ok(tp)
     }
     pub fn infer_term(&self, term: &Term, ctx: &mut TypeContext) -> Result<TypeSchema, TypeError> {
         let tp = self.infer_term_internal(term, ctx)?;
