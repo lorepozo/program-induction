@@ -5,7 +5,7 @@ use std::f64::NEG_INFINITY;
 use std::fmt;
 use std::iter;
 use std::sync::{Arc, RwLock};
-use term_rewriting::{Atom, Operator, Rule, Signature, Term, Variable, TRS as UntypedTRS};
+use term_rewriting::{Atom, Context, Operator, Rule, Signature, Term, Variable, TRS as UntypedTRS};
 
 use super::{SampleError, TypeError, TRS};
 use utils::logsumexp;
@@ -200,6 +200,40 @@ impl Lex {
         let mut tp = self.infer_atom(atom)?.instantiate_owned(ctx);
         tp.apply_mut(ctx);
         Ok(tp)
+    }
+    pub fn infer_context(
+        &self,
+        context: &Context,
+        ctx: &mut TypeContext,
+    ) -> Result<TypeSchema, TypeError> {
+        let tp = self.infer_context_internal(context, ctx)?;
+        let lex_vars = self.free_vars_applied(ctx);
+        Ok(tp.generalize(&lex_vars))
+    }
+    fn infer_context_internal(
+        &self,
+        context: &Context,
+        ctx: &mut TypeContext,
+    ) -> Result<Type, TypeError> {
+        match *context {
+            Context::Hole => Ok(ctx.new_variable()),
+            Context::Variable(v) => self.instantiate_atom(&Atom::from(v), ctx),
+            Context::Application { op, ref args } => {
+                if op.arity(&self.signature) > 0 {
+                    let head_type = self.instantiate_atom(&Atom::from(op), ctx)?;
+                    let body_type = {
+                        let mut pre_types = Vec::with_capacity(args.len() + 1);
+                        for a in args {
+                            pre_types.push(self.infer_context_internal(a, ctx)?);
+                        }
+                        pre_types.push(ctx.new_variable());
+                        Type::from(pre_types)
+                    };
+                    ctx.unify(&head_type, &body_type)?;
+                }
+                self.instantiate_atom(&Atom::from(op), ctx)
+            }
+        }
     }
     pub fn infer_term(&self, term: &Term, ctx: &mut TypeContext) -> Result<TypeSchema, TypeError> {
         let tp = self.infer_term_internal(term, ctx)?;
