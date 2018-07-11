@@ -16,12 +16,19 @@ use GP;
 
 #[derive(Debug, Clone)]
 pub struct GeneticParams {
+    /// The number of hypotheses crossover should generate.
     pub n_crosses: usize,
+    /// The maximum number of non-progressing recursive steps sampling can make without failing.
     pub max_sample_depth: usize,
+    /// The probability of adding (vs. deleting) a rule during mutation.
     pub p_add: f64,
+    /// The probability of keeping a rule during crossover.
     pub p_keep: f64,
+    /// If `true`, then the `TRS` should be deterministic.
     pub deterministic: bool,
+    /// rule templates to use when sampling rules
     pub templates: Vec<RuleContext>,
+    /// the weight to assign variables, constants, and non-constant operators, respectively.
     pub atom_weights: (f64, f64, f64),
 }
 
