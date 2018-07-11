@@ -63,6 +63,28 @@ impl Lexicon {
     pub fn free_vars(&self) -> Vec<TypeVar> {
         self.0.read().expect("poisoned lexicon").free_vars()
     }
+    /// Infer the `TypeSchema` associated with a `Context`.
+    pub fn infer_context(
+        &self,
+        context: &Context,
+        ctx: &mut TypeContext,
+    ) -> Result<TypeSchema, TypeError> {
+        self.0
+            .write()
+            .expect("poisoned lexicon")
+            .infer_context(context, ctx)
+    }
+    /// Infer the `TypeSchema` associated with a `RuleContext`.
+    pub fn infer_rule_context(
+        &self,
+        context: &RuleContext,
+        ctx: &mut TypeContext,
+    ) -> Result<TypeSchema, TypeError> {
+        self.0
+            .write()
+            .expect("poisoned lexicon")
+            .infer_rule_context(context, ctx)
+    }
     /// Sample a `Term`.
     pub fn sample_term(
         &mut self,
