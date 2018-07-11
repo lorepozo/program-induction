@@ -5,12 +5,13 @@
 //! - https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system
 //! - (TAPL; Pierce, 2002, ch. 22)
 
-use polytype::{Context as TypeContext, TypeSchema};
+use polytype::Context as TypeContext;
+use rand::seq::sample_iter;
 use rand::Rng;
 use std::f64::NEG_INFINITY;
 use std::fmt;
 use term_rewriting::trace::Trace;
-use term_rewriting::{Rule, TRS as UntypedTRS};
+use term_rewriting::{Rule, RuleContext, TRS as UntypedTRS};
 
 use super::{Lexicon, ModelParams, SampleError, TypeError};
 
@@ -81,40 +82,43 @@ impl TRS {
     }
 
     /// Sample a rule and add it to the rewrite system.
-    pub fn add_rule<R: Rng>(&self, max_depth: usize, _rng: &mut R) -> Result<TRS, SampleError> {
+    pub fn add_rule<R: Rng>(
+        &self,
+        contexts: &[RuleContext],
+        atom_weights: (f64, f64, f64),
+        max_depth: usize,
+        rng: &mut R,
+    ) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
-        let schema = TypeSchema::Monotype(trs.ctx.new_variable());
-        let rule = trs.lex.0.write().expect("poisoned lexicon").sample_rule(
-            &schema,
+        let context = sample_iter(rng, contexts, 1)?[0];
+        let rule = trs.lex.sample_rule_from_context(
+            &context,
             &mut trs.ctx,
+            atom_weights,
             true,
             max_depth,
-            0,
         )?;
         trs.lex
             .0
             .write()
             .expect("poisoned lexicon")
             .infer_rule(&rule, &mut trs.ctx)?;
-        trs.utrs.rules.insert(0, rule);
+        trs.utrs.push(rule)?;
         Ok(trs)
     }
     /// Delete a rule from the rewrite system if possible. Background knowledge cannot be deleted.
-    pub fn delete_rule<R: Rng>(&self, rng: &mut R) -> Option<TRS> {
-        let background_size = self.lex
-            .0
-            .read()
-            .expect("poisoned lexicon")
-            .background
-            .len();
-        let deletable = self.utrs.len() - background_size;
-        if deletable == 0 {
-            None
+    pub fn delete_rule<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
+        let background = &self.lex.0.read().expect("poisoned lexicon").background;
+        let clauses = self.utrs.clauses();
+        let deletable: Vec<_> = clauses.iter().filter(|c| !background.contains(c)).collect();
+        if deletable.is_empty() {
+            //println!("  Err: no rules to delete.");
+            Err(SampleError::OptionsExhausted)
         } else {
             let mut trs = self.clone();
-            let idx = rng.gen_range(0, deletable);
-            trs.utrs.rules.remove(idx);
-            Some(trs)
+            trs.utrs.remove_clauses(sample_iter(rng, deletable, 1)?[0])?;
+            //println!("Success");
+            Ok(trs)
         }
     }
 }

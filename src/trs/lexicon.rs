@@ -733,10 +733,15 @@ impl GP for Lexicon {
     ) -> Self::Expression {
         loop {
             if rng.gen_bool(params.p_add) {
-                if let Ok(new_trs) = trs.add_rule(params.max_sample_depth, rng) {
+                if let Ok(new_trs) = trs.add_rule(
+                    &params.templates,
+                    params.atom_weights,
+                    params.max_sample_depth,
+                    rng,
+                ) {
                     return new_trs;
                 }
-            } else if let Some(new_trs) = trs.delete_rule(rng) {
+            } else if let Ok(new_trs) = trs.delete_rule(rng) {
                 return new_trs;
             }
         }
