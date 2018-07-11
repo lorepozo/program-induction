@@ -20,6 +20,7 @@ pub struct GeneticParams {
     pub max_sample_depth: usize,
     pub p_add: f64,
     pub p_keep: f64,
+    pub deterministic: bool,
 }
 
 /// Manages the syntax of a term rewriting system.
@@ -588,13 +589,18 @@ impl GP for Lexicon {
     type Params = GeneticParams;
     fn genesis<R: Rng>(
         &self,
-        _params: &Self::Params,
-        _rng: &mut R,
+        params: &Self::Params,
+        rng: &mut R,
         pop_size: usize,
         _tp: &TypeSchema,
     ) -> Vec<Self::Expression> {
         match TRS::new(self, Vec::new()) {
-            Ok(trs) => iter::repeat(trs).take(pop_size).collect(),
+            Ok(mut trs) => {
+                if params.deterministic {
+                    trs.utrs.make_deterministic(rng);
+                }
+                iter::repeat(trs).take(pop_size).collect()
+            }
             Err(err) => {
                 let lex = self.0.read().expect("poisoned lexicon");
                 let background_trs = UntypedTRS::new(lex.background.clone());
