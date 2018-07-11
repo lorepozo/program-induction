@@ -220,8 +220,17 @@ pub trait GP: Send + Sync + Sized {
     }
 }
 
+/// Given a mutable vector, `pop`, of item-score pairs sorted by score, insert
+/// an item, `child`, into `pop` while maintaining score-sorted order.
+///
+/// The length of the list does *not* change, so if the item would be inserted
+/// at the end of the list, no insertion occurs. Also, if existing items have
+/// the same score as `child`, `child` is inserted *after* these items.
+///
+/// This function calls `unsafe` methods but in ways that should not fail.
 fn sorted_place<T>(child: (T, f64), pop: &mut Vec<(T, f64)>) {
-    let mut size = pop.len();
+    let orig_size = pop.len();
+    let mut size = orig_size;
     if size == 0 {
         return;
     }
@@ -241,13 +250,10 @@ fn sorted_place<T>(child: (T, f64), pop: &mut Vec<(T, f64)>) {
         // base is always in [0, size) because base <= mid.
         let other = unsafe { pop.get_unchecked(base) };
         let cmp = other.1.partial_cmp(&child.1).expect("found NaN");
-        if cmp == Ordering::Equal {
-            base
-        } else {
-            base + (cmp == Ordering::Less) as usize
-        }
+        base + (cmp != Ordering::Greater) as usize
     };
-    if idx < size {
-        pop[idx] = child;
+    if idx < orig_size {
+        pop.insert(idx, child);
+        pop.pop();
     }
 }
