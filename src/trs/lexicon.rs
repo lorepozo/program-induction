@@ -609,41 +609,57 @@ impl Lex {
         term: &Term,
         schema: &TypeSchema,
         ctx: &mut TypeContext,
+        (vw, cw, ow): (f64, f64, f64),
         invent: bool,
     ) -> Result<f64, SampleError> {
         // instantiate the typeschema
         let tp = schema.instantiate(ctx);
         // setup the existing options
-        let mut options = Vec::new();
+        let (mut vs, mut cs, mut os) = (vec![], vec![], vec![]);
         let atoms = self.signature.atoms();
         for atom in &atoms {
             if let Ok(arg_types) = self.fit_atom(atom, &tp, ctx) {
-                options.push((Some(*atom), arg_types))
+                match *atom {
+                    Atom::Variable(_) => vs.push((Some(*atom), arg_types)),
+                    Atom::Operator(o) if o.arity(&self.signature) == 0 => {
+                        cs.push((Some(*atom), arg_types))
+                    }
+                    Atom::Operator(_) => os.push((Some(*atom), arg_types)),
+                }
             }
         }
-        // add a variable if needed
         if invent {
             if let Term::Variable(v) = *term {
                 if !atoms.contains(&Atom::Variable(v)) {
-                    options.push((Some(Atom::Variable(v)), Vec::new()));
+                    vs.push((Some(Atom::Variable(v)), vec![]));
                 }
             } else {
-                options.push((None, Vec::new()));
+                vs.push((None, vec![]));
             }
         }
         // compute the log probability of selecting this head
-        let mut lp = -(options.len() as f64).ln(); // unused if undefined
+        let z = vw + cw + ow;
+        let (vw, cw, ow) = (vw / z, cw / z, ow / z);
+        let vlp = vw.ln() - (vs.len() as f64).ln();
+        let clp = cw.ln() - (cs.len() as f64).ln();
+        let olp = ow.ln() - (os.len() as f64).ln();
+        let mut options = vec![];
+        options.append(&mut vs);
+        options.append(&mut cs);
+        options.append(&mut os);
         match options
             .into_iter()
             .find(|&(ref o, _)| o == &Some(term.head()))
             .map(|(o, arg_types)| (o.unwrap(), arg_types))
         {
-            Some((Atom::Variable(_), _)) => Ok(lp),
+            Some((Atom::Variable(_), _)) => Ok(vlp),
+            Some((Atom::Operator(_), ref arg_types)) if arg_types.is_empty() => Ok(clp),
             Some((Atom::Operator(_), arg_types)) => {
+                let mut lp = olp;
                 for (subterm, mut arg_tp) in term.args().iter().zip(arg_types) {
                     arg_tp.apply_mut(ctx);
                     let arg_schema = TypeSchema::Monotype(arg_tp.clone());
-                    lp += self.logprior_term(subterm, &arg_schema, ctx, invent)?;
+                    lp += self.logprior_term(subterm, &arg_schema, ctx, (vw, cw, ow), invent)?;
                     let final_type = self.infer_term(subterm, ctx)?.instantiate_owned(ctx);
                     if ctx.unify(&arg_tp, &final_type).is_err() {
                         return Ok(NEG_INFINITY);
@@ -659,12 +675,13 @@ impl Lex {
         rule: &Rule,
         schema: &TypeSchema,
         ctx: &mut TypeContext,
+        atom_weights: (f64, f64, f64),
         invent: bool,
     ) -> Result<f64, SampleError> {
         let mut lp = 0.0;
-        let lp_lhs = self.logprior_term(&rule.lhs, schema, ctx, invent)?;
+        let lp_lhs = self.logprior_term(&rule.lhs, schema, ctx, atom_weights, invent)?;
         for rhs in &rule.rhs {
-            let tmp_lp = self.logprior_term(&rhs, schema, ctx, false)?;
+            let tmp_lp = self.logprior_term(&rhs, schema, ctx, atom_weights, false)?;
             lp += tmp_lp + lp_lhs;
         }
         Ok(lp)
@@ -675,6 +692,7 @@ impl Lex {
         schemas: &[TypeSchema],
         p_rule: f64,
         ctx: &mut TypeContext,
+        atom_weights: (f64, f64, f64),
         invent: bool,
     ) -> Result<f64, SampleError> {
         // TODO: this might not be numerically stable
@@ -689,7 +707,7 @@ impl Lex {
             }
             let mut rule_ps = vec![];
             for schema in schemas {
-                let tmp_lp = self.logprior_rule(&rule, schema, ctx, invent)?;
+                let tmp_lp = self.logprior_rule(&rule, schema, ctx, atom_weights, invent)?;
                 rule_ps.push(tmp_lp);
             }
             p_rules += logsumexp(&rule_ps);
