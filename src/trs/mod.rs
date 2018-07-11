@@ -90,13 +90,13 @@ impl ::std::error::Error for SampleError {
 #[derive(Debug, Copy, Clone)]
 pub struct ModelParams {
     /// How much partial credit is given for incorrect answers
-    p_partial: f64,
+    pub p_partial: f64,
     /// The (non-log) probability of generating observations at arbitrary evaluation steps (i.e. not just normal forms). Typically 0.0.
-    p_observe: f64,
+    pub p_observe: f64,
     /// The number of evaluation steps you would like to explore in the trace.
-    max_steps: usize,
+    pub max_steps: usize,
     /// The largest term that will be considered for evaluation. `None` will evaluate all terms.
-    max_size: Option<usize>,
+    pub max_size: Option<usize>,
 }
 impl Default for ModelParams {
     fn default() -> ModelParams {
