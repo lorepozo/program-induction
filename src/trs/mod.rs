@@ -16,7 +16,7 @@ use Task;
 
 use polytype;
 use std::fmt;
-use term_rewriting::Rule;
+use term_rewriting::{Rule, TRSError};
 
 #[derive(Debug, Clone)]
 pub enum TypeError {
@@ -47,6 +47,7 @@ impl ::std::error::Error for TypeError {
 #[derive(Debug, Clone)]
 pub enum SampleError {
     TypeError(TypeError),
+    TRSError(TRSError),
     DepthExceeded(usize, usize),
     OptionsExhausted,
     Subterm,
@@ -54,6 +55,11 @@ pub enum SampleError {
 impl From<TypeError> for SampleError {
     fn from(e: TypeError) -> SampleError {
         SampleError::TypeError(e)
+    }
+}
+impl From<TRSError> for SampleError {
+    fn from(e: TRSError) -> SampleError {
+        SampleError::TRSError(e)
     }
 }
 impl From<polytype::UnificationError> for SampleError {
@@ -65,6 +71,7 @@ impl fmt::Display for SampleError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             SampleError::TypeError(ref e) => write!(f, "type error: {}", e),
+            SampleError::TRSError(ref e) => write!(f, "TRS error: {}", e),
             SampleError::DepthExceeded(depth, max_depth) => {
                 write!(f, "depth {} exceeded maximum of {}", depth, max_depth)
             }
