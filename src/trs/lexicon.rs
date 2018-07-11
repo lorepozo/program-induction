@@ -15,6 +15,10 @@ use utils::{logsumexp, weighted_permutation};
 use GP;
 
 #[derive(Debug, Clone)]
+/// Parameters for [genetic programming] with a [`Lexicon`].
+///
+/// [genetic programming]: struct.Lexicon.html#impl-GP
+/// [`Lexicon`]: struct.Lexicon.html
 pub struct GeneticParams {
     /// The number of hypotheses crossover should generate.
     pub n_crosses: usize,
@@ -36,6 +40,7 @@ pub struct GeneticParams {
 #[derive(Clone)]
 pub struct Lexicon(pub(crate) Arc<RwLock<Lex>>);
 impl Lexicon {
+    /// Construct a `Lexicon`.
     pub fn new(
         operators: Vec<(u32, Option<String>, TypeSchema)>,
         background: Vec<Rule>,
@@ -53,6 +58,9 @@ impl Lexicon {
             background,
         })))
     }
+    /// Construct a `Lexicon`, including a set of background [`Variable`]s.
+    ///
+    /// [`Variable`]: ../../term_rewriting/struct.Variable.html
     pub fn from_signature(
         signature: Signature,
         ops: Vec<TypeSchema>,

@@ -19,6 +19,7 @@ use std::fmt;
 use term_rewriting::{Rule, TRSError};
 
 #[derive(Debug, Clone)]
+/// The error type for type inference.
 pub enum TypeError {
     Unification(polytype::UnificationError),
     OpNotFound,
@@ -45,6 +46,7 @@ impl ::std::error::Error for TypeError {
 }
 
 #[derive(Debug, Clone)]
+/// The error type for sampling operations.
 pub enum SampleError {
     TypeError(TypeError),
     TRSError(TRSError),
@@ -114,6 +116,11 @@ impl Default for ModelParams {
     }
 }
 
+/// Construct a [`Task`] suitable for [genetic programming] with a [`Lexicon`].
+///
+/// [`Task`]: ../struct.Task.html
+/// [genetic programming]: struct.Lexicon.html#impl-GP
+/// [`Lexicon`]: struct.Lexicon.html
 pub fn make_task_from_data(
     data: &[Rule],
     tp: polytype::TypeSchema,
