@@ -823,7 +823,7 @@ where
     }
 }
 
-/// Liky [`task_by_evaluation`], but for use with a [`LazyEvaluator`].
+/// Like [`task_by_evaluation`], but for use with a [`LazyEvaluator`].
 ///
 /// [`LazyEvaluator`]: trait.LazyEvaluator.html
 /// [`task_by_evaluation`]: fn.task_by_evaluation.html
