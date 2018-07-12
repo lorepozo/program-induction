@@ -7,6 +7,42 @@
 //!      "Wikipedia - Hindley-Milner Type System"
 //! [1]: https://en.wikipedia.org/wiki/Rewriting#Term_rewriting_systems
 //!      "Wikipedia - Term Rewriting Systems"
+//!
+//! # Example
+//!
+//! ```
+//! # #[macro_use] extern crate polytype;
+//! # extern crate programinduction;
+//! # extern crate term_rewriting;
+//! # use programinduction::trs::{TRS, Lexicon};
+//! # use term_rewriting::{Signature, parse_rule};
+//! # fn main() {
+//! let mut sig = Signature::default();
+//!
+//! let mut ops = vec![];
+//! sig.new_op(2, Some("PLUS".to_string()));
+//! ops.push(ptp![@arrow[tp!(int), tp!(int), tp!(int)]]);
+//! sig.new_op(1, Some("SUCC".to_string()));
+//! ops.push(ptp![@arrow[tp!(int), tp!(int)]]);
+//! sig.new_op(0, Some("ZERO".to_string()));
+//! ops.push(ptp![int]);
+//!
+//! let rules = vec![
+//!     parse_rule(&mut sig, "PLUS(x_ ZERO) = x_").expect("parsed rule"),
+//!     parse_rule(&mut sig, "PLUS(x_ SUCC(y_)) = SUCC(PLUS(x_ y_))").expect("parsed rule"),
+//! ];
+//!
+//! let vars = vec![
+//!     ptp![int],
+//!     ptp![int],
+//!     ptp![int],
+//! ];
+//!
+//! let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false);
+//!
+//! let trs = TRS::new(&lexicon, rules);
+//! # }
+//! ```
 
 mod lexicon;
 mod rewrite;
@@ -96,13 +132,16 @@ impl ::std::error::Error for SampleError {
 /// Parameters for a TRS-based probabilistic model.
 #[derive(Debug, Copy, Clone)]
 pub struct ModelParams {
-    /// How much partial credit is given for incorrect answers
+    /// How much partial credit is given for incorrect answers; it should be a
+    /// probability (i.e. in [0, 1]).
     pub p_partial: f64,
-    /// The (non-log) probability of generating observations at arbitrary evaluation steps (i.e. not just normal forms). Typically 0.0.
+    /// The (non-log) probability of generating observations at arbitrary
+    /// evaluation steps (i.e. not just normal forms). Typically 0.0.
     pub p_observe: f64,
     /// The number of evaluation steps you would like to explore in the trace.
     pub max_steps: usize,
-    /// The largest term that will be considered for evaluation. `None` will evaluate all terms.
+    /// The largest term that will be considered for evaluation. `None` will
+    /// evaluate all terms.
     pub max_size: Option<usize>,
 }
 impl Default for ModelParams {
@@ -116,20 +155,28 @@ impl Default for ModelParams {
     }
 }
 
-/// Construct a [`Task`] suitable for [genetic programming] with a [`Lexicon`].
+/// Construct a [`Task`] evaluating [`TRS`]s (constructed from a [`Lexicon`])
+/// using rewriting of inputs to outputs.
 ///
-/// [`Task`]: ../struct.Task.html
-/// [genetic programming]: struct.Lexicon.html#impl-GP
+/// Each [`term_rewriting::Rule`] in `data` must have a single RHS term. The
+/// resulting [`Task`] checks whether each datum's LHS gets rewritten to its RHS
+/// under a [`TRS`] within the constraints specified by the [`ModelParams`].
+///
 /// [`Lexicon`]: struct.Lexicon.html
-pub fn make_task_from_data(
+/// [`ModelParams`]: struct.ModelParams.html
+/// [`term_rewriting::Rule`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Rule.html
+/// [`Task`]: ../struct.Task.html
+/// [`TRS`]: struct.TRS.html
+pub fn task_by_rewrite<O: Sync>(
     data: &[Rule],
-    tp: polytype::TypeSchema,
     params: ModelParams,
-) -> Task<Lexicon, TRS, ()> {
+    tp: polytype::TypeSchema,
+    observation: O,
+) -> Task<Lexicon, TRS, O> {
     Task {
         oracle: Box::new(move |_s: &Lexicon, h: &TRS| -h.posterior(data, params)),
         // TODO: compute type schema from the data
         tp,
-        observation: (),
+        observation,
     }
 }

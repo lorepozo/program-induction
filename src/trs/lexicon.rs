@@ -15,10 +15,10 @@ use utils::{logsumexp, weighted_permutation};
 use GP;
 
 #[derive(Debug, Clone)]
-/// Parameters for [genetic programming] with a [`Lexicon`].
+/// Parameters for [`Lexicon`] genetic programming ([`GP`]).
 ///
-/// [genetic programming]: struct.Lexicon.html#impl-GP
 /// [`Lexicon`]: struct.Lexicon.html
+/// [`GP`]: ../trait.GP.html
 pub struct GeneticParams {
     /// The number of hypotheses crossover should generate.
     pub n_crosses: usize,
@@ -28,23 +28,42 @@ pub struct GeneticParams {
     pub p_add: f64,
     /// The probability of keeping a rule during crossover.
     pub p_keep: f64,
-    /// If `true`, then the `TRS` should be deterministic.
-    pub deterministic: bool,
-    /// rule templates to use when sampling rules
+    /// Rule templates to use when sampling rules.
     pub templates: Vec<RuleContext>,
-    /// the weight to assign variables, constants, and non-constant operators, respectively.
+    /// The weight to assign variables, constants, and non-constant operators, respectively.
     pub atom_weights: (f64, f64, f64),
 }
 
-/// Manages the syntax of a term rewriting system.
+/// (representation) Manages the syntax of a term rewriting system.
 #[derive(Clone)]
 pub struct Lexicon(pub(crate) Arc<RwLock<Lex>>);
 impl Lexicon {
-    /// Construct a `Lexicon`.
-    pub fn new(
-        operators: Vec<(u32, Option<String>, TypeSchema)>,
-        background: Vec<Rule>,
-    ) -> Lexicon {
+    /// Construct a `Lexicon` with only background [`term_rewriting::Operator`]s.
+    ///
+    /// # Example
+    ///
+    /// See [`polytype::ptp`] for details on constructing [`polytype::TypeSchema`]s.
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # use programinduction::trs::Lexicon;
+    /// # fn main() {
+    /// let operators = vec![
+    ///     (2, Some("PLUS".to_string()), ptp![@arrow[tp!(int), tp!(int), tp!(int)]]),
+    ///     (1, Some("SUCC".to_string()), ptp![@arrow[tp!(int), tp!(int)]]),
+    ///     (0, Some("ZERO".to_string()), ptp![int]),
+    /// ];
+    /// let deterministic = false;
+    ///
+    /// let lexicon = Lexicon::new(operators, deterministic);
+    /// # }
+    /// ```
+    ///
+    /// [`polytype::ptp`]: https://docs.rs/polytype/~6.0/polytype/macro.ptp.html
+    /// [`polytype::TypeSchema`]: https://docs.rs/polytype/~6.0/polytype/enum.TypeSchema.html
+    /// [`term_rewriting::Operator`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Operator.html
+    pub fn new(operators: Vec<(u32, Option<String>, TypeSchema)>, deterministic: bool) -> Lexicon {
         let mut signature = Signature::default();
         let mut ops = Vec::with_capacity(operators.len());
         for (id, name, tp) in operators {
@@ -55,30 +74,116 @@ impl Lexicon {
             ops,
             vars: Vec::new(),
             signature,
-            background,
+            background: vec![],
+            deterministic,
         })))
     }
-    /// Construct a `Lexicon`, including a set of background [`Variable`]s.
+    /// Construct a `Lexicon` with a set of background
+    /// [`term_rewriting::Operator`]s, [`term_rewriting::Variable`]s, and
+    /// [`term_rewriting::Rule`]s.
     ///
-    /// [`Variable`]: ../../term_rewriting/struct.Variable.html
+    /// # Example
+    ///
+    /// See [`polytype::ptp`] for details on constructing [`polytype::TypeSchema`]s.
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # extern crate term_rewriting;
+    /// # use programinduction::trs::Lexicon;
+    /// # use term_rewriting::{Signature, parse_rule};
+    /// # fn main() {
+    /// let mut sig = Signature::default();
+    ///
+    /// let vars = vec![];
+    ///
+    /// let mut ops = vec![];
+    /// sig.new_op(2, Some("PLUS".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int), tp!(int)]]);
+    /// sig.new_op(1, Some("SUCC".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int)]]);
+    /// sig.new_op(0, Some("ZERO".to_string()));
+    /// ops.push(ptp![int]);
+    ///
+    /// let background = vec![
+    ///     parse_rule(&mut sig, "PLUS(x_ ZERO) = x_").expect("parsed rule"),
+    ///     parse_rule(&mut sig, "PLUS(x_ SUCC(y_)) = SUCC(PLUS(x_ y_))").expect("parsed rule"),
+    /// ];
+    ///
+    /// let deterministic = false;
+    ///
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, background, deterministic);
+    /// # }
+    /// ```
+    ///
+    /// [`polytype::ptp`]: https://docs.rs/polytype/~6.0/polytype/macro.ptp.html
+    /// [`polytype::TypeSchema`]: https://docs.rs/polytype/~6.0/polytype/enum.TypeSchema.html
+    /// [`term_rewriting::Operator`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Operator.html
+    /// [`term_rewriting::Rule`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Rule.html
+    /// [`term_rewriting::Variable`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Variable.html
     pub fn from_signature(
         signature: Signature,
         ops: Vec<TypeSchema>,
         vars: Vec<TypeSchema>,
         background: Vec<Rule>,
+        deterministic: bool,
     ) -> Lexicon {
         Lexicon(Arc::new(RwLock::new(Lex {
             ops,
             vars,
             signature,
             background,
+            deterministic,
         })))
     }
     /// All the free type variables in the lexicon.
     pub fn free_vars(&self) -> Vec<TypeVar> {
         self.0.read().expect("poisoned lexicon").free_vars()
     }
-    /// Infer the `TypeSchema` associated with a `Context`.
+    /// Infer the [`polytype::TypeSchema`] associated with a [`term_rewriting::Context`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # extern crate term_rewriting;
+    /// # use programinduction::trs::Lexicon;
+    /// # use term_rewriting::{Context, Signature, parse_rule};
+    /// # use polytype::Context as TypeContext;
+    /// # fn main() {
+    /// let mut sig = Signature::default();
+    ///
+    /// let vars = vec![];
+    ///
+    /// let mut ops = vec![];
+    /// sig.new_op(2, Some("PLUS".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int), tp!(int)]]);
+    /// let succ = sig.new_op(1, Some("SUCC".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int)]]);
+    /// sig.new_op(0, Some("ZERO".to_string()));
+    /// ops.push(ptp![int]);
+    ///
+    /// let background = vec![];
+    ///
+    /// let deterministic = false;
+    ///
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, background, deterministic);
+    ///
+    /// let context = Context::Application {
+    ///     op: succ,
+    ///     args: vec![Context::Hole]
+    /// };
+    /// let mut ctx = TypeContext::default();
+    ///
+    /// let inferred_schema = lexicon.infer_context(&context, &mut ctx).unwrap();
+    ///
+    /// assert_eq!(inferred_schema, ptp![int]);
+    /// # }
+    /// ```
+    ///
+    /// [`polytype::TypeSchema`]: https://docs.rs/poltype/~6.0/poltype/enum.TypeSchema.html
+    /// [`term_rewriting::Context`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/enum.Context.html
     pub fn infer_context(
         &self,
         context: &Context,
@@ -100,7 +205,35 @@ impl Lexicon {
             .expect("poisoned lexicon")
             .infer_rule_context(context, ctx)
     }
-    /// Sample a `Term`.
+    /// Sample a [`term_rewriting::Term`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # use programinduction::trs::Lexicon;
+    /// # use polytype::Context as TypeContext;
+    /// # fn main() {
+    /// let operators = vec![
+    ///     (2, Some("PLUS".to_string()), ptp![@arrow[tp!(int), tp!(int), tp!(int)]]),
+    ///     (1, Some("SUCC".to_string()), ptp![@arrow[tp!(int), tp!(int)]]),
+    ///     (0, Some("ZERO".to_string()), ptp![int]),
+    /// ];
+    /// let deterministic = false;
+    /// let mut lexicon = Lexicon::new(operators, deterministic);
+    ///
+    /// let schema = ptp![int];
+    /// let mut ctx = TypeContext::default();
+    /// let invent = true;
+    /// let atom_weights = (0.5, 0.25, 0.25);
+    /// let max_d = 4;
+    ///
+    /// let term = lexicon.sample_term(&schema, &mut ctx, atom_weights, invent, max_d).unwrap();
+    /// # }
+    /// ```
+    ///
+    /// [`term_rewriting::Term`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/enum.Term.html
     pub fn sample_term(
         &mut self,
         schema: &TypeSchema,
@@ -251,6 +384,8 @@ pub(crate) struct Lex {
     vars: Vec<TypeSchema>,
     pub(crate) signature: Signature,
     pub(crate) background: Vec<Rule>,
+    /// If `true`, then the `TRS`s should be deterministic.
+    pub(crate) deterministic: bool,
 }
 impl Lex {
     fn free_vars(&self) -> Vec<TypeVar> {
@@ -260,8 +395,8 @@ impl Lex {
     }
     fn free_vars_applied(&self, ctx: &TypeContext) -> Vec<TypeVar> {
         self.free_vars()
-            .iter()
-            .flat_map(|x| Type::Variable(*x).apply(ctx).vars())
+            .into_iter()
+            .flat_map(|x| Type::Variable(x).apply(ctx).vars())
             .unique()
             .collect::<Vec<_>>()
     }
@@ -283,6 +418,7 @@ impl Lex {
             .map(|o| o.into_iter().cloned().collect())
             .unwrap_or_else(Vec::new))
     }
+    #[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
     fn place_atom(
         &mut self,
         atom: &Atom,
@@ -484,6 +620,7 @@ impl Lex {
     ) -> Result<Term, SampleError> {
         self.sample_term_internal(schema, ctx, atom_weights, invent, max_d, d, &mut vec![])
     }
+    #[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
     pub fn sample_term_internal(
         &mut self,
         schema: &TypeSchema,
@@ -757,14 +894,14 @@ impl GP for Lexicon {
     type Params = GeneticParams;
     fn genesis<R: Rng>(
         &self,
-        params: &Self::Params,
+        _params: &Self::Params,
         rng: &mut R,
         pop_size: usize,
         _tp: &TypeSchema,
     ) -> Vec<Self::Expression> {
         match TRS::new(self, Vec::new()) {
             Ok(mut trs) => {
-                if params.deterministic {
+                if self.0.read().expect("poisoned lexicon").deterministic {
                     trs.utrs.make_deterministic(rng);
                 }
                 iter::repeat(trs).take(pop_size).collect()

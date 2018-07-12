@@ -25,8 +25,47 @@ pub struct TRS {
     pub(crate) ctx: TypeContext,
 }
 impl TRS {
-    /// Create a new `TRS` under the given `Lexicon`. Any background knowledge will be appended to
-    /// the given ruleset.
+    /// Create a new `TRS` under the given [`Lexicon`]. Any background knowledge
+    /// will be appended to the given ruleset.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # extern crate term_rewriting;
+    /// # use programinduction::trs::{TRS, Lexicon};
+    /// # use term_rewriting::{Signature, parse_rule};
+    /// # fn main() {
+    /// let mut sig = Signature::default();
+    ///
+    /// let mut ops = vec![];
+    /// sig.new_op(2, Some("PLUS".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int), tp!(int)]]);
+    /// sig.new_op(1, Some("SUCC".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int)]]);
+    /// sig.new_op(0, Some("ZERO".to_string()));
+    /// ops.push(ptp![int]);
+    ///
+    /// let rules = vec![
+    ///     parse_rule(&mut sig, "PLUS(x_ ZERO) = x_").expect("parsed rule"),
+    ///     parse_rule(&mut sig, "PLUS(x_ SUCC(y_)) = SUCC(PLUS(x_ y_))").expect("parsed rule"),
+    /// ];
+    ///
+    /// let vars = vec![
+    ///     ptp![int],
+    ///     ptp![int],
+    ///     ptp![int],
+    /// ];
+    ///
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false);
+    ///
+    /// let trs = TRS::new(&lexicon, rules).unwrap();
+    ///
+    /// assert_eq!(trs.size(), 12);
+    /// # }
+    /// ```
+    /// [`Lexicon`]: struct.Lexicon.html
     pub fn new(lex: &Lexicon, mut rules: Vec<Rule>) -> Result<TRS, TypeError> {
         let lex = lex.clone();
         let mut ctx = TypeContext::default();
@@ -40,24 +79,38 @@ impl TRS {
         Ok(TRS { lex, utrs, ctx })
     }
 
-    /// The size of the TRS (the sum over the size of the rules in the underlying [`TRS`])
+    /// The size of the underlying [`term_rewriting::TRS`].
     ///
-    /// [`TRS`]: ../../term_rewriting/struct.TRS.html
+    /// [`term_rewriting::TRS`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.TRS.html#method.size
     pub fn size(&self) -> usize {
         self.utrs.size()
     }
 
-    /// A pseudo log prior for a `TRS`: the negative [size] of the `TRS`.
+    /// The length of the underlying [`term_rewriting::TRS`].
     ///
-    /// [size]: struct.TRS.html#method.size
+    /// [`term_rewriting::TRS`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.TRS.html#method.size
+    pub fn len(&self) -> usize {
+        self.utrs.len()
+    }
+
+    /// Is the underlying [`term_rewriting::TRS`] empty?.
+    ///
+    /// [`term_rewriting::TRS`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.TRS.html#method.size
+    pub fn is_empty(&self) -> bool {
+        self.utrs.is_empty()
+    }
+
+    /// A pseudo log prior for a `TRS`: the negative [`size`] of the `TRS`.
+    ///
+    /// [`size`]: struct.TRS.html#method.size
     pub fn pseudo_log_prior(&self) -> f64 {
         -(self.size() as f64)
     }
 
-    /// A log likelihood for a `TRS` computed as the probability of `data`'s
-    /// RHSs appearing in [`trace`]s rooted at its LHSs.
+    /// A log likelihood for a `TRS`: the probability of `data`'s RHSs appearing
+    /// in [`term_rewriting::Trace`]s rooted at its LHSs.
     ///
-    /// [`trace`]: ../../term_rewriting/trace/index.html
+    /// [`term_rewriting::Trace`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/trace/struct.Trace.html
     pub fn log_likelihood(&self, data: &[Rule], params: ModelParams) -> f64 {
         data.iter()
             .map(|x| self.single_log_likelihood(x, params))
@@ -95,6 +148,71 @@ impl TRS {
     }
 
     /// Sample a rule and add it to the rewrite system.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # extern crate rand;
+    /// # extern crate term_rewriting;
+    /// # use programinduction::trs::{TRS, Lexicon};
+    /// # use rand::{thread_rng};
+    /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
+    /// # fn main() {
+    /// let mut sig = Signature::default();
+    ///
+    /// let mut ops = vec![];
+    /// sig.new_op(2, Some(".".to_string()));
+    /// ops.push(ptp![0, 1; @arrow[tp!(@arrow[tp!(0), tp!(1)]), tp!(0), tp!(1)]]);
+    /// sig.new_op(2, Some("PLUS".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int), tp!(int)]]);
+    /// sig.new_op(1, Some("SUCC".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int)]]);
+    /// sig.new_op(0, Some("ZERO".to_string()));
+    /// ops.push(ptp![int]);
+    ///
+    /// let rules = vec![
+    ///     parse_rule(&mut sig, "PLUS(x_ ZERO) = x_").expect("parsed rule"),
+    ///     parse_rule(&mut sig, "PLUS(x_ SUCC(y_)) = SUCC(PLUS(x_ y_))").expect("parsed rule"),
+    /// ];
+    ///
+    /// let vars = vec![
+    ///     ptp![int],
+    ///     ptp![int],
+    ///     ptp![int],
+    /// ];
+    ///
+    /// println!("{:?}", sig.operators());
+    /// for op in sig.operators() {
+    ///     println!("{:?}/{}", op.name(&sig), op.arity(&sig))
+    /// }
+    /// for r in &rules {
+    ///     println!("{:?}", r);
+    /// }
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false);
+    ///
+    /// let mut trs = TRS::new(&lexicon, rules).unwrap();
+    ///
+    /// assert_eq!(trs.len(), 2);
+    ///
+    /// let contexts = vec![
+    ///     RuleContext {
+    ///         lhs: Context::Hole,
+    ///         rhs: vec![Context::Hole],
+    ///     }
+    /// ];
+    /// let mut rng = thread_rng();
+    /// let atom_weights = (0.5, 0.25, 0.25);
+    /// let max_depth = 4;
+    ///
+    /// if let Ok(new_trs) = trs.add_rule(&contexts, atom_weights, max_depth, &mut rng) {
+    ///     assert_eq!(new_trs.len(), 3);
+    /// } else {
+    ///     assert_eq!(trs.len(), 2);
+    /// }
+    /// # }
+    /// ```
     pub fn add_rule<R: Rng>(
         &self,
         contexts: &[RuleContext],
@@ -119,7 +237,8 @@ impl TRS {
         trs.utrs.push(rule)?;
         Ok(trs)
     }
-    /// Delete a rule from the rewrite system if possible. Background knowledge cannot be deleted.
+    /// Delete a rule from the rewrite system if possible. Background knowledge
+    /// cannot be deleted.
     pub fn delete_rule<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
         let background = &self.lex.0.read().expect("poisoned lexicon").background;
         let clauses = self.utrs.clauses();
