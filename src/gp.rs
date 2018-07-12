@@ -253,7 +253,7 @@ fn sorted_place<T>(child: (T, f64), pop: &mut Vec<(T, f64)>) {
         base + (cmp != Ordering::Greater) as usize
     };
     if idx < orig_size {
-        pop.insert(idx, child);
         pop.pop();
+        pop.insert(idx, child);
     }
 }
