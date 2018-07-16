@@ -182,7 +182,7 @@ impl Lexicon {
     /// # }
     /// ```
     ///
-    /// [`polytype::TypeSchema`]: https://docs.rs/poltype/~6.0/poltype/enum.TypeSchema.html
+    /// [`polytype::TypeSchema`]: https://docs.rs/polytype/~6.0/polytype/enum.TypeSchema.html
     /// [`term_rewriting::Context`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/enum.Context.html
     pub fn infer_context(
         &self,
