@@ -1,8 +1,52 @@
+use crossbeam_channel;
 use rand::{
     distributions::{Distribution, Uniform},
     thread_rng,
 };
 use std::f64;
+
+/// We wrap crossbeam_channel's sender/receiver so that `Sender`s will not
+/// block indefinitely when a corresponding `Receiver` is dropped.
+/// (In other words, so that `send` detects a closed channel.)
+pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
+    let (s, r) = crossbeam_channel::bounded(cap);
+    let (ds, dr) = crossbeam_channel::bounded(0);
+    let s = Sender { inner: s, drop: dr };
+    let r = Receiver { inner: r, drop: ds };
+    (s, r)
+}
+#[derive(Clone, Debug)]
+pub struct Sender<T> {
+    inner: crossbeam_channel::Sender<T>,
+    drop: crossbeam_channel::Receiver<T>,
+}
+impl<T> Sender<T> {
+    pub fn send(&self, msg: T) -> Result<(), T> {
+        select! {
+            recv(self.drop) => Err(msg),
+            send(self.inner, msg) => Ok(()),
+        }
+    }
+}
+#[derive(Clone, Debug)]
+pub struct Receiver<T> {
+    inner: crossbeam_channel::Receiver<T>,
+    /// when dropped, this channel gets closed
+    #[allow(dead_code)]
+    drop: crossbeam_channel::Sender<T>,
+}
+impl<T> Receiver<T> {
+    pub fn try_recv(&self) -> Option<T> {
+        self.inner.try_recv()
+    }
+}
+impl<T> Iterator for Receiver<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.recv()
+    }
+}
 
 #[inline(always)]
 pub fn logsumexp(lps: &[f64]) -> f64 {

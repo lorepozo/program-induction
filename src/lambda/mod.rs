@@ -44,7 +44,6 @@ pub use self::eval::{
 };
 pub use self::parser::ParseError;
 
-use crossbeam_channel::bounded;
 use polytype::{Context, Type, TypeSchema, UnificationError};
 use rayon::spawn;
 use std::collections::{HashMap, VecDeque};
@@ -55,6 +54,7 @@ use std::ops::Index;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use utils::bounded;
 use {ECFrontier, Task, EC};
 
 /// (representation) A Language is a registry for primitive and invented expressions in a
@@ -174,13 +174,10 @@ impl Language {
         let dsl = self.clone();
         spawn(move || {
             let tx = tx.clone();
-            let termination_condition = |expr, logprior| {
-                tx.send((expr, logprior));
-                false
-            };
+            let termination_condition = |expr, logprior| tx.send((expr, logprior)).is_err();
             enumerator::run(&dsl, tp, termination_condition)
         });
-        Box::new(rx.into_iter())
+        Box::new(rx)
     }
 
     /// Update production probabilities and induce new primitives, with the guarantee that any

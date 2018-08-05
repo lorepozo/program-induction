@@ -1,6 +1,5 @@
 //! Representations capable of Exploration-Compression.
 
-use crossbeam_channel::bounded;
 use polytype::TypeSchema;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -8,6 +7,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
+use utils::bounded;
 
 use Task;
 
@@ -317,7 +317,7 @@ where
     if let Some(duration) = params.search_limit_timeout {
         thread::spawn(move || {
             thread::sleep(duration);
-            tx.send(())
+            tx.send(()).unwrap_or(())
         });
         timeout_complete = Box::new(move || rx.try_recv().is_some());
     }
