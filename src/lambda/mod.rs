@@ -174,7 +174,10 @@ impl Language {
         let dsl = self.clone();
         spawn(move || {
             let tx = tx.clone();
-            let termination_condition = |expr, logprior| tx.send((expr, logprior)).is_err();
+            let termination_condition = |expr, logprior| {
+                tx.send((expr, logprior));
+                false
+            };
             enumerator::run(&dsl, tp, termination_condition)
         });
         Box::new(rx.into_iter())

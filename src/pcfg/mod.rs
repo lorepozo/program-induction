@@ -133,7 +133,10 @@ impl Grammar {
         let g = self.clone();
         spawn(move || {
             let tx = tx.clone();
-            let termination_condition = &mut |expr, logprior| tx.send((expr, logprior)).is_err();
+            let termination_condition = &mut |expr, logprior| {
+                tx.send((expr, logprior));
+                false
+            };
             enumerator::new(&g, nonterminal, termination_condition)
         });
         Box::new(rx.into_iter())

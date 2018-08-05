@@ -317,9 +317,9 @@ where
     if let Some(duration) = params.search_limit_timeout {
         thread::spawn(move || {
             thread::sleep(duration);
-            tx.send(()).unwrap_or(());
+            tx.send(())
         });
-        timeout_complete = Box::new(move || rx.try_recv().is_ok());
+        timeout_complete = Box::new(move || rx.try_recv().is_some());
     }
     let mut dl_complete: Box<Fn(f64) -> bool + Send + Sync> = Box::new(|_| false);
     if let Some(dl) = params.search_limit_description_length {

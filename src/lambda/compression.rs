@@ -115,7 +115,7 @@ pub fn induce<O: Sync>(
                 let (tx, rx) = bounded(100);
                 let (_, proposals) = join(
                     || dsl.propose_inventions(&rescored_frontiers, params.arity, tx),
-                    || rx.iter().collect::<Vec<_>>(),
+                    || rx.into_iter().collect::<Vec<_>>(),
                 );
                 if cfg!(feature = "verbose") {
                     eprintln!("COMPRESSION: proposed {} fragments", proposals.len())
@@ -278,7 +278,7 @@ impl Language {
                     })
                     .collect::<Vec<_>>();
                 let largest = lu.iter().fold(f64::NEG_INFINITY, |acc, &(l, _)| acc.max(l));
-                tx.send(largest).expect("send on closed channel");
+                tx.send(largest);
                 let z = largest
                     + lu.iter()
                         .map(|&(l, _)| (l - largest).exp())
@@ -296,7 +296,7 @@ impl Language {
                     u
                 },
             );
-        let joint_mdl = rx.iter().take(frontiers.len()).sum();
+        let joint_mdl = rx.into_iter().take(frontiers.len()).sum();
         (joint_mdl, u)
     }
 
@@ -542,10 +542,7 @@ impl Language {
                         .map(|x: &AtomicUsize| x.fetch_add(1, Ordering::SeqCst))
                 };
                 match res {
-                    Some(2) if self.infer(&fragment_expr).is_ok() => {
-                        tx.send(fragment_expr)
-                            .expect("failed to send fragment proposal");
-                    }
+                    Some(2) if self.infer(&fragment_expr).is_ok() => tx.send(fragment_expr),
                     None => {
                         let mut h = findings.write().expect("hashmap was poisoned");
                         let count = h
@@ -555,7 +552,6 @@ impl Language {
                             && self.infer(&fragment_expr).is_ok()
                         {
                             tx.send(fragment_expr)
-                                .expect("failed to send fragment proposal");
                         }
                     }
                     _ => (),
