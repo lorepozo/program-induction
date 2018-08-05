@@ -88,7 +88,8 @@ fn likelihood_internal<'a>(
             xs.push(r);
         }
         xs.reverse();
-        match dsl.candidates(request, ctx, &env.as_vecdeque())
+        match dsl
+            .candidates(request, ctx, &env.as_vecdeque())
             .into_iter()
             .find(|&(_, ref c_expr, _, _)| expr == c_expr)
         {
@@ -140,7 +141,8 @@ fn enumerate(
             .into_iter()
             .filter(|&(ll, _, _, _)| -ll <= budget.1)
             .all(|(p, expr, tp, ctx)| {
-                let arg_tps: VecDeque<Type> = tp.args()
+                let arg_tps: VecDeque<Type> = tp
+                    .args()
                     .map(|args| args.into_iter().cloned().collect())
                     .unwrap_or_else(VecDeque::new);
                 let budget = (budget.0 + p, budget.1 + p);

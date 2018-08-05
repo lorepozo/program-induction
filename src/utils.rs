@@ -1,5 +1,6 @@
 use rand::{
-    distributions::{Distribution, Uniform}, thread_rng,
+    distributions::{Distribution, Uniform},
+    thread_rng,
 };
 use std::f64;
 

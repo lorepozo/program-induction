@@ -230,7 +230,8 @@ impl EvaluatorT for Evaluator {
                     if x as usize > s.len() || y < x {
                         Err(())
                     } else {
-                        Ok(Str(s.chars()
+                        Ok(Str(s
+                            .chars()
                             .skip(x as usize)
                             .take((y - x) as usize)
                             .collect()))
@@ -243,9 +244,11 @@ impl EvaluatorT for Evaluator {
                 _ => unreachable!(),
             },
             Op::Map => match (&inps[0], &inps[1]) {
-                (&Func(ref f), &List(ref xs)) => Ok(List(xs.into_iter()
-                    .map(|x| f.eval(&[x.clone()]).map_err(|_| ()))
-                    .collect::<Result<_, _>>()?)),
+                (&Func(ref f), &List(ref xs)) => Ok(List(
+                    xs.into_iter()
+                        .map(|x| f.eval(&[x.clone()]).map_err(|_| ()))
+                        .collect::<Result<_, _>>()?,
+                )),
                 _ => unreachable!(),
             },
             Op::Strip => match inps[0] {
@@ -259,7 +262,8 @@ impl EvaluatorT for Evaluator {
                 _ => unreachable!(),
             },
             Op::Join => match (&inps[0], &inps[1]) {
-                (&Str(ref delim), &List(ref ss)) => Ok(Str(ss.iter()
+                (&Str(ref delim), &List(ref ss)) => Ok(Str(ss
+                    .iter()
                     .map(|s| match *s {
                         Str(ref s) => s,
                         _ => unreachable!(),
@@ -572,7 +576,8 @@ mod gen {
                         ptp!(@arrow[tp!(str), tp!(str)]),
                         {
                             let x = white_words(d1, rng);
-                            let y = x.split(d1)
+                            let y = x
+                                .split(d1)
                                 .map(|s| s.trim().to_owned())
                                 .join(&d2.to_string());
                             (Str(x), Str(y))

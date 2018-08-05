@@ -40,7 +40,8 @@ fn enumerate(
             .into_iter()
             .all(move |(i, r)| {
                 let ar = AppliedRule(tp.clone(), i, vec![]);
-                let arg_tps: VecDeque<Type> = r.production
+                let arg_tps: VecDeque<Type> = r
+                    .production
                     .args()
                     .map(|args| args.into_iter().cloned().collect())
                     .unwrap_or_else(VecDeque::new);

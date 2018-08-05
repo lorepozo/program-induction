@@ -47,7 +47,8 @@ impl Item {
     fn into_applied(self, grammar: &Grammar, nt: Type) -> Result<AppliedRule, ParseError> {
         let (loc, r) = location(grammar, &nt, &self.0)?;
         if let Some(args) = r.production.args() {
-            let inner: Result<Vec<AppliedRule>, ParseError> = self.1
+            let inner: Result<Vec<AppliedRule>, ParseError> = self
+                .1
                 .into_iter()
                 .zip(args)
                 .map(move |(item, nt)| item.into_applied(grammar, nt.clone()))

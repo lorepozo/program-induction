@@ -75,7 +75,8 @@ struct CompressionInput {
 }
 impl From<ExternalCompressionInput> for CompressionInput {
     fn from(eci: ExternalCompressionInput) -> Self {
-        let primitives = eci.primitives
+        let primitives = eci
+            .primitives
             .into_par_iter()
             .map(|p| {
                 (
@@ -105,7 +106,8 @@ impl From<ExternalCompressionInput> for CompressionInput {
             aic: eci.params.aic,
             arity: eci.params.arity,
         };
-        let (tasks, frontiers) = eci.frontiers
+        let (tasks, frontiers) = eci
+            .frontiers
             .into_par_iter()
             .map(|f| {
                 let tp = TypeSchema::parse(&f.task_tp).expect("invalid task type");
@@ -114,10 +116,12 @@ impl From<ExternalCompressionInput> for CompressionInput {
                     observation: (),
                     tp,
                 };
-                let sols = f.solutions
+                let sols = f
+                    .solutions
                     .into_iter()
                     .map(|s| {
-                        let expr = dsl.parse(&s.expression)
+                        let expr = dsl
+                            .parse(&s.expression)
                             .expect("invalid expression in frontier");
                         (expr, s.logprior, s.loglikelihood)
                     })
@@ -135,7 +139,8 @@ impl From<ExternalCompressionInput> for CompressionInput {
 }
 impl From<CompressionInput> for ExternalCompressionOutput {
     fn from(ci: CompressionInput) -> Self {
-        let primitives = ci.dsl
+        let primitives = ci
+            .dsl
             .primitives
             .par_iter()
             .map(|&(ref name, ref tp, logp)| Primitive {
@@ -145,7 +150,8 @@ impl From<CompressionInput> for ExternalCompressionOutput {
             })
             .collect();
         let variable_logprob = ci.dsl.variable_logprob;
-        let inventions = ci.dsl
+        let inventions = ci
+            .dsl
             .invented
             .par_iter()
             .map(|&(ref expr, _, logp)| Invention {
@@ -153,11 +159,13 @@ impl From<CompressionInput> for ExternalCompressionOutput {
                 logp,
             })
             .collect();
-        let frontiers = ci.tasks
+        let frontiers = ci
+            .tasks
             .par_iter()
             .zip(&ci.frontiers)
             .map(|(t, f)| {
-                let solutions = f.iter()
+                let solutions = f
+                    .iter()
                     .map(|&(ref expr, logprior, loglikelihood)| {
                         let expression = ci.dsl.display(expr);
                         Solution {

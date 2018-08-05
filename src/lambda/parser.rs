@@ -150,7 +150,8 @@ fn streaming_parse(
             Some(next) if next > 0 => Some(next),
             _ => None,
         }.map(|di| {
-            if let Some(num) = dsl.primitives
+            if let Some(num) = dsl
+                .primitives
                 .iter()
                 .position(|&(ref name, _, _)| name == &inp[..di])
             {

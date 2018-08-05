@@ -202,7 +202,8 @@ impl Grammar {
     where
         F: Fn(&str, &[V]) -> Result<V, E>,
     {
-        let args = ar.2
+        let args = ar
+            .2
             .iter()
             .map(|ar| self.eval(ar, evaluator))
             .collect::<Result<Vec<V>, E>>()?;
@@ -298,7 +299,8 @@ impl Grammar {
 
     fn normalize(&mut self) {
         for rs in self.rules.values_mut() {
-            let lp_largest = rs.iter()
+            let lp_largest = rs
+                .iter()
                 .fold(f64::NEG_INFINITY, |acc, r| acc.max(r.logprob));
             let z = lp_largest
                 + rs.iter()
@@ -632,7 +634,8 @@ mod gp {
                 selection -= 1.0;
                 selection /= params.progeny_factor;
                 let prev = cur;
-                cur = prev.3
+                cur = prev
+                    .3
                     .iter_mut()
                     .find(|arc| {
                         if selection > arc.2 {
@@ -706,7 +709,8 @@ mod gp {
             if ar.2.is_empty() {
                 WeightedAppliedRule(ar.0, ar.1, 1.0, vec![])
             } else {
-                let children: Vec<_> = ar.2
+                let children: Vec<_> = ar
+                    .2
                     .into_iter()
                     .map(|ar| WeightedAppliedRule::new(params, ar))
                     .collect();

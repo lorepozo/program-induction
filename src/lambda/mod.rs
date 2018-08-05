@@ -39,7 +39,9 @@ mod enumerator;
 mod eval;
 mod parser;
 pub use self::compression::CompressionParams;
-pub use self::eval::{Evaluator, LazyEvaluator, LiftedFunction, LiftedLazyFunction, SimpleEvaluator};
+pub use self::eval::{
+    Evaluator, LazyEvaluator, LiftedFunction, LiftedLazyFunction, SimpleEvaluator,
+};
 pub use self::parser::ParseError;
 
 use crossbeam_channel::bounded;
@@ -504,11 +506,13 @@ impl Language {
         // make cands as big as possible to prevent reallocation
         let mut cands = Vec::with_capacity(self.primitives.len() + self.invented.len() + env.len());
         // primitives and inventions
-        let prims = self.primitives
+        let prims = self
+            .primitives
             .iter()
             .enumerate()
             .map(|(i, &(_, ref tp, p))| (p, tp, Expression::Primitive(i)));
-        let invented = self.invented
+        let invented = self
+            .invented
             .iter()
             .enumerate()
             .map(|(i, &(_, ref tp, p))| (p, tp, Expression::Invented(i)));

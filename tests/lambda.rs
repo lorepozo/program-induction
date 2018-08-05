@@ -125,7 +125,8 @@ fn lambda_expression_parse_abstraction() {
         )))
     );
     assert_eq!(dsl.display(&expr), "(λ (+ $0))");
-    let expr = dsl.parse("(#(lambda (+ (+ 1 1) $0)) ((lambda (+ $0 1)) 1))")
+    let expr = dsl
+        .parse("(#(lambda (+ (+ 1 1) $0)) ((lambda (+ $0 1)) 1))")
         .unwrap();
     assert_eq!(
         expr,
@@ -297,8 +298,8 @@ fn lambda_eval_firstclass() {
                     _ => unreachable!(),
                 },
                 "map" => match (&inps[0], &inps[1]) {
-                    (&ListSpace::Func(ref f), &ListSpace::List(ref xs)) => {
-                        Ok(ListSpace::List(xs.into_iter()
+                    (&ListSpace::Func(ref f), &ListSpace::List(ref xs)) => Ok(ListSpace::List(
+                        xs.into_iter()
                             .map(|x| {
                                 f.eval(&[ListSpace::Num(x.clone())])
                                     .map(|v| match v {
@@ -307,8 +308,8 @@ fn lambda_eval_firstclass() {
                                     })
                                     .map_err(|_| ())
                             })
-                            .collect::<Result<_, _>>()?))
-                    }
+                            .collect::<Result<_, _>>()?,
+                    )),
                     _ => unreachable!(),
                 },
                 _ => unreachable!(),
@@ -463,16 +464,18 @@ fn lambda_lazy_eval_firstclass() {
                     _ => unreachable!(),
                 },
                 "map" => match (inps[0].eval(&[])?, inps[1].eval(&[])?) {
-                    (ListSpace::Func(f), ListSpace::List(xs)) => Ok(ListSpace::List(xs.into_iter(
-                    ).map(|x| {
-                            f.eval(&[ListSpace::Num(x)])
-                                .map(|v| match v {
-                                    ListSpace::Num(y) => y,
-                                    _ => panic!("map given invalid function"),
-                                })
-                                .map_err(|_| ())
-                        })
-                        .collect::<Result<_, _>>()?)),
+                    (ListSpace::Func(f), ListSpace::List(xs)) => Ok(ListSpace::List(
+                        xs.into_iter()
+                            .map(|x| {
+                                f.eval(&[ListSpace::Num(x)])
+                                    .map(|v| match v {
+                                        ListSpace::Num(y) => y,
+                                        _ => panic!("map given invalid function"),
+                                    })
+                                    .map_err(|_| ())
+                            })
+                            .collect::<Result<_, _>>()?,
+                    )),
                     _ => unreachable!(),
                 },
                 _ => unreachable!(),

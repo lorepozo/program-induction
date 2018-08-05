@@ -354,7 +354,8 @@ impl Lexicon {
     /// merge two `TRS` into a single `TRS`.
     pub fn combine(&self, trs1: &TRS, trs2: &TRS) -> Result<TRS, TypeError> {
         assert_eq!(trs1.lex, trs2.lex);
-        let background_size = trs1.lex
+        let background_size = trs1
+            .lex
             .0
             .read()
             .expect("poisoned lexicon")
@@ -439,20 +440,21 @@ impl Lex {
                     let subtype = arg_tp.apply(ctx);
                     let arg_schema = TypeSchema::Monotype(arg_tp);
                     let d_i = (d + 1) * ((i == 0) as usize);
-                    let result = self.sample_term_internal(
-                        &arg_schema,
-                        ctx,
-                        atom_weights,
-                        invent,
-                        max_d,
-                        d_i,
-                        vars,
-                    ).map_err(|_| SampleError::Subterm)
-                        .and_then(|subterm| {
-                            let tp = self.infer_term(&subterm, ctx)?.instantiate_owned(ctx);
-                            ctx.unify_fast(subtype, tp)?;
-                            Ok(subterm)
-                        });
+                    let result =
+                        self.sample_term_internal(
+                            &arg_schema,
+                            ctx,
+                            atom_weights,
+                            invent,
+                            max_d,
+                            d_i,
+                            vars,
+                        ).map_err(|_| SampleError::Subterm)
+                            .and_then(|subterm| {
+                                let tp = self.infer_term(&subterm, ctx)?.instantiate_owned(ctx);
+                                ctx.unify_fast(subtype, tp)?;
+                                Ok(subterm)
+                            });
                     match result {
                         Ok(subterm) => args.push(subterm),
                         Err(e) => {
@@ -671,7 +673,8 @@ impl Lex {
         // create various types of options
         let mut var_options = if invent { vec![None] } else { vec![] };
         var_options.extend(vars.to_vec().into_iter().map(|v| Some(Atom::Variable(v))));
-        let (const_options, op_options): (Vec<_>, Vec<_>) = self.signature
+        let (const_options, op_options): (Vec<_>, Vec<_>) = self
+            .signature
             .operators()
             .into_iter()
             .partition(|o| o.arity(&self.signature) == 0);
@@ -945,7 +948,8 @@ impl GP for Lexicon {
         parent1: &Self::Expression,
         parent2: &Self::Expression,
     ) -> Vec<Self::Expression> {
-        let trs = self.combine(parent1, parent2)
+        let trs = self
+            .combine(parent1, parent2)
             .expect("poorly-typed TRS in crossover");
         iter::repeat(trs)
             .take(params.n_crosses)

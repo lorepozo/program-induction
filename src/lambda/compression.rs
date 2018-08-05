@@ -193,7 +193,8 @@ impl Language {
         topk: usize,
         topk_use_only_likelihood: bool,
     ) -> RescoredFrontier<'a> {
-        let xs = f.1
+        let xs = f
+            .1
             .iter()
             .map(|&(ref expr, _, loglikelihood)| {
                 let logprior = self.uses(f.0, expr).0;
@@ -224,7 +225,8 @@ impl Language {
         let joint_mdl = self.inside_outside(frontiers, pseudocounts);
         let nparams = self.primitives.len() + self.invented.len();
         let structure = (self.primitives.len() as f64)
-            + self.invented
+            + self
+                .invented
                 .iter()
                 .map(|&(ref expr, _, _)| expression_structure(expr))
                 .sum::<f64>();
@@ -267,7 +269,8 @@ impl Language {
         let u = frontiers
             .par_iter()
             .flat_map(|f| {
-                let lu = f.1
+                let lu = f
+                    .1
                     .iter()
                     .map(|&(ref expr, _logprior, loglikelihood)| {
                         let (logprior, u) = self.uses(f.0, expr);
@@ -360,7 +363,8 @@ impl Language {
                             template.push_front(ctx.to_mut().new_variable())
                         }
                         // unification cannot fail, so we can safely unwrap:
-                        if ctx.to_mut()
+                        if ctx
+                            .to_mut()
                             .unify(&frag_tp, &Type::from(template.clone()))
                             .is_err()
                         {
@@ -465,7 +469,8 @@ impl Language {
         i: usize,
         expr: &Expression,
     ) -> bool {
-        let results: Vec<_> = f.1
+        let results: Vec<_> = f
+            .1
             .iter_mut()
             .map(|x| self.rewrite_expression(&mut x.0, i, expr, 0))
             .collect();
@@ -543,7 +548,8 @@ impl Language {
                     }
                     None => {
                         let mut h = findings.write().expect("hashmap was poisoned");
-                        let count = h.entry(fragment_expr.clone())
+                        let count = h
+                            .entry(fragment_expr.clone())
                             .or_insert_with(|| AtomicUsize::new(0));
                         if 2 == count.fetch_add(1, Ordering::SeqCst)
                             && self.infer(&fragment_expr).is_ok()

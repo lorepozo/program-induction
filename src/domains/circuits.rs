@@ -379,7 +379,8 @@ mod gates {
         pub fn eval(&self, inp: &[bool]) -> bool {
             let mut outputs = vec![];
             for &(ref gate, ref args) in &self.operations {
-                let gate_inp: Vec<bool> = args.iter()
+                let gate_inp: Vec<bool> = args
+                    .iter()
                     .map(|a| *inp.iter().chain(&outputs).nth(*a as usize).unwrap())
                     .collect();
                 outputs.push(gate.eval(&gate_inp));

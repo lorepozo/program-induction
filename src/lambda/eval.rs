@@ -460,8 +460,7 @@ impl<V, E> Eq for LiftedFunction<V, E>
 where
     E: Evaluator<Space = V>,
     V: Clone + PartialEq + Send + Sync,
-{
-}
+{}
 
 /// Like [`LiftedFunction`], but for lazy evaluation with a [`LazyEvaluator`].
 ///
@@ -510,8 +509,7 @@ impl<V, E> Eq for LiftedLazyFunction<V, E>
 where
     E: LazyEvaluator<Space = V>,
     V: Clone + PartialEq + Send + Sync,
-{
-}
+{}
 
 use self::ReducedExpression::*;
 #[derive(Clone, PartialEq)]
@@ -639,7 +637,8 @@ where
                         } else {
                             let mut args = xs;
                             let mut xs = args.split_off(arity);
-                            let args: Vec<V> = args.into_iter()
+                            let args: Vec<V> = args
+                                .into_iter()
                                 .map(|x| match x {
                                     Value(v) => v,
                                     Abstraction(_, _) => {
@@ -740,7 +739,8 @@ where
                         } else {
                             let mut args: Vec<_> = xs.into_iter().cloned().collect();
                             let mut xs = args.split_off(arity);
-                            let args: Vec<_> = args.into_iter()
+                            let args: Vec<_> = args
+                                .into_iter()
                                 .map(|x| {
                                     if let Abstraction(_, _) = x {
                                         Value(
