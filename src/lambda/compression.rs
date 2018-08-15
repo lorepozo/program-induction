@@ -1005,7 +1005,6 @@ mod proposals {
             Expression::Application(ref f, ref x) => Box::new((0..arity + 1).flat_map(move |fa| {
                 let xa = (arity as i32 - fa as i32) as u32;
                 from_particular(f, fa, false)
-                    .into_iter()
                     .zip(iter::repeat(
                         from_particular(x, xa, false).collect::<Vec<_>>(),
                     ))
