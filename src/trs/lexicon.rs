@@ -34,6 +34,15 @@ pub struct GeneticParams {
     pub atom_weights: (f64, f64, f64),
 }
 
+pub trait LexDisplay {
+    fn display(&self, lex: &Lexicon) -> String;
+}
+impl LexDisplay for Operator {
+    fn display(&self, lex: &Lexicon) -> String {
+        Operator::display(*self, &lex.0.read().expect("poisoned lexicon").signature)
+    }
+}
+
 /// (representation) Manages the syntax of a term rewriting system.
 #[derive(Clone)]
 pub struct Lexicon(pub(crate) Arc<RwLock<Lex>>);
@@ -136,6 +145,14 @@ impl Lexicon {
             deterministic,
         })))
     }
+    /// Return the specified operator if possible.
+    pub fn has_op(&self, name: Option<&str>, arity: u32) -> Result<Operator, ()> {
+        let sig = &self.0.read().expect("poisoned lexicon").signature;
+        sig.operators()
+            .into_iter()
+            .find(|op| op.arity(&sig) == arity && op.name(&sig) == name)
+            .ok_or(())
+    }
     /// All the free type variables in the lexicon.
     pub fn free_vars(&self) -> Vec<TypeVar> {
         self.0.read().expect("poisoned lexicon").free_vars()
@@ -204,6 +221,10 @@ impl Lexicon {
             .write()
             .expect("poisoned lexicon")
             .infer_rule_context(context, ctx)
+    }
+    /// Infer the `TypeSchema` associated with a `Rule`.
+    pub fn infer_op(&self, op: Operator) -> Result<TypeSchema, TypeError> {
+        self.0.write().expect("poisoned lexicon").op_tp(op)
     }
     /// Sample a [`term_rewriting::Term`].
     ///

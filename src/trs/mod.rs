@@ -46,12 +46,13 @@
 
 mod lexicon;
 mod rewrite;
-pub use self::lexicon::{GeneticParams, Lexicon};
+pub use self::lexicon::{GeneticParams, LexDisplay, Lexicon};
 pub use self::rewrite::TRS;
 use Task;
 
 use polytype;
 use std::fmt;
+use std::io;
 use term_rewriting::{Rule, TRSError};
 
 #[derive(Debug, Clone)]
@@ -64,6 +65,11 @@ pub enum TypeError {
 impl From<polytype::UnificationError> for TypeError {
     fn from(e: polytype::UnificationError) -> TypeError {
         TypeError::Unification(e)
+    }
+}
+impl From<TypeError> for io::Error {
+    fn from(_: TypeError) -> io::Error {
+        io::Error::new(io::ErrorKind::Other, "Type Error")
     }
 }
 impl fmt::Display for TypeError {
