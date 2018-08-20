@@ -4,11 +4,31 @@ use itertools::Itertools;
 use polytype::TypeSchema;
 use rand::{seq, Rng};
 use std::cmp::Ordering;
+use utils::weighted_sample;
 
 use Task;
 
+/// The mechanism by which individuals are selected for inclusion in the
+/// population.
+pub enum GPSelection {
+    /// `Deterministic` implies a strict survival-of-the-fittest selection
+    /// mechanism, in which the best individuals are always retained. An
+    /// individual can only be removed from a population if a better-scoring
+    /// individual arises to take its place.
+    Deterministic,
+    /// `Probabilistic` implies a noisy survival-of-the-fittest selection
+    /// mechanism, in which a population is selected probabilistically from a
+    /// set of possible populations in proportion to its overall fitness. An
+    /// individual can be removed from a population even by lower-scoring
+    /// individuals, though this is relatively unlikely.
+    Probabilistic,
+}
+
 /// Parameters for genetic programming.
 pub struct GPParams {
+    /// The mechanism by which individuals are selected for inclusion in the
+    /// population.
+    pub selection: GPSelection,
     pub population_size: usize,
     pub tournament_size: usize,
     /// Probability for a mutation. If mutation doesn't happen, the crossover will happen.
@@ -81,6 +101,7 @@ pub struct GPParams {
 ///     };
 ///
 ///     let gpparams = GPParams {
+///         selection: GPSelection::Deterministic,
 ///         population_size: 10,
 ///         tournament_size: 5,
 ///         mutation_prob: 0.6,
@@ -214,10 +235,30 @@ pub trait GP: Send + Sync + Sized {
             }
         }
         new_exprs.truncate(gpparams.n_delta);
-        for child in new_exprs {
-            sorted_place(child, population)
+        match gpparams.selection {
+            GPSelection::Probabilistic => sample_pop(new_exprs, population),
+            GPSelection::Deterministic => {
+                for child in new_exprs {
+                    sorted_place(child, population);
+                }
+            }
         }
     }
+}
+
+/// Given a mutable vector, `pop`, of item-score pairs sorted by score, and a
+/// `Vec` of expressions, `new_exprs`, sample a new score-sorted population in
+/// proportion to its overall score. The length of `pop` does *not* change.
+fn sample_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
+    let mut options = vec![];
+    options.append(pop);
+    options.append(&mut new_exprs);
+    let combos: Vec<Vec<(T, f64)>> = options.into_iter().combinations(pop.len()).collect();
+    let scores: Vec<f64> = combos
+        .iter()
+        .map(|v| v.iter().map(|&(_, s)| s).sum())
+        .collect();
+    pop.append(&mut weighted_sample(&combos, &scores).to_vec());
 }
 
 /// Given a mutable vector, `pop`, of item-score pairs sorted by score, insert
