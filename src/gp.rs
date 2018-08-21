@@ -66,7 +66,7 @@ pub struct GPParams {
 /// extern crate programinduction;
 /// extern crate rand;
 /// use programinduction::pcfg::{self, Grammar, Rule};
-/// use programinduction::{GPParams, Task, GP};
+/// use programinduction::{GPParams, Task, GP, GPSelection};
 /// use rand::{rngs::SmallRng, SeedableRng};
 ///
 /// fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
@@ -248,15 +248,16 @@ pub trait GP: Send + Sync + Sized {
 
 /// Given a mutable vector, `pop`, of item-score pairs sorted by score, and a
 /// `Vec` of expressions, `new_exprs`, sample a new score-sorted population in
-/// proportion to its overall score. The length of `pop` does *not* change.
+/// inverse proportion to its overall score. The length of `pop` does *not* change.
 fn sample_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
+    let n = pop.len();
     let mut options = vec![];
     options.append(pop);
     options.append(&mut new_exprs);
-    let combos: Vec<Vec<(T, f64)>> = options.into_iter().combinations(pop.len()).collect();
+    let combos: Vec<Vec<(T, f64)>> = options.into_iter().combinations(n).collect();
     let scores: Vec<f64> = combos
         .iter()
-        .map(|v| v.iter().map(|&(_, s)| s).sum())
+        .map(|v| (-v.iter().map(|&(_, s)| s).sum::<f64>()).exp())
         .collect();
     pop.append(&mut weighted_sample(&combos, &scores).to_vec());
 }
