@@ -38,7 +38,7 @@ mod compression;
 mod enumerator;
 mod eval;
 mod parser;
-pub use self::compression::CompressionParams;
+pub use self::compression::{induce, CompressionParams};
 pub use self::eval::{
     Evaluator, LazyEvaluator, LiftedFunction, LiftedLazyFunction, SimpleEvaluator,
 };
@@ -222,7 +222,7 @@ impl Language {
         tasks: &[Task<Language, Expression, O>],
         frontiers: Vec<ECFrontier<Self>>,
     ) -> (Self, Vec<ECFrontier<Self>>) {
-        compression::induce(self, params, tasks, frontiers)
+        compression::induce_fragment_grammar(self, params, tasks, frontiers)
     }
 
     /// Evaluate an expressions based on an input/output pair.
