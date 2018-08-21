@@ -657,6 +657,123 @@ impl Expression {
             },
         }
     }
+    /// Puts a beta-normalized expression in eta-long form. Invalid types or non-beta-normalized
+    /// expression may cause this function to return `false` to indicate that an error occurred.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # fn main() {
+    /// # use programinduction::lambda::{Expression, Language};
+    /// let mut dsl = Language::uniform(vec![
+    ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
+    /// ]);
+    /// let mut expr = dsl.parse("+").unwrap();
+    /// expr.etalong(&dsl);
+    /// assert_eq!(dsl.display(&expr), "(λ (λ (+ $1 $0)))");
+    /// # }
+    /// ```
+    pub fn etalong(&mut self, dsl: &Language) -> bool {
+        if let Ok(tps) = dsl.infer(self) {
+            let env = Rc::new(LinkedList::default());
+            let mut ctx = Context::default();
+            let req = tps.instantiate(&mut ctx);
+            self.etalong_internal(dsl, &env, &mut ctx, &req)
+        } else {
+            false
+        }
+    }
+    fn etalong_internal(
+        &mut self,
+        dsl: &Language,
+        env: &Rc<LinkedList<Type>>,
+        ctx: &mut Context,
+        req: &Type,
+    ) -> bool {
+        if let Expression::Abstraction(ref mut b) = *self {
+            return if let Some((arg, ret)) = req.as_arrow() {
+                let env = LinkedList::prepend(env, arg.clone());
+                b.etalong_internal(dsl, &env, ctx, ret)
+            } else {
+                eprintln!(
+                    "eta-long type mismatch expr={} ; tp={}",
+                    dsl.display(&Expression::Abstraction(b.clone())),
+                    req
+                );
+                false
+            };
+        }
+        if req.as_arrow().is_some() {
+            let mut x = self.clone();
+            x.shift(1);
+            *self = Expression::Abstraction(Box::new(Expression::Application(
+                Box::new(x),
+                Box::new(Expression::Index(0)),
+            )));
+            return self.etalong_internal(dsl, env, ctx, req);
+        }
+        let new_self = match *self {
+            Expression::Abstraction(_) => unreachable!(),
+            Expression::Application(ref f, ref x) => {
+                let mut f = f;
+                let mut xs: Vec<Expression> = vec![*x.clone()];
+                while let Expression::Application(ref ff, ref fx) = **f {
+                    f = ff;
+                    xs.push(*fx.clone());
+                }
+                xs.reverse();
+                let ft = match **f {
+                    Expression::Abstraction(_) => {
+                        eprintln!(
+                            "eta-long called on non-beta-normalized expression {}",
+                            dsl.display(self)
+                        );
+                        return false;
+                    }
+                    Expression::Application(_, _) => unreachable!(),
+                    Expression::Primitive(i) => dsl.primitives[i].1.instantiate(ctx),
+                    Expression::Invented(i) => dsl.invented[i].1.instantiate(ctx),
+                    Expression::Index(i) => env[i].apply(ctx),
+                };
+                if let Err(e) = ctx.unify(req, ft.returns().unwrap_or(&ft)) {
+                    eprintln!("eta-long type mismatch: {}", e);
+                    return false;
+                }
+                let ft = ft.apply(ctx);
+                let xt = ft.args().unwrap_or_default();
+                if xs.len() != xt.len() {
+                    eprintln!(
+                        "eta-long type mismatch, {} args but type was {}",
+                        xs.len(),
+                        ft
+                    );
+                    return false;
+                }
+                let mut f = f.clone();
+                for (mut x, t) in xs.into_iter().zip(xt) {
+                    let t = t.apply(ctx);
+                    if !x.etalong_internal(dsl, env, ctx, &t) {
+                        return false;
+                    }
+                    f = Box::new(Expression::Application(f, Box::new(x)))
+                }
+                *f
+            }
+            Expression::Primitive(i) => {
+                let t = dsl.primitives[i].1.instantiate(ctx);
+                return ctx.unify(&t, req).is_ok();
+            }
+            Expression::Invented(i) => {
+                let t = dsl.invented[i].1.instantiate(ctx);
+                return ctx.unify(&t, req).is_ok();
+            }
+            Expression::Index(i) => return ctx.unify(&env[i], req).is_ok(),
+        };
+        *self = new_self;
+        true
+    }
     fn strip_invented(&self, invented: &[(Expression, TypeSchema, f64)]) -> Expression {
         match *self {
             Expression::Application(ref f, ref x) => Expression::Application(
