@@ -258,7 +258,7 @@ fn sample_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
         .iter()
         .map(|&(_, score)| score)
         .combinations(n)
-        .map(|combo| combo.iter().sum::<f64>())
+        .map(|combo| (-combo.iter().sum::<f64>()).exp())
         .enumerate()
         .unzip();
     let idx = weighted_sample(&idxs, &scores);
