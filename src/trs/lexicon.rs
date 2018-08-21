@@ -212,7 +212,7 @@ impl Lexicon {
             .infer_context(context, ctx)
     }
     /// Infer the `TypeSchema` associated with a `RuleContext`.
-    pub fn infer_rule_context(
+    pub fn infer_rulecontext(
         &self,
         context: &RuleContext,
         ctx: &mut TypeContext,
@@ -220,7 +220,15 @@ impl Lexicon {
         self.0
             .write()
             .expect("poisoned lexicon")
-            .infer_rule_context(context, ctx)
+            .infer_rulecontext(context, ctx)
+    }
+    /// Infer the `TypeSchema` associated with a `Rule`.
+    pub fn infer_rule(&self, rule: &Rule, ctx: &mut TypeContext) -> Result<TypeSchema, TypeError> {
+        self.0
+            .write()
+            .expect("poisoned lexicon")
+            .infer_rule(rule, ctx)
+            .map(|(r, _, _)| r)
     }
     /// Infer the `TypeSchema` associated with a `Rule`.
     pub fn infer_op(&self, op: Operator) -> Result<TypeSchema, TypeError> {
@@ -406,8 +414,8 @@ impl PartialEq for Lexicon {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Lex {
-    ops: Vec<TypeSchema>,
-    vars: Vec<TypeSchema>,
+    pub(crate) ops: Vec<TypeSchema>,
+    pub(crate) vars: Vec<TypeSchema>,
     pub(crate) signature: Signature,
     pub(crate) background: Vec<Rule>,
     /// If `true`, then the `TRS`s should be deterministic.
@@ -600,16 +608,16 @@ impl Lex {
         let rule_schema = lhs_type.apply(ctx).generalize(&lex_vars);
         Ok((rule_schema, lhs_schema, rhs_schemas))
     }
-    pub fn infer_rule_context(
+    pub fn infer_rulecontext(
         &self,
         context: &RuleContext,
         ctx: &mut TypeContext,
     ) -> Result<TypeSchema, TypeError> {
-        let tp = self.infer_rule_context_internal(context, ctx, &mut HashMap::new())?;
+        let tp = self.infer_rulecontext_internal(context, ctx, &mut HashMap::new())?;
         let lex_vars = self.free_vars_applied(&ctx);
         Ok(tp.apply(ctx).generalize(&lex_vars))
     }
-    fn infer_rule_context_internal(
+    fn infer_rulecontext_internal(
         &self,
         context: &RuleContext,
         ctx: &mut TypeContext,
@@ -787,7 +795,7 @@ impl Lex {
         let mut context = context.clone();
         let hole_places = context.holes();
         let mut context_vars = context.variables();
-        self.infer_rule_context_internal(&context, ctx, &mut map)?;
+        self.infer_rulecontext_internal(&context, ctx, &mut map)?;
         for p in &hole_places {
             let schema = TypeSchema::Monotype(map[p].apply(ctx));
             let subterm = self.sample_term_internal(
