@@ -2,7 +2,7 @@
 //!
 //! # Examples
 //!
-//! ```
+//! ```ignore
 //! use programinduction::domains::strings;
 //! use programinduction::{ECParams, EC};
 //!

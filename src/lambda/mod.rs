@@ -193,7 +193,7 @@ impl Language {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use programinduction::domains::circuits;
     /// use programinduction::{lambda, ECParams, EC};
     ///
