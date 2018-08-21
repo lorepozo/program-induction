@@ -254,12 +254,15 @@ fn sample_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
     let mut options = vec![];
     options.append(pop);
     options.append(&mut new_exprs);
-    let combos: Vec<Vec<(T, f64)>> = options.into_iter().combinations(n).collect();
-    let scores: Vec<f64> = combos
+    let (idxs, scores): (Vec<usize>, Vec<f64>) = options
         .iter()
-        .map(|v| (-v.iter().map(|&(_, s)| s).sum::<f64>()).exp())
-        .collect();
-    pop.append(&mut weighted_sample(&combos, &scores).to_vec());
+        .map(|&(_, score)| score)
+        .combinations(n)
+        .map(|combo| combo.iter().sum::<f64>())
+        .enumerate()
+        .unzip();
+    let idx = weighted_sample(&idxs, &scores);
+    *pop = options.into_iter().combinations(n).nth(*idx).unwrap();
 }
 
 /// Given a mutable vector, `pop`, of item-score pairs sorted by score, insert
