@@ -352,7 +352,7 @@ impl Lexicon {
     }
 
     /// merge two `TRS` into a single `TRS`.
-    pub fn combine(&self, trs1: &TRS, trs2: &TRS) -> Result<TRS, TypeError> {
+    pub fn combine<R: Rng>(&self, rng: &mut R, trs1: &TRS, trs2: &TRS) -> Result<TRS, TypeError> {
         assert_eq!(trs1.lex, trs2.lex);
         let background_size = trs1
             .lex
@@ -364,7 +364,11 @@ impl Lexicon {
         let mut rules1 = trs1.utrs.rules[..trs1.utrs.len() - background_size].to_vec();
         let mut rules2 = trs2.utrs.rules.clone(); // includes background
         rules1.append(&mut rules2);
-        TRS::new(&trs1.lex, rules1)
+        let mut trs = TRS::new(&trs1.lex, rules1)?;
+        if self.0.read().expect("poisoned lexicon").deterministic {
+            trs.utrs.make_deterministic(rng);
+        }
+        Ok(trs)
     }
 }
 impl fmt::Debug for Lexicon {
@@ -949,7 +953,7 @@ impl GP for Lexicon {
         parent2: &Self::Expression,
     ) -> Vec<Self::Expression> {
         let trs = self
-            .combine(parent1, parent2)
+            .combine(rng, parent1, parent2)
             .expect("poorly-typed TRS in crossover");
         iter::repeat(trs)
             .take(params.n_crosses)
