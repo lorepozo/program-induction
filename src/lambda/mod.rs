@@ -670,8 +670,11 @@ impl Expression {
             _ => self.clone(),
         }
     }
-    fn shift(&mut self, offset: i64) -> bool {
-        self.shift_internal(offset, 0)
+    /// Shifts all free variables (indexes) in the expression. If `offset` is negative, then
+    /// variables will not be changed if they are made to be negative. The return value is always
+    /// `true` unless this scenario occurs.
+    pub fn shift(&mut self, offset: i64) -> bool {
+        self.shift_internal(offset, 0);
     }
     fn shift_internal(&mut self, offset: i64, depth: usize) -> bool {
         match *self {
@@ -689,7 +692,9 @@ impl Expression {
                 }
             }
             Expression::Application(ref mut f, ref mut x) => {
-                f.shift_internal(offset, depth) && x.shift_internal(offset, depth)
+                let a = f.shift_internal(offset, depth);
+                let b = x.shift_internal(offset, depth);
+                a && b
             }
             Expression::Abstraction(ref mut body) => body.shift_internal(offset, depth + 1),
             _ => true,
