@@ -1,6 +1,6 @@
 [package]
 name = "programinduction"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["Lucas Morales <lucas@lucasem.com>"]
 license = "MIT"
 readme = "README.md"

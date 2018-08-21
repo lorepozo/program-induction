@@ -674,7 +674,7 @@ impl Expression {
     /// variables will not be changed if they are made to be negative. The return value is always
     /// `true` unless this scenario occurs.
     pub fn shift(&mut self, offset: i64) -> bool {
-        self.shift_internal(offset, 0);
+        self.shift_internal(offset, 0)
     }
     fn shift_internal(&mut self, offset: i64, depth: usize) -> bool {
         match *self {
