@@ -475,6 +475,18 @@ impl Language {
     pub fn strip_invented(&self, expr: &Expression) -> Expression {
         expr.strip_invented(&self.invented)
     }
+
+    /// Runs a variant of the inside outside algorithm to assign production probabilities for the
+    /// primitives. The joint minimum description length is returned.
+    pub fn inside_outside<O: Sync>(
+        &mut self,
+        tasks: &[Task<Language, Expression, O>],
+        frontiers: &[ECFrontier<Language>],
+        pseudocounts: u64,
+    ) -> f64 {
+        self::compression::inside_outside(self, tasks, frontiers, pseudocounts)
+    }
+
     /// The inverse of [`display`].
     ///
     /// Lambda expressions take the form `(lambda BODY)` or `(λ BODY)`, where BODY is an expression

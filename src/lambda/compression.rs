@@ -185,6 +185,24 @@ pub fn induce<O: Sync>(
     (dsl, original_frontiers)
 }
 
+/// Runs a variant of the inside outside algorithm to assign production probabilities for the
+/// primitives. The joint minimum description length is returned.
+pub fn inside_outside<O: Sync>(
+    dsl: &mut Language,
+    tasks: &[Task<Language, Expression, O>],
+    frontiers: &[ECFrontier<Language>],
+    pseudocounts: u64,
+) -> f64 {
+    let frontiers: Vec<_> = tasks
+        .par_iter()
+        .map(|t| &t.tp)
+        .zip(frontiers)
+        .filter(|&(_, f)| !f.is_empty())
+        .map(|(tp, f)| RescoredFrontier(tp, f.0.clone()))
+        .collect();
+    dsl.inside_outside_rescored(&frontiers, pseudocounts)
+}
+
 /// Extend the Language in our scope so we can do useful compression things.
 impl Language {
     fn rescore_frontier<'a>(
@@ -222,7 +240,7 @@ impl Language {
         structure_penalty: f64,
     ) -> f64 {
         self.reset_uniform();
-        let joint_mdl = self.inside_outside(frontiers, pseudocounts);
+        let joint_mdl = self.inside_outside_rescored(frontiers, pseudocounts);
         let nparams = self.primitives.len() + self.invented.len();
         let structure = (self.primitives.len() as f64)
             + self
@@ -243,7 +261,11 @@ impl Language {
         self.variable_logprob = 0f64;
     }
 
-    fn inside_outside(&mut self, frontiers: &[RescoredFrontier], pseudocounts: u64) -> f64 {
+    fn inside_outside_rescored(
+        &mut self,
+        frontiers: &[RescoredFrontier],
+        pseudocounts: u64,
+    ) -> f64 {
         let pseudocounts = pseudocounts as f64;
         let (joint_mdl, u) = self.all_uses(frontiers);
         self.variable_logprob = (u.actual_vars + pseudocounts).ln() - u.possible_vars.ln();
