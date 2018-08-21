@@ -10,12 +10,12 @@
 //! The Exploration-Compression (EC) algorithm is an inference scheme for BPL that learns new
 //! representations by _exploring_ solutions to tasks and then _compressing_ those solutions by
 //! recognizing common pieces and re-introducing them as primitives. This is an iterative algorithm
-//! that can be applied repeatedly and has been found to converge in practice. It was introduced by
-//! Dechter et al. in the 2013 _IJCAI_ paper [Bootstrap learning via modular concept discovery].
-//! The EC algorithm can be viewed as an expectation-maximization (EM) algorithm for approximate
-//! maximum a posteriori (MAP) estimation of programs and their representation. Roughly, the
-//! exploration step of EC corresponds to the expectation step of EM and the compression step of EC
-//! corresponds to the maximization step of EM.
+//! that has been found to converge in practice. It was introduced by Dechter et al. in the 2013
+//! _IJCAI_ paper [Bootstrap learning via modular concept discovery].  The EC algorithm can be
+//! viewed as an expectation-maximization (EM) algorithm for approximate maximum a posteriori (MAP)
+//! estimation of programs and their representation. Roughly, the exploration step of EC
+//! corresponds to the expectation step of EM and the compression step of EC corresponds to the
+//! maximization step of EM.
 //!
 //! A domain-specific language (DSL) \\(\mathcal{D}\\) expresses the programming primitives and
 //! encodes domain-specific knowledge about the space of programs. In conjunction with a weight
@@ -38,7 +38,7 @@
 //!         J(\\mathcal{D}\^\*,\\theta)
 //! \\end{aligned}
 //! \\]
-//! This is intractible because calculating \\(J\\) involves taking a sum over every possible
+//! This is intractable because calculating \\(J\\) involves taking a sum over every possible
 //! program. We therefore define the _frontier_ of a task \\(x\\), written \\(\\mathcal{F}\_x\\),
 //! to be a finite set of programs where \\(\mathbb{P}[x|p] > 0\\) for all \\(p \\in
 //! \\mathcal{F}\_x\\) and establish an intuitive lower bound:
