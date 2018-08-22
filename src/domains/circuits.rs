@@ -33,7 +33,7 @@ use Task;
 
 /// The circuit representation, a [`lambda::Language`], only defines the binary `nand` operation.
 ///
-/// ```ignore
+/// ```compile_fails
 /// "nand": ptp!(@arrow[tp!(bool), tp!(bool), tp!(bool)])
 /// ```
 ///

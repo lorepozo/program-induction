@@ -7,6 +7,7 @@ rust:
 script:
   - cargo build   --verbose
   - cargo test    --verbose --release
+  - cargo test    --verbose --release -- --ignored
   - cargo rustdoc --verbose -- --html-in-header rustdoc-include-katex-header.html
 matrix:
   fast_failures: true

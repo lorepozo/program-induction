@@ -28,7 +28,7 @@ use Task;
 
 /// The string editing [`lambda::Language`] defines the following operations:
 ///
-/// ```ignore
+/// ```compile_fails
 /// "0":         ptp!(int)
 /// "+1":        ptp!(@arrow[tp!(int), tp!(int)])
 /// "-1":        ptp!(@arrow[tp!(int), tp!(int)])
