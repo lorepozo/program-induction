@@ -90,16 +90,18 @@ impl Default for CompressionParams {
 ///   the frontiers.
 /// - `rewrite_frontiers` finally takes the highest-scoring dsl, which is guaranteed to have a
 ///   single latest invention (accessible via `dsl.invented.last().unwrap()`) equal to
-///   `defragment(proposal_to_expr(_, proposal))` for some generated proposal.
+///   `defragment(proposal_to_expr(_, proposal))` for some generated proposal. The
+///   [`lambda::Expression`] it is supplied is the non-defragmented proposal.
 ///
 /// We recommended to make a function that adapts this into a four-argument `induce_my_algo`
 /// function by filling in the higher-order functions. See the source code of this project to find
 /// the particular use of this function that gives [`Language::compress`] using a
 /// fragment-grammar-like compression scheme.
 ///
-/// [`lambda::Language`]: struct.Language.html
-/// [`lambda::CompressionParams`]: struct.CompressionParams.html
 /// [`Language::compress`]: struct.Language.html#method.compress
+/// [`lambda::CompressionParams`]: struct.CompressionParams.html
+/// [`lambda::Expression`]: enum.Expression.html
+/// [`lambda::Language`]: struct.Language.html
 #[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
 pub fn induce<O: Sync, I, X, P, D, F, R>(
     dsl: &Language,
@@ -170,8 +172,19 @@ where
                     .into_par_iter()
                     .filter_map(|candidate| {
                         let mut dsl = dsl.clone();
-                        dsl.invent(proposal_to_expr(&state, &candidate), 0.)
-                            .unwrap();
+                        let expr = proposal_to_expr(&state, &candidate);
+                        if cfg!(feature = "verbose") {
+                            if let Err(e) = dsl.invent(expr.clone(), 0.) {
+                                eprintln!(
+                                    "COMPRESSION: poorly typed proposal expr={}, err={}",
+                                    dsl.display(&expr),
+                                    e
+                                );
+                                return None;
+                            }
+                        } else if dsl.invent(expr, 0.).is_err() {
+                            return None;
+                        }
                         let s = dsl.score(
                             &rescored_frontiers,
                             params.pseudocounts,
@@ -203,14 +216,15 @@ where
 
                 let (fragment_expr, _, log_prior) = dsl.invented.pop().unwrap();
                 let inv = defragment(fragment_expr.clone());
-                dsl.invent(inv, log_prior).expect("invalid invention");
                 if cfg!(feature = "verbose") {
                     eprintln!(
-                        "COMPRESSION: score improved to {} with invention {}",
+                        "COMPRESSION: score improved to {} with invention {} (defragmented from candidate expr {})",
                         best_score,
-                        dsl.display(&fragment_expr),
+                        dsl.display(&inv),
+                        dsl.display(&fragment_expr)
                     )
                 }
+                dsl.invent(inv, log_prior).expect("invalid invention");
                 (candidate, fragment_expr)
             };
             rewrite_frontiers(
@@ -269,7 +283,7 @@ pub fn induce_fragment_grammar<O: Sync>(
             dsl.propose_inventions(rescored_frontiers, params.arity, proposals)
         },
         |_, expr| expr.clone(),
-        |expr| proposals::defragment(expr.clone()),
+        proposals::defragment,
         |_, fragment_expr, _, dsl, frontiers, _| {
             let i = dsl.invented.len() - 1;
             for mut f in frontiers {
