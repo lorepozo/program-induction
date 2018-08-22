@@ -230,6 +230,17 @@ impl Lexicon {
             .infer_rule(rule, ctx)
             .map(|(r, _, _)| r)
     }
+    /// Infer the `TypeSchema` associated with a collection of `Rules`.
+    pub fn infer_rules(
+        &self,
+        rules: &[Rule],
+        ctx: &mut TypeContext,
+    ) -> Result<TypeSchema, TypeError> {
+        self.0
+            .write()
+            .expect("poisoned lexicon")
+            .infer_rules(rules, ctx)
+    }
     /// Infer the `TypeSchema` associated with a `Rule`.
     pub fn infer_op(&self, op: Operator) -> Result<TypeSchema, TypeError> {
         self.0.write().expect("poisoned lexicon").op_tp(op)
@@ -607,6 +618,23 @@ impl Lex {
         let lex_vars = self.free_vars_applied(&ctx);
         let rule_schema = lhs_type.apply(ctx).generalize(&lex_vars);
         Ok((rule_schema, lhs_schema, rhs_schemas))
+    }
+    pub fn infer_rules(
+        &self,
+        rules: &[Rule],
+        ctx: &mut TypeContext,
+    ) -> Result<TypeSchema, TypeError> {
+        let tp = ctx.new_variable();
+        let mut rule_tps = vec![];
+        for rule in rules.iter() {
+            let rule_tp = self.infer_rule(rule, ctx)?.0;
+            rule_tps.push(rule_tp.instantiate(ctx));
+        }
+        for rule_tp in rule_tps {
+            ctx.unify(&tp, &rule_tp)?;
+        }
+        let lex_vars = self.free_vars_applied(ctx);
+        Ok(tp.apply(ctx).generalize(&lex_vars))
     }
     pub fn infer_rulecontext(
         &self,

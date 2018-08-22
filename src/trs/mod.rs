@@ -171,15 +171,16 @@ impl Default for ModelParams {
 /// [`term_rewriting::Rule`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Rule.html
 /// [`Task`]: ../struct.Task.html
 /// [`TRS`]: struct.TRS.html
-pub fn task_by_rewrite<O: Sync>(
-    data: &[Rule],
+pub fn task_by_rewrite<'a, O: Sync>(
+    data: &'a [Rule],
     params: ModelParams,
-    tp: polytype::TypeSchema,
+    lex: &Lexicon,
+    ctx: &mut polytype::Context,
     observation: O,
-) -> Task<Lexicon, TRS, O> {
-    Task {
+) -> Result<Task<'a, Lexicon, TRS, O>, TypeError> {
+    Ok(Task {
         oracle: Box::new(move |_s: &Lexicon, h: &TRS| -h.posterior(data, params)),
-        // TODO: compute type schema from the data
-        tp,
+        tp: lex.infer_rules(data, ctx)?,
         observation,
-    }
+    })
+}
