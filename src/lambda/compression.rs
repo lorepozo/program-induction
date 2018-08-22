@@ -13,9 +13,6 @@ use super::{Expression, Language, LinkedList};
 use utils::bounded;
 use {ECFrontier, Task};
 
-const BOUND_VAR_COST: f64 = 0.1;
-const FREE_VAR_COST: f64 = 0.01;
-
 /// Parameters for grammar induction.
 ///
 /// Proposed grammars are scored as `likelihood - aic * #primitives - structure_penalty * #nodes`.
@@ -78,11 +75,20 @@ impl Default for CompressionParams {
 /// This is a sophisticated higher-order function — tread carefully.
 /// - `state: I` can be mutated by making it `Arc<RwLock<_>>`, though it will often just be `()`
 ///   unless you really need it.
-/// - `X` is a _candidate_, something which can be turned into an expression as an invention.
+/// - type `X` is for a _candidate_, something which can be used to update a dsl.
 /// - `proposer` pushes a bunch of candidates to the given vector.
-/// - `proposal_to_expr` converts a candidate into an expression, for use in updating a
-///   [`lambda::Language`]. The resulting languages are scored using the inside-outside algorithm
-///   and the procedures indicated in [`lambda::CompressionParams`].
+/// - `proposal_to_dsl` adds the candidate to the dsl and returns a new joint minimum description
+///   length for the dsl. For example, this may be set to:
+///
+///   ```ignore
+///   |_state, expr, dsl, frontiers, params| {
+///       if dsl.invent(expr.clone(), 0.).is_ok() {
+///           Some(dsl.inside_outside(frontiers, params.pseudocounts))
+///       } else {
+///           None
+///       }
+///   }
+///   ```
 /// - `defragment` is most often a no-op and can be set to `|x| x`. It allows you to effectively
 ///   change the output of `proposal_to_expr` after scoring has been done. This is useful for
 ///   fragment grammar compression, because scoring with inventions that have free variables (i.e.
@@ -92,6 +98,7 @@ impl Default for CompressionParams {
 ///   single latest invention (accessible via `dsl.invented.last().unwrap()`) equal to
 ///   `defragment(proposal_to_expr(_, proposal))` for some generated proposal. The
 ///   [`lambda::Expression`] it is supplied is the non-defragmented proposal.
+///   There's no need to rescore the frontiers, that's done automatically.
 ///
 /// We recommended to make a function that adapts this into a four-argument `induce_my_algo`
 /// function by filling in the higher-order functions. See the source code of this project to find
@@ -110,7 +117,7 @@ pub fn induce<O: Sync, I, X, P, D, F, R>(
     mut original_frontiers: Vec<ECFrontier<Language>>,
     state: I,
     proposer: P,
-    proposal_to_expr: D,
+    proposal_to_dsl: D,
     defragment: F,
     rewrite_frontiers: R,
 ) -> (Language, Vec<ECFrontier<Language>>)
@@ -125,7 +132,9 @@ where
             &mut Vec<X>,
         )
         + Sync,
-    D: Fn(&I, &X) -> Expression + Sync,
+    D: Fn(&I, &X, &mut Language, &[(TypeSchema, Vec<(Expression, f64, f64)>)], &CompressionParams)
+            -> Option<f64>
+        + Sync,
     F: Fn(Expression) -> Expression,
     R: Fn(
         &I,
@@ -145,12 +154,8 @@ where
         .map(|(tp, f)| (tp, f.0.clone()))
         .collect();
 
-    let mut best_score = dsl.score(
-        &frontiers,
-        params.pseudocounts,
-        params.aic,
-        params.structure_penalty,
-    );
+    let joint_mdl = dsl.inside_outside(&frontiers, params.pseudocounts);
+    let mut best_score = dsl.score(joint_mdl, params);
 
     if cfg!(feature = "verbose") {
         eprintln!("COMPRESSION: starting score: {}", best_score)
@@ -172,25 +177,22 @@ where
                     .into_par_iter()
                     .filter_map(|candidate| {
                         let mut dsl = dsl.clone();
-                        let expr = proposal_to_expr(&state, &candidate);
-                        if cfg!(feature = "verbose") {
-                            if let Err(e) = dsl.invent(expr.clone(), 0.) {
-                                eprintln!(
-                                    "COMPRESSION: poorly typed proposal expr={}, err={}",
-                                    dsl.display(&expr),
-                                    e
-                                );
+                        let joint_mdl = match proposal_to_dsl(
+                            &state,
+                            &candidate,
+                            &mut dsl,
+                            &rescored_frontiers,
+                            params,
+                        ) {
+                            None => {
+                                if cfg!(feature = "verbose") {
+                                    eprintln!("COMPRESSION: dropped invalid proposal");
+                                }
                                 return None;
                             }
-                        } else if dsl.invent(expr, 0.).is_err() {
-                            return None;
-                        }
-                        let s = dsl.score(
-                            &rescored_frontiers,
-                            params.pseudocounts,
-                            params.aic,
-                            params.structure_penalty,
-                        );
+                            Some(joint_mdl) => joint_mdl,
+                        };
+                        let s = dsl.score(joint_mdl, params);
                         if s.is_finite() {
                             Some((dsl, candidate, s))
                         } else {
@@ -247,24 +249,27 @@ where
 }
 
 /// A convenient frontier representation.
-type RescoredFrontier = (TypeSchema, Vec<(Expression, f64, f64)>);
+pub type RescoredFrontier = (TypeSchema, Vec<(Expression, f64, f64)>);
 
-/// Runs a variant of the inside outside algorithm to assign production probabilities for the
-/// primitives. The joint minimum description length is returned.
-pub fn inside_outside<O: Sync>(
+pub fn joint_mdl(dsl: &Language, frontiers: &[RescoredFrontier]) -> f64 {
+    frontiers
+        .par_iter()
+        .map(|(t, f)| {
+            f.iter()
+                .map(|e| e.2 + dsl.likelihood(t, &e.0))
+                .fold(f64::NEG_INFINITY, f64::max)
+        })
+        .sum::<f64>()
+}
+
+/// Runs a variant of the inside outside algorithm to assign production probabilities for all
+/// primitives and invented expressions. The joint minimum description length is returned.
+pub fn inside_outside(
     dsl: &mut Language,
-    tasks: &[Task<Language, Expression, O>],
-    frontiers: &[ECFrontier<Language>],
+    frontiers: &[RescoredFrontier],
     pseudocounts: u64,
 ) -> f64 {
-    let frontiers: Vec<RescoredFrontier> = tasks
-        .par_iter()
-        .map(|t| t.tp.clone())
-        .zip(frontiers)
-        .filter(|&(_, f)| !f.is_empty())
-        .map(|(tp, f)| (tp, f.0.clone()))
-        .collect();
-    dsl.inside_outside_rescored(&frontiers, pseudocounts)
+    dsl.inside_outside_internal(&frontiers, pseudocounts)
 }
 
 pub fn induce_fragment_grammar<O: Sync>(
@@ -282,7 +287,13 @@ pub fn induce_fragment_grammar<O: Sync>(
         |_, dsl, rescored_frontiers, params, proposals| {
             dsl.propose_inventions(rescored_frontiers, params.arity, proposals)
         },
-        |_, expr| expr.clone(),
+        |_, expr, dsl, rescored_frontiers, params| {
+            if dsl.invent(expr.clone(), 0.).is_ok() {
+                Some(dsl.inside_outside(rescored_frontiers, params.pseudocounts))
+            } else {
+                None
+            }
+        },
         proposals::defragment,
         |_, fragment_expr, _, dsl, frontiers, _| {
             let i = dsl.invented.len() - 1;
@@ -322,25 +333,6 @@ impl Language {
         (f.0, xs)
     }
 
-    fn score(
-        &mut self,
-        frontiers: &[RescoredFrontier],
-        pseudocounts: u64,
-        aic: f64,
-        structure_penalty: f64,
-    ) -> f64 {
-        self.reset_uniform();
-        let joint_mdl = self.inside_outside_rescored(frontiers, pseudocounts);
-        let nparams = self.primitives.len() + self.invented.len();
-        let structure = (self.primitives.len() as f64)
-            + self
-                .invented
-                .iter()
-                .map(|&(ref expr, _, _)| expression_structure(expr))
-                .sum::<f64>();
-        joint_mdl - aic * (nparams as f64) - structure_penalty * structure
-    }
-
     fn reset_uniform(&mut self) {
         for x in &mut self.primitives {
             x.2 = 0f64;
@@ -351,11 +343,12 @@ impl Language {
         self.variable_logprob = 0f64;
     }
 
-    fn inside_outside_rescored(
+    fn inside_outside_internal(
         &mut self,
         frontiers: &[RescoredFrontier],
         pseudocounts: u64,
     ) -> f64 {
+        self.reset_uniform();
         let pseudocounts = pseudocounts as f64;
         let (joint_mdl, u) = self.all_uses(frontiers);
         self.variable_logprob = (u.actual_vars + pseudocounts).ln() - u.possible_vars.ln();
@@ -1213,14 +1206,8 @@ mod proposals {
     }
 }
 
-/// The structure penalty applies to the sum of this procedure for each invented expression.
-fn expression_structure(expr: &Expression) -> f64 {
-    let (leaves, free, bound) = expression_count_kinds(expr, 0);
-    (leaves as f64) + BOUND_VAR_COST * (bound as f64) + FREE_VAR_COST * (free as f64)
-}
-
 /// Counts of prims, free, bound
-fn expression_count_kinds(expr: &Expression, abstraction_depth: usize) -> (u64, u64, u64) {
+pub fn expression_count_kinds(expr: &Expression, abstraction_depth: usize) -> (u64, u64, u64) {
     match *expr {
         Expression::Primitive(_) | Expression::Invented(_) => (1, 0, 0),
         Expression::Index(i) => {
