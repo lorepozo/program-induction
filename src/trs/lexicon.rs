@@ -34,6 +34,15 @@ pub struct GeneticParams {
     pub atom_weights: (f64, f64, f64),
 }
 
+pub trait LexDisplay {
+    fn display(&self, lex: &Lexicon) -> String;
+}
+impl LexDisplay for Operator {
+    fn display(&self, lex: &Lexicon) -> String {
+        Operator::display(*self, &lex.0.read().expect("poisoned lexicon").signature)
+    }
+}
+
 /// (representation) Manages the syntax of a term rewriting system.
 #[derive(Clone)]
 pub struct Lexicon(pub(crate) Arc<RwLock<Lex>>);
@@ -136,6 +145,14 @@ impl Lexicon {
             deterministic,
         })))
     }
+    /// Return the specified operator if possible.
+    pub fn has_op(&self, name: Option<&str>, arity: u32) -> Result<Operator, ()> {
+        let sig = &self.0.read().expect("poisoned lexicon").signature;
+        sig.operators()
+            .into_iter()
+            .find(|op| op.arity(&sig) == arity && op.name(&sig) == name)
+            .ok_or(())
+    }
     /// All the free type variables in the lexicon.
     pub fn free_vars(&self) -> Vec<TypeVar> {
         self.0.read().expect("poisoned lexicon").free_vars()
@@ -204,6 +221,10 @@ impl Lexicon {
             .write()
             .expect("poisoned lexicon")
             .infer_rule_context(context, ctx)
+    }
+    /// Infer the `TypeSchema` associated with a `Rule`.
+    pub fn infer_op(&self, op: Operator) -> Result<TypeSchema, TypeError> {
+        self.0.write().expect("poisoned lexicon").op_tp(op)
     }
     /// Sample a [`term_rewriting::Term`].
     ///
@@ -352,7 +373,7 @@ impl Lexicon {
     }
 
     /// merge two `TRS` into a single `TRS`.
-    pub fn combine(&self, trs1: &TRS, trs2: &TRS) -> Result<TRS, TypeError> {
+    pub fn combine<R: Rng>(&self, rng: &mut R, trs1: &TRS, trs2: &TRS) -> Result<TRS, TypeError> {
         assert_eq!(trs1.lex, trs2.lex);
         let background_size = trs1
             .lex
@@ -364,7 +385,11 @@ impl Lexicon {
         let mut rules1 = trs1.utrs.rules[..trs1.utrs.len() - background_size].to_vec();
         let mut rules2 = trs2.utrs.rules.clone(); // includes background
         rules1.append(&mut rules2);
-        TRS::new(&trs1.lex, rules1)
+        let mut trs = TRS::new(&trs1.lex, rules1)?;
+        if self.0.read().expect("poisoned lexicon").deterministic {
+            trs.utrs.make_deterministic(rng);
+        }
+        Ok(trs)
     }
 }
 impl fmt::Debug for Lexicon {
@@ -949,7 +974,7 @@ impl GP for Lexicon {
         parent2: &Self::Expression,
     ) -> Vec<Self::Expression> {
         let trs = self
-            .combine(parent1, parent2)
+            .combine(rng, parent1, parent2)
             .expect("poorly-typed TRS in crossover");
         iter::repeat(trs)
             .take(params.n_crosses)

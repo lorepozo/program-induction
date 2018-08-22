@@ -244,12 +244,10 @@ impl TRS {
         let clauses = self.utrs.clauses();
         let deletable: Vec<_> = clauses.iter().filter(|c| !background.contains(c)).collect();
         if deletable.is_empty() {
-            //println!("  Err: no rules to delete.");
             Err(SampleError::OptionsExhausted)
         } else {
             let mut trs = self.clone();
             trs.utrs.remove_clauses(sample_iter(rng, deletable, 1)?[0])?;
-            //println!("Success");
             Ok(trs)
         }
     }

@@ -38,7 +38,7 @@ mod compression;
 mod enumerator;
 mod eval;
 mod parser;
-pub use self::compression::CompressionParams;
+pub use self::compression::{induce, CompressionParams, RescoredFrontier};
 pub use self::eval::{
     Evaluator, LazyEvaluator, LiftedFunction, LiftedLazyFunction, SimpleEvaluator,
 };
@@ -56,6 +56,9 @@ use std::sync::Arc;
 
 use utils::bounded;
 use {ECFrontier, Task, EC};
+
+const BOUND_VAR_COST: f64 = 0.1;
+const FREE_VAR_COST: f64 = 0.01;
 
 /// (representation) A Language is a registry for primitive and invented expressions in a
 /// polymorphically-typed lambda calculus with corresponding production log-probabilities.
@@ -222,7 +225,7 @@ impl Language {
         tasks: &[Task<Language, Expression, O>],
         frontiers: Vec<ECFrontier<Self>>,
     ) -> (Self, Vec<ECFrontier<Self>>) {
-        compression::induce(self, params, tasks, frontiers)
+        compression::induce_fragment_grammar(self, params, tasks, frontiers)
     }
 
     /// Evaluate an expressions based on an input/output pair.
@@ -476,15 +479,35 @@ impl Language {
         expr.strip_invented(&self.invented)
     }
 
+    /// A cheap function used as the objective for dsl compression. See
+    /// [`lambda::CompressionParams`] for details.
+    ///
+    /// [`lambda::CompressionParams`]: struct.CompressionParams.html
+    pub fn score(&self, joint_mdl: f64, params: &CompressionParams) -> f64 {
+        let nparams = self.primitives.len() + self.invented.len();
+        let structure = (self.primitives.len() as f64)
+            + self
+                .invented
+                .iter()
+                .map(|&(ref expr, _, _)| {
+                    let (leaves, free, bound) = compression::expression_count_kinds(expr, 0);
+                    (leaves as f64)
+                        + BOUND_VAR_COST * (bound as f64)
+                        + FREE_VAR_COST * (free as f64)
+                })
+                .sum::<f64>();
+        joint_mdl - params.aic * (nparams as f64) - params.structure_penalty * structure
+    }
+
+    /// Computes the joint minimum description length over all frontiers.
+    pub fn joint_mdl(&self, frontiers: &[RescoredFrontier]) -> f64 {
+        compression::joint_mdl(self, frontiers)
+    }
+
     /// Runs a variant of the inside outside algorithm to assign production probabilities for the
     /// primitives. The joint minimum description length is returned.
-    pub fn inside_outside<O: Sync>(
-        &mut self,
-        tasks: &[Task<Language, Expression, O>],
-        frontiers: &[ECFrontier<Language>],
-        pseudocounts: u64,
-    ) -> f64 {
-        self::compression::inside_outside(self, tasks, frontiers, pseudocounts)
+    pub fn inside_outside(&mut self, frontiers: &[RescoredFrontier], pseudocounts: u64) -> f64 {
+        compression::inside_outside(self, frontiers, pseudocounts)
     }
 
     /// The inverse of [`display`].

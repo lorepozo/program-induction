@@ -46,7 +46,7 @@
 
 mod lexicon;
 mod rewrite;
-pub use self::lexicon::{GeneticParams, Lexicon};
+pub use self::lexicon::{GeneticParams, LexDisplay, Lexicon};
 pub use self::rewrite::TRS;
 use Task;
 

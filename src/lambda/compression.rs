@@ -10,11 +10,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 
 use super::{Expression, Language, LinkedList};
-use utils::{bounded, Sender};
+use utils::bounded;
 use {ECFrontier, Task};
-
-const BOUND_VAR_COST: f64 = 0.1;
-const FREE_VAR_COST: f64 = 0.01;
 
 /// Parameters for grammar induction.
 ///
@@ -71,80 +68,145 @@ impl Default for CompressionParams {
     }
 }
 
-/// A convenient frontier representation.
-#[derive(Debug, Clone)]
-struct RescoredFrontier<'a>(&'a TypeSchema, Vec<(Expression, f64, f64)>);
-impl<'a> From<RescoredFrontier<'a>> for ECFrontier<Language> {
-    fn from(rescored_frontier: RescoredFrontier) -> ECFrontier<Language> {
-        ECFrontier(rescored_frontier.1)
-    }
-}
-
-pub fn induce<O: Sync>(
+/// This function makes it easier to write your own compression scheme.
+/// It takes the role of a single compression step, separating it into sub-steps that are decent to
+/// implement in isolation.
+///
+/// This is a sophisticated higher-order function — tread carefully.
+/// - `state: I` can be mutated by making it `Arc<RwLock<_>>`, though it will often just be `()`
+///   unless you really need it.
+/// - type `X` is for a _candidate_, something which can be used to update a dsl.
+/// - `proposer` pushes a bunch of candidates to the given vector.
+/// - `proposal_to_dsl` adds the candidate to the dsl and returns a new joint minimum description
+///   length for the dsl. For example, this may be set to:
+///
+///   ```ignore
+///   |_state, expr, dsl, frontiers, params| {
+///       if dsl.invent(expr.clone(), 0.).is_ok() {
+///           Some(dsl.inside_outside(frontiers, params.pseudocounts))
+///       } else {
+///           None
+///       }
+///   }
+///   ```
+/// - `defragment` is most often a no-op and can be set to `|x| x`. It allows you to effectively
+///   change the output of `proposal_to_expr` after scoring has been done. This is useful for
+///   fragment grammar compression, because scoring with inventions that have free variables (i.e.
+///   non-closed expressions) will let inside-outside capture those uses without having to rewrite
+///   the frontiers.
+/// - `rewrite_frontiers` finally takes the highest-scoring dsl, which is guaranteed to have a
+///   single latest invention (accessible via `dsl.invented.last().unwrap()`) equal to
+///   `defragment(proposal_to_expr(_, proposal))` for some generated proposal. The
+///   [`lambda::Expression`] it is supplied is the non-defragmented proposal.
+///   There's no need to rescore the frontiers, that's done automatically.
+///
+/// We recommended to make a function that adapts this into a four-argument `induce_my_algo`
+/// function by filling in the higher-order functions. See the source code of this project to find
+/// the particular use of this function that gives [`Language::compress`] using a
+/// fragment-grammar-like compression scheme.
+///
+/// [`Language::compress`]: struct.Language.html#method.compress
+/// [`lambda::CompressionParams`]: struct.CompressionParams.html
+/// [`lambda::Expression`]: enum.Expression.html
+/// [`lambda::Language`]: struct.Language.html
+#[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+pub fn induce<O: Sync, I, X, P, D, F, R>(
     dsl: &Language,
     params: &CompressionParams,
     tasks: &[Task<Language, Expression, O>],
     mut original_frontiers: Vec<ECFrontier<Language>>,
-) -> (Language, Vec<ECFrontier<Language>>) {
+    state: I,
+    proposer: P,
+    proposal_to_dsl: D,
+    defragment: F,
+    rewrite_frontiers: R,
+) -> (Language, Vec<ECFrontier<Language>>)
+where
+    X: Send,
+    I: Send + Sync,
+    P: Fn(
+            &I,
+            &Language,
+            &[(TypeSchema, Vec<(Expression, f64, f64)>)],
+            &CompressionParams,
+            &mut Vec<X>,
+        )
+        + Sync,
+    D: Fn(&I, &X, &mut Language, &[(TypeSchema, Vec<(Expression, f64, f64)>)], &CompressionParams)
+            -> Option<f64>
+        + Sync,
+    F: Fn(Expression) -> Expression,
+    R: Fn(
+        &I,
+        X,
+        Expression,
+        &Language,
+        &mut Vec<(TypeSchema, Vec<(Expression, f64, f64)>)>,
+        &CompressionParams,
+    ),
+{
     let mut dsl = dsl.clone();
-    let mut frontiers: Vec<_> = tasks
+    let mut frontiers: Vec<RescoredFrontier> = tasks
         .par_iter()
-        .map(|t| &t.tp)
+        .map(|t| t.tp.clone())
         .zip(&original_frontiers)
         .filter(|&(_, f)| !f.is_empty())
-        .map(|(tp, f)| RescoredFrontier(tp, f.0.clone()))
+        .map(|(tp, f)| (tp, f.0.clone()))
         .collect();
 
-    let mut best_score = dsl.score(
-        &frontiers,
-        params.pseudocounts,
-        params.aic,
-        params.structure_penalty,
-    );
+    let joint_mdl = dsl.inside_outside(&frontiers, params.pseudocounts);
+    let mut best_score = dsl.score(joint_mdl, params);
 
     if cfg!(feature = "verbose") {
         eprintln!("COMPRESSION: starting score: {}", best_score)
     }
     if params.aic.is_finite() {
         loop {
-            let fragment_expr = {
+            let (candidate, fragment_expr) = {
                 let rescored_frontiers: Vec<_> = frontiers
                     .par_iter()
+                    .cloned()
                     .map(|f| dsl.rescore_frontier(f, params.topk, params.topk_use_only_likelihood))
                     .collect();
-                let (tx, rx) = bounded(100);
-                let (_, proposals) = join(
-                    || dsl.propose_inventions(&rescored_frontiers, params.arity, tx),
-                    || rx.collect::<Vec<_>>(),
-                );
+                let mut proposals = Vec::new();
+                proposer(&state, &dsl, &rescored_frontiers, params, &mut proposals);
                 if cfg!(feature = "verbose") {
                     eprintln!("COMPRESSION: proposed {} fragments", proposals.len())
                 }
                 let best_proposal = proposals
                     .into_par_iter()
-                    .filter_map(|fragment_expr| {
+                    .filter_map(|candidate| {
                         let mut dsl = dsl.clone();
-                        dsl.invent(fragment_expr, 0f64).unwrap();
-                        let s = dsl.score(
+                        let joint_mdl = match proposal_to_dsl(
+                            &state,
+                            &candidate,
+                            &mut dsl,
                             &rescored_frontiers,
-                            params.pseudocounts,
-                            params.aic,
-                            params.structure_penalty,
-                        );
+                            params,
+                        ) {
+                            None => {
+                                if cfg!(feature = "verbose") {
+                                    eprintln!("COMPRESSION: dropped invalid proposal");
+                                }
+                                return None;
+                            }
+                            Some(joint_mdl) => joint_mdl,
+                        };
+                        let s = dsl.score(joint_mdl, params);
                         if s.is_finite() {
-                            Some((dsl, s))
+                            Some((dsl, candidate, s))
                         } else {
                             None
                         }
                     })
-                    .max_by(|&(_, ref x), &(_, ref y)| x.partial_cmp(y).unwrap());
+                    .max_by(|&(_, _, ref x), &(_, _, ref y)| x.partial_cmp(y).unwrap());
                 if best_proposal.is_none() {
                     if cfg!(feature = "verbose") {
                         eprintln!("COMPRESSION: no sufficient proposals")
                     }
                     break;
                 }
-                let (new_dsl, new_score) = best_proposal.unwrap();
+                let (new_dsl, candidate, new_score) = best_proposal.unwrap();
                 if new_score <= best_score {
                     if cfg!(feature = "verbose") {
                         eprintln!("COMPRESSION: score did not improve")
@@ -155,25 +217,26 @@ pub fn induce<O: Sync>(
                 best_score = new_score;
 
                 let (fragment_expr, _, log_prior) = dsl.invented.pop().unwrap();
-                let inv = proposals::defragment(fragment_expr.clone());
-                dsl.invent(inv, log_prior).expect("invalid invention");
+                let inv = defragment(fragment_expr.clone());
                 if cfg!(feature = "verbose") {
                     eprintln!(
-                        "COMPRESSION: score improved to {} with invention {}",
+                        "COMPRESSION: score improved to {} with invention {} (defragmented from candidate expr {})",
                         best_score,
-                        dsl.display(&fragment_expr),
+                        dsl.display(&inv),
+                        dsl.display(&fragment_expr)
                     )
                 }
-                fragment_expr
+                dsl.invent(inv, log_prior).expect("invalid invention");
+                (candidate, fragment_expr)
             };
-            let i = dsl.invented.len() - 1;
-            frontiers = frontiers
-                .into_par_iter()
-                .map(|mut f| {
-                    dsl.rewrite_frontier_with_fragment_expression(&mut f, i, &fragment_expr);
-                    f
-                })
-                .collect();
+            rewrite_frontiers(
+                &state,
+                candidate,
+                fragment_expr,
+                &dsl,
+                &mut frontiers,
+                &params,
+            )
         }
     }
     frontiers.reverse();
@@ -185,37 +248,75 @@ pub fn induce<O: Sync>(
     (dsl, original_frontiers)
 }
 
-/// Runs a variant of the inside outside algorithm to assign production probabilities for the
-/// primitives. The joint minimum description length is returned.
-pub fn inside_outside<O: Sync>(
+/// A convenient frontier representation.
+pub type RescoredFrontier = (TypeSchema, Vec<(Expression, f64, f64)>);
+
+pub fn joint_mdl(dsl: &Language, frontiers: &[RescoredFrontier]) -> f64 {
+    frontiers
+        .par_iter()
+        .map(|(t, f)| {
+            f.iter()
+                .map(|e| e.2 + dsl.likelihood(t, &e.0))
+                .fold(f64::NEG_INFINITY, f64::max)
+        })
+        .sum::<f64>()
+}
+
+/// Runs a variant of the inside outside algorithm to assign production probabilities for all
+/// primitives and invented expressions. The joint minimum description length is returned.
+pub fn inside_outside(
     dsl: &mut Language,
-    tasks: &[Task<Language, Expression, O>],
-    frontiers: &[ECFrontier<Language>],
+    frontiers: &[RescoredFrontier],
     pseudocounts: u64,
 ) -> f64 {
-    let frontiers: Vec<_> = tasks
-        .par_iter()
-        .map(|t| &t.tp)
-        .zip(frontiers)
-        .filter(|&(_, f)| !f.is_empty())
-        .map(|(tp, f)| RescoredFrontier(tp, f.0.clone()))
-        .collect();
-    dsl.inside_outside_rescored(&frontiers, pseudocounts)
+    dsl.inside_outside_internal(&frontiers, pseudocounts)
+}
+
+pub fn induce_fragment_grammar<O: Sync>(
+    dsl: &Language,
+    params: &CompressionParams,
+    tasks: &[Task<Language, Expression, O>],
+    original_frontiers: Vec<ECFrontier<Language>>,
+) -> (Language, Vec<ECFrontier<Language>>) {
+    induce(
+        dsl,
+        params,
+        tasks,
+        original_frontiers,
+        (),
+        |_, dsl, rescored_frontiers, params, proposals| {
+            dsl.propose_inventions(rescored_frontiers, params.arity, proposals)
+        },
+        |_, expr, dsl, rescored_frontiers, params| {
+            if dsl.invent(expr.clone(), 0.).is_ok() {
+                Some(dsl.inside_outside(rescored_frontiers, params.pseudocounts))
+            } else {
+                None
+            }
+        },
+        proposals::defragment,
+        |_, fragment_expr, _, dsl, frontiers, _| {
+            let i = dsl.invented.len() - 1;
+            for mut f in frontiers {
+                dsl.rewrite_frontier_with_fragment_expression(&mut f, i, &fragment_expr);
+            }
+        },
+    )
 }
 
 /// Extend the Language in our scope so we can do useful compression things.
 impl Language {
-    fn rescore_frontier<'a>(
+    fn rescore_frontier(
         &self,
-        f: &'a RescoredFrontier,
+        f: RescoredFrontier,
         topk: usize,
         topk_use_only_likelihood: bool,
-    ) -> RescoredFrontier<'a> {
+    ) -> RescoredFrontier {
         let xs = f
             .1
             .iter()
             .map(|&(ref expr, _, loglikelihood)| {
-                let logprior = self.uses(f.0, expr).0;
+                let logprior = self.uses(&f.0, expr).0;
                 (expr, logprior, loglikelihood, logprior + loglikelihood)
             })
             .sorted_by(|&(_, _, ref xl, ref xpost), &(_, _, ref yl, ref ypost)| {
@@ -229,26 +330,7 @@ impl Language {
             .take(topk)
             .map(|(expr, logprior, loglikelihood, _)| (expr.clone(), logprior, loglikelihood))
             .collect();
-        RescoredFrontier(f.0, xs)
-    }
-
-    fn score(
-        &mut self,
-        frontiers: &[RescoredFrontier],
-        pseudocounts: u64,
-        aic: f64,
-        structure_penalty: f64,
-    ) -> f64 {
-        self.reset_uniform();
-        let joint_mdl = self.inside_outside_rescored(frontiers, pseudocounts);
-        let nparams = self.primitives.len() + self.invented.len();
-        let structure = (self.primitives.len() as f64)
-            + self
-                .invented
-                .iter()
-                .map(|&(ref expr, _, _)| expression_structure(expr))
-                .sum::<f64>();
-        joint_mdl - aic * (nparams as f64) - structure_penalty * structure
+        (f.0, xs)
     }
 
     fn reset_uniform(&mut self) {
@@ -261,11 +343,12 @@ impl Language {
         self.variable_logprob = 0f64;
     }
 
-    fn inside_outside_rescored(
+    fn inside_outside_internal(
         &mut self,
         frontiers: &[RescoredFrontier],
         pseudocounts: u64,
     ) -> f64 {
+        self.reset_uniform();
         let pseudocounts = pseudocounts as f64;
         let (joint_mdl, u) = self.all_uses(frontiers);
         self.variable_logprob = (u.actual_vars + pseudocounts).ln() - u.possible_vars.ln();
@@ -295,7 +378,7 @@ impl Language {
                     .1
                     .iter()
                     .map(|&(ref expr, _logprior, loglikelihood)| {
-                        let (logprior, u) = self.uses(f.0, expr);
+                        let (logprior, u) = self.uses(&f.0, expr);
                         (logprior + loglikelihood, u)
                     })
                     .collect::<Vec<_>>();
@@ -538,50 +621,55 @@ impl Language {
     }
 
     /// Yields expressions that may have free variables.
-    #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
     fn propose_inventions(
         &self,
         frontiers: &[RescoredFrontier],
         arity: u32,
-        tx: Sender<Expression>,
+        proposals: &mut Vec<Expression>,
     ) {
-        let findings = Arc::new(RwLock::new(HashMap::new()));
-        frontiers
-            .par_iter()
-            .flat_map(|f| &f.1)
-            .flat_map(|&(ref expr, _, _)| proposals::from_expression(expr, arity))
-            .filter(|fragment_expr| {
-                let expr = proposals::defragment(fragment_expr.clone());
-                self.invented
-                    .iter()
-                    .find(|&&(ref x, _, _)| x == &expr)
-                    .is_none()
-            })
-            .for_each(|fragment_expr| {
-                let res = {
-                    let h = findings.read().expect("hashmap was poisoned");
-                    h.get(&fragment_expr)
-                        .map(|x: &AtomicUsize| x.fetch_add(1, Ordering::SeqCst))
-                };
-                match res {
-                    Some(2) if self.infer(&fragment_expr).is_ok() => tx
-                        .send(fragment_expr)
-                        .expect("failed to send fragment proposal"),
-                    None => {
-                        let mut h = findings.write().expect("hashmap was poisoned");
-                        let count = h
-                            .entry(fragment_expr.clone())
-                            .or_insert_with(|| AtomicUsize::new(0));
-                        if 2 == count.fetch_add(1, Ordering::SeqCst)
-                            && self.infer(&fragment_expr).is_ok()
-                        {
-                            tx.send(fragment_expr)
-                                .expect("failed to send fragment proposal")
+        let (tx, rx) = bounded(100);
+        join(
+            move || {
+                let findings = Arc::new(RwLock::new(HashMap::new()));
+                frontiers
+                    .par_iter()
+                    .flat_map(|f| &f.1)
+                    .flat_map(|&(ref expr, _, _)| proposals::from_expression(expr, arity))
+                    .filter(|fragment_expr| {
+                        let expr = proposals::defragment(fragment_expr.clone());
+                        self.invented
+                            .iter()
+                            .find(|&&(ref x, _, _)| x == &expr)
+                            .is_none()
+                    })
+                    .for_each(|fragment_expr| {
+                        let res = {
+                            let h = findings.read().expect("hashmap was poisoned");
+                            h.get(&fragment_expr)
+                                .map(|x: &AtomicUsize| x.fetch_add(1, Ordering::SeqCst))
+                        };
+                        match res {
+                            Some(2) if self.infer(&fragment_expr).is_ok() => tx
+                                .send(fragment_expr)
+                                .expect("failed to send fragment proposal"),
+                            None => {
+                                let mut h = findings.write().expect("hashmap was poisoned");
+                                let count = h
+                                    .entry(fragment_expr.clone())
+                                    .or_insert_with(|| AtomicUsize::new(0));
+                                if 2 == count.fetch_add(1, Ordering::SeqCst)
+                                    && self.infer(&fragment_expr).is_ok()
+                                {
+                                    tx.send(fragment_expr)
+                                        .expect("failed to send fragment proposal")
+                                }
+                            }
+                            _ => (),
                         }
-                    }
-                    _ => (),
-                }
-            });
+                    })
+            },
+            move || proposals.extend(rx),
+        );
     }
 }
 
@@ -1118,14 +1206,8 @@ mod proposals {
     }
 }
 
-/// The structure penalty applies to the sum of this procedure for each invented expression.
-fn expression_structure(expr: &Expression) -> f64 {
-    let (leaves, free, bound) = expression_count_kinds(expr, 0);
-    (leaves as f64) + BOUND_VAR_COST * (bound as f64) + FREE_VAR_COST * (free as f64)
-}
-
 /// Counts of prims, free, bound
-fn expression_count_kinds(expr: &Expression, abstraction_depth: usize) -> (u64, u64, u64) {
+pub fn expression_count_kinds(expr: &Expression, abstraction_depth: usize) -> (u64, u64, u64) {
     match *expr {
         Expression::Primitive(_) | Expression::Invented(_) => (1, 0, 0),
         Expression::Index(i) => {
