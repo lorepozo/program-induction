@@ -34,15 +34,6 @@ pub struct GeneticParams {
     pub atom_weights: (f64, f64, f64),
 }
 
-pub trait LexDisplay {
-    fn display(&self, lex: &Lexicon) -> String;
-}
-impl LexDisplay for Operator {
-    fn display(&self, lex: &Lexicon) -> String {
-        Operator::display(*self, &lex.0.read().expect("poisoned lexicon").signature)
-    }
-}
-
 /// (representation) Manages the syntax of a term rewriting system.
 #[derive(Clone)]
 pub struct Lexicon(pub(crate) Arc<RwLock<Lex>>);
@@ -150,7 +141,7 @@ impl Lexicon {
         let sig = &self.0.read().expect("poisoned lexicon").signature;
         sig.operators()
             .into_iter()
-            .find(|op| op.arity(&sig) == arity && op.name(&sig) == name)
+            .find(|op| op.arity() == arity && op.name().as_ref().map(|x| x.as_str()) == name)
             .ok_or(())
     }
     /// All the free type variables in the lexicon.
@@ -242,8 +233,8 @@ impl Lexicon {
             .infer_rules(rules, ctx)
     }
     /// Infer the `TypeSchema` associated with a `Rule`.
-    pub fn infer_op(&self, op: Operator) -> Result<TypeSchema, TypeError> {
-        self.0.write().expect("poisoned lexicon").op_tp(op)
+    pub fn infer_op(&self, op: &Operator) -> Result<TypeSchema, TypeError> {
+        self.0.write().expect("poisoned lexicon").op_tp(&op)
     }
     /// Sample a [`term_rewriting::Term`].
     ///
@@ -476,8 +467,8 @@ impl Lex {
         vars: &mut Vec<Variable>,
     ) -> Result<Term, SampleError> {
         match *atom {
-            Atom::Variable(v) => Ok(Term::Variable(v)),
-            Atom::Operator(op) => {
+            Atom::Variable(ref v) => Ok(Term::Variable(v.clone())),
+            Atom::Operator(ref op) => {
                 let orig_ctx = ctx.clone(); // for "undo" semantics
                 let mut args = Vec::with_capacity(arg_types.len());
                 for (i, arg_tp) in arg_types.into_iter().enumerate() {
@@ -507,7 +498,10 @@ impl Lex {
                         }
                     }
                 }
-                Ok(Term::Application { op, args })
+                Ok(Term::Application {
+                    op: op.clone(),
+                    args,
+                })
             }
         }
     }
@@ -516,15 +510,15 @@ impl Lex {
         tp.apply_mut(ctx);
         Ok(tp)
     }
-    fn var_tp(&self, v: Variable) -> Result<TypeSchema, TypeError> {
-        if let Some(idx) = self.signature.variables().iter().position(|&x| x == v) {
+    fn var_tp(&self, v: &Variable) -> Result<TypeSchema, TypeError> {
+        if let Some(idx) = self.signature.variables().iter().position(|x| x == v) {
             Ok(self.vars[idx].clone())
         } else {
             Err(TypeError::VarNotFound)
         }
     }
-    fn op_tp(&self, o: Operator) -> Result<TypeSchema, TypeError> {
-        if let Some(idx) = self.signature.operators().iter().position(|&x| x == o) {
+    fn op_tp(&self, o: &Operator) -> Result<TypeSchema, TypeError> {
+        if let Some(idx) = self.signature.operators().iter().position(|x| x == o) {
             Ok(self.ops[idx].clone())
         } else {
             Err(TypeError::OpNotFound)
@@ -533,8 +527,8 @@ impl Lex {
 
     fn infer_atom(&self, atom: &Atom) -> Result<TypeSchema, TypeError> {
         match *atom {
-            Atom::Operator(o) => self.op_tp(o),
-            Atom::Variable(v) => self.var_tp(v),
+            Atom::Operator(ref o) => self.op_tp(o),
+            Atom::Variable(ref v) => self.var_tp(v),
         }
     }
     pub fn infer_term(&self, term: &Term, ctx: &mut TypeContext) -> Result<TypeSchema, TypeError> {
@@ -543,9 +537,9 @@ impl Lex {
         Ok(tp.apply(ctx).generalize(&lex_vars))
     }
     fn infer_term_internal(&self, term: &Term, ctx: &mut TypeContext) -> Result<Type, TypeError> {
-        if let Term::Application { op, ref args } = *term {
-            if op.arity(&self.signature) > 0 {
-                let head_type = self.instantiate_atom(&Atom::from(op), ctx)?;
+        if let Term::Application { ref op, ref args } = *term {
+            if op.arity() > 0 {
+                let head_type = self.instantiate_atom(&Atom::from(op.clone()), ctx)?;
                 let body_type = {
                     let mut pre_types = Vec::with_capacity(args.len() + 1);
                     for a in args {
@@ -578,9 +572,9 @@ impl Lex {
     ) -> Result<Type, TypeError> {
         let tp = match *context {
             Context::Hole => ctx.new_variable(),
-            Context::Variable(v) => self.instantiate_atom(&Atom::from(v), ctx)?,
-            Context::Application { op, ref args } => {
-                let head_type = self.instantiate_atom(&Atom::from(op), ctx)?;
+            Context::Variable(ref v) => self.instantiate_atom(&Atom::from(v.clone()), ctx)?,
+            Context::Application { ref op, ref args } => {
+                let head_type = self.instantiate_atom(&Atom::from(op.clone()), ctx)?;
                 let body_type = {
                     let mut pre_types = Vec::with_capacity(args.len() + 1);
                     for (i, a) in args.iter().enumerate() {
@@ -719,7 +713,7 @@ impl Lex {
                 }
             } else {
                 let new_var = self.invent_variable(&tp);
-                vars.push(new_var);
+                vars.push(new_var.clone());
                 return Ok(Term::Variable(new_var));
             }
         }
@@ -738,7 +732,7 @@ impl Lex {
             .signature
             .operators()
             .into_iter()
-            .partition(|o| o.arity(&self.signature) == 0);
+            .partition(|o| o.arity() == 0);
         let const_options = const_options.into_iter().map(|o| Some(Atom::Operator(o)));
         let op_options = op_options.into_iter().map(|o| Some(Atom::Operator(o)));
 
@@ -858,18 +852,18 @@ impl Lex {
         for atom in &atoms {
             if let Ok(arg_types) = self.fit_atom(atom, &tp, ctx) {
                 match *atom {
-                    Atom::Variable(_) => vs.push((Some(*atom), arg_types)),
-                    Atom::Operator(o) if o.arity(&self.signature) == 0 => {
-                        cs.push((Some(*atom), arg_types))
+                    Atom::Variable(_) => vs.push((Some(atom.clone()), arg_types)),
+                    Atom::Operator(ref o) if o.arity() == 0 => {
+                        cs.push((Some(atom.clone()), arg_types))
                     }
-                    Atom::Operator(_) => os.push((Some(*atom), arg_types)),
+                    Atom::Operator(_) => os.push((Some(atom.clone()), arg_types)),
                 }
             }
         }
         if invent {
-            if let Term::Variable(v) = *term {
-                if !atoms.contains(&Atom::Variable(v)) {
-                    vs.push((Some(Atom::Variable(v)), vec![]));
+            if let Term::Variable(ref v) = *term {
+                if !atoms.contains(&Atom::Variable(v.clone())) {
+                    vs.push((Some(Atom::Variable(v.clone())), vec![]));
                 }
             } else {
                 vs.push((None, vec![]));
@@ -975,7 +969,7 @@ impl GP for Lexicon {
                 let background_trs = UntypedTRS::new(lex.background.clone());
                 panic!(
                     "invalid background knowledge {}: {}",
-                    background_trs.display(&lex.signature),
+                    background_trs.display(),
                     err
                 )
             }

@@ -185,7 +185,7 @@ impl TRS {
     ///
     /// println!("{:?}", sig.operators());
     /// for op in sig.operators() {
-    ///     println!("{:?}/{}", op.name(&sig), op.arity(&sig))
+    ///     println!("{:?}/{}", op.name(), op.arity())
     /// }
     /// for r in &rules {
     ///     println!("{:?}", r);
@@ -254,7 +254,6 @@ impl TRS {
 }
 impl fmt::Display for TRS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let sig = &self.lex.0.read().expect("poisoned lexicon").signature;
-        write!(f, "{}", self.utrs.display(sig))
+        write!(f, "{}", self.utrs.display())
     }
 }

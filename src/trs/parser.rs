@@ -212,9 +212,12 @@ fn typed_rule<'a>(
     lex: &mut Lexicon,
     ctx: &mut TypeContext,
 ) -> nom::IResult<CompleteStr<'a>, Rule> {
-    let mut parsing_sig = lex.0.read().expect("poisoned lexicon").signature.clone();
-    if let Ok(rule) = parse_rule(&mut parsing_sig, input) {
-        add_parsed_variables_to_lexicon(&parsing_sig, lex, ctx);
+    let result = parse_rule(
+        &mut lex.0.write().expect("poisoned lexicon").signature,
+        input,
+    );
+    if let Ok(rule) = result {
+        add_parsed_variables_to_lexicon(lex, ctx);
         if lex.infer_rule(&rule, ctx).is_ok() {
             return Ok((CompleteStr(""), rule));
         }
@@ -233,12 +236,7 @@ named_args!(trs<'a>(lex: &mut Lexicon, ctx: &mut TypeContext) <CompleteStr<'a>, 
                   trs: expr_res!(TRS::new(lex, rules)) >>
                   (trs)))
 );
-fn add_parsed_variables_to_lexicon(
-    parsing_sig: &Signature,
-    lex: &mut Lexicon,
-    ctx: &mut TypeContext,
-) {
-    let parsing_vars = parsing_sig.variables();
+fn add_parsed_variables_to_lexicon(lex: &Lexicon, ctx: &mut TypeContext) {
     let n_vars = lex
         .0
         .read()
@@ -246,15 +244,10 @@ fn add_parsed_variables_to_lexicon(
         .signature
         .variables()
         .len();
-    for var in parsing_vars.iter().skip(n_vars) {
-        let name = var.name(&parsing_sig).map(|s| s.to_string());
-        lex.0
-            .write()
-            .expect("poisoned lexicon")
-            .signature
-            .new_var(name);
-        let t_var = ctx.new_variable();
-        let schema = TypeSchema::Monotype(t_var);
+    let n_schemas = lex.0.read().expect("poisoned lexicon").vars.len();
+    let diff = n_vars - n_schemas;
+    for _ in 0..diff {
+        let schema = TypeSchema::Monotype(ctx.new_variable());
         lex.0.write().expect("poisoned lexicon").vars.push(schema);
     }
 }
@@ -263,9 +256,12 @@ fn typed_context<'a>(
     lex: &mut Lexicon,
     ctx: &mut TypeContext,
 ) -> nom::IResult<CompleteStr<'a>, Context> {
-    let mut parsing_sig = lex.0.read().expect("poisoned lexicon").signature.clone();
-    if let Ok(rule) = parse_untyped_context(&mut parsing_sig, *input) {
-        add_parsed_variables_to_lexicon(&parsing_sig, lex, ctx);
+    let result = parse_untyped_context(
+        &mut lex.0.write().expect("poisoned lexicon").signature,
+        *input,
+    );
+    if let Ok(rule) = result {
+        add_parsed_variables_to_lexicon(lex, ctx);
         if lex.infer_context(&rule, ctx).is_ok() {
             return Ok((CompleteStr(""), rule));
         }
@@ -277,9 +273,12 @@ fn typed_rulecontext<'a>(
     lex: &mut Lexicon,
     ctx: &mut TypeContext,
 ) -> nom::IResult<CompleteStr<'a>, RuleContext> {
-    let mut parsing_sig = lex.0.read().expect("poisoned lexicon").signature.clone();
-    if let Ok(rule) = parse_untyped_rulecontext(&mut parsing_sig, *input) {
-        add_parsed_variables_to_lexicon(&parsing_sig, lex, ctx);
+    let result = parse_untyped_rulecontext(
+        &mut lex.0.write().expect("poisoned lexicon").signature,
+        *input,
+    );
+    if let Ok(rule) = result {
+        add_parsed_variables_to_lexicon(lex, ctx);
         if lex.infer_rulecontext(&rule, ctx).is_ok() {
             return Ok((CompleteStr(""), rule));
         }
@@ -317,7 +316,7 @@ mod tests {
             &mut vars,
             &mut ops,
         ).unwrap();
-        assert_eq!(a.display(&sig), "SUCC");
+        assert_eq!(a.display(), "SUCC");
         assert_eq!(s.to_string(), "int → int");
     }
 
@@ -328,7 +327,7 @@ mod tests {
         let mut sig = Signature::default();
         let (_, (a, s)) =
             declaration(CompleteStr("x_: int"), &mut sig, &mut vars, &mut ops).unwrap();
-        assert_eq!(a.display(&sig), "x_");
+        assert_eq!(a.display(), "x_");
         assert_eq!(s.to_string(), "int");
     }
 
@@ -360,11 +359,8 @@ mod tests {
         ).unwrap()
             .1;
         let res = typed_rule("SUCC(x_) = ZERO", &mut lex, &mut ctx);
-        let sig = &lex.0.read().expect("poisoned lexicon").signature;
 
-        assert!(res.is_ok());
-
-        assert_eq!(res.unwrap().1.display(sig), "SUCC(x_) = ZERO");
+        assert_eq!(res.unwrap().1.display(), "SUCC(x_) = ZERO");
     }
 
     #[test]
@@ -385,12 +381,9 @@ mod tests {
             &mut lex,
             &mut ctx,
         );
-        let sig = &lex.0.read().expect("poisoned lexicon").signature;
-
-        assert!(res.is_ok());
 
         assert_eq!(
-            res.unwrap().1.utrs.display(sig),
+            res.unwrap().1.utrs.display(),
             "PLUS(ZERO x_) = ZERO;\nPLUS(SUCC(x_) y_) = SUCC(PLUS(x_ y_));"
         );
     }
@@ -409,9 +402,8 @@ mod tests {
         ).unwrap()
             .1;
         let res = typed_context(CompleteStr("PLUS(x_ [!])"), &mut lex, &mut ctx);
-        let sig = &lex.0.read().expect("poisoned lexicon").signature;
 
-        assert_eq!(res.unwrap().1.display(sig), "PLUS(x_ [!])");
+        assert_eq!(res.unwrap().1.display(), "PLUS(x_ [!])");
     }
 
     #[test]
@@ -428,9 +420,8 @@ mod tests {
         ).unwrap()
             .1;
         let res = typed_rulecontext(CompleteStr("PLUS(x_ [!]) = ZERO"), &mut lex, &mut ctx);
-        let sig = &lex.0.read().expect("poisoned lexicon").signature;
 
-        assert_eq!(res.unwrap().1.display(sig), "PLUS(x_ [!]) = ZERO");
+        assert_eq!(res.unwrap().1.display(), "PLUS(x_ [!]) = ZERO");
     }
 
     #[test]
@@ -451,13 +442,12 @@ mod tests {
             &mut lex,
             &mut ctx,
         );
-        let sig = &lex.0.read().expect("poisoned lexicon").signature;
 
         let res_string = res
             .unwrap()
             .1
             .iter()
-            .map(|rc| format!("{};", rc.display(sig)))
+            .map(|rc| format!("{};", rc.display()))
             .collect::<Vec<_>>()
             .join("\n");
         assert_eq!(res_string, "PLUS(x_ [!]) = ZERO;\n[!] = SUCC(ZERO);");

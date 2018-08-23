@@ -23,7 +23,7 @@ nom = "4.0"
 polytype = "6.0"
 rand = "0.5"
 rayon = "1.0"
-term_rewriting = "0.3"
+term_rewriting = "0.4"
 
 [dev-dependencies]
 serde = "1.0"
