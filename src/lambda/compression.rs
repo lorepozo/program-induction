@@ -80,7 +80,7 @@ impl Default for CompressionParams {
 /// - `proposal_to_dsl` adds the candidate to the dsl and returns a new joint minimum description
 ///   length for the dsl. For example, this may be set to:
 ///
-///   ```ignore
+///   ```compile_fails
 ///   |_state, expr, dsl, frontiers, params| {
 ///       if dsl.invent(expr.clone(), 0.).is_ok() {
 ///           Some(dsl.inside_outside(frontiers, params.pseudocounts))

@@ -19,6 +19,7 @@ fn arith_evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
 }
 
 #[test]
+#[ignore]
 fn ec_circuits_dl() {
     let dsl = circuits::dsl();
     let tasks = circuits::make_tasks(100);
@@ -100,6 +101,7 @@ fn explore_strings() {
 }
 
 #[test]
+#[ignore]
 fn ec_strings() {
     let dsl = strings::dsl();
     let examples = vec![
