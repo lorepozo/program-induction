@@ -413,6 +413,11 @@ impl PartialEq for Lexicon {
         Arc::ptr_eq(&self.0, &other.0)
     }
 }
+impl fmt::Display for Lexicon {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.read().expect("poisoned lexicon").fmt(f)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct Lex {
@@ -422,6 +427,22 @@ pub(crate) struct Lex {
     pub(crate) background: Vec<Rule>,
     /// If `true`, then the `TRS`s should be deterministic.
     pub(crate) deterministic: bool,
+}
+impl fmt::Display for Lex {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Signature:\n")?;
+        for (op, schema) in self.signature.operators().iter().zip(&self.ops) {
+            write!(f, "{}: {}\n", op.display(), schema)?;
+        }
+        for (var, schema) in self.signature.variables().iter().zip(&self.vars) {
+            write!(f, "{}: {}\n", var.display(), schema)?;
+        }
+        write!(f, "\nBackground:\n")?;
+        for rule in &self.background {
+            write!(f, "{}\n", rule.pretty())?;
+        }
+        write!(f, "\nDeterministic: {}\n", self.deterministic)
+    }
 }
 impl Lex {
     fn free_vars(&self) -> Vec<TypeVar> {
