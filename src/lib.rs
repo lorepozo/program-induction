@@ -143,3 +143,24 @@ pub struct Task<'a, R: Send + Sync + Sized, X: Clone + Send + Sync, O: Sync> {
     /// [`unit`]: https://doc.rust-lang.org/std/primitive.unit.html
     pub observation: O,
 }
+impl<'a, R, X> Task<'a, R, X, ()>
+where
+    R: 'a + Send + Sync + Sized,
+    X: 'a + Clone + Send + Sync,
+{
+    pub fn noop(tp: TypeSchema) -> Self {
+        Task {
+            oracle: Box::new(noop_oracle),
+            tp,
+            observation: (),
+        }
+    }
+}
+
+fn noop_oracle<R, X>(_: &R, _: &X) -> f64
+where
+    R: Send + Sync + Sized,
+    X: Clone + Send + Sync,
+{
+    f64::NEG_INFINITY
+}
