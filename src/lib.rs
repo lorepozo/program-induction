@@ -148,6 +148,8 @@ where
     R: 'a + Send + Sync + Sized,
     X: 'a + Clone + Send + Sync,
 {
+    /// Construct a task which always evaluates to negative infinity and has no observsation.
+    /// I.e., it exists solely for the type.
     pub fn noop(tp: TypeSchema) -> Self {
         Task {
             oracle: Box::new(noop_oracle),
