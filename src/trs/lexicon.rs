@@ -444,18 +444,18 @@ pub(crate) struct Lex {
 }
 impl fmt::Display for Lex {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Signature:\n")?;
+        writeln!(f, "Signature:")?;
         for (op, schema) in self.signature.operators().iter().zip(&self.ops) {
-            write!(f, "{}: {}\n", op.display(), schema)?;
+            writeln!(f, "{}: {}", op.display(), schema)?;
         }
         for (var, schema) in self.signature.variables().iter().zip(&self.vars) {
-            write!(f, "{}: {}\n", var.display(), schema)?;
+            writeln!(f, "{}: {}", var.display(), schema)?;
         }
-        write!(f, "\nBackground:\n")?;
+        writeln!(f, "\nBackground:")?;
         for rule in &self.background {
-            write!(f, "{}\n", rule.pretty())?;
+            writeln!(f, "{}", rule.pretty())?;
         }
-        write!(f, "\nDeterministic: {}\n", self.deterministic)
+        writeln!(f, "\nDeterministic: {}", self.deterministic)
     }
 }
 impl Lex {
