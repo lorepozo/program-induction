@@ -18,7 +18,6 @@ use super::{Lexicon, ModelParams, SampleError, TypeError};
 /// Manages the semantics of a term rewriting system.
 #[derive(Debug, PartialEq, Clone)]
 pub struct TRS {
-    // TODO: may also want to track background knowledge here.
     pub(crate) lex: Lexicon,
     // INVARIANT: UntypedTRS.rules ends with lex.background
     pub(crate) utrs: UntypedTRS,
@@ -36,6 +35,7 @@ impl TRS {
     /// # extern crate term_rewriting;
     /// # use programinduction::trs::{TRS, Lexicon};
     /// # use term_rewriting::{Signature, parse_rule};
+    /// # use polytype::Context as TypeContext;
     /// # fn main() {
     /// let mut sig = Signature::default();
     ///
@@ -58,25 +58,35 @@ impl TRS {
     ///     ptp![int],
     /// ];
     ///
-    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false);
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false, TypeContext::default());
     ///
-    /// let trs = TRS::new(&lexicon, rules).unwrap();
+    /// let ctx = lexicon.context();
+    ///
+    /// let trs = TRS::new(&lexicon, rules, &ctx).unwrap();
     ///
     /// assert_eq!(trs.size(), 12);
     /// # }
     /// ```
     /// [`Lexicon`]: struct.Lexicon.html
-    pub fn new(lex: &Lexicon, mut rules: Vec<Rule>) -> Result<TRS, TypeError> {
-        let lex = lex.clone();
-        let mut ctx = TypeContext::default();
+    pub fn new(
+        lexicon: &Lexicon,
+        mut rules: Vec<Rule>,
+        ctx: &TypeContext,
+    ) -> Result<TRS, TypeError> {
+        let lexicon = lexicon.clone();
+        let mut ctx = ctx.clone();
         let utrs = {
-            let lex = lex.0.read().expect("poisoned lexicon");
+            let lex = lexicon.0.read().expect("poisoned lexicon");
             rules.append(&mut lex.background.clone());
             let utrs = UntypedTRS::new(rules);
             lex.infer_utrs(&utrs, &mut ctx)?;
             utrs
         };
-        Ok(TRS { lex, utrs, ctx })
+        Ok(TRS {
+            lex: lexicon,
+            utrs,
+            ctx,
+        })
     }
 
     /// The size of the underlying [`term_rewriting::TRS`].
@@ -157,6 +167,7 @@ impl TRS {
     /// # extern crate rand;
     /// # extern crate term_rewriting;
     /// # use programinduction::trs::{TRS, Lexicon};
+    /// # use polytype::Context as TypeContext;
     /// # use rand::{thread_rng};
     /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
     /// # fn main() {
@@ -190,9 +201,9 @@ impl TRS {
     /// for r in &rules {
     ///     println!("{:?}", r);
     /// }
-    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false);
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false, TypeContext::default());
     ///
-    /// let mut trs = TRS::new(&lexicon, rules).unwrap();
+    /// let mut trs = TRS::new(&lexicon, rules, &lexicon.context()).unwrap();
     ///
     /// assert_eq!(trs.len(), 2);
     ///

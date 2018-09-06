@@ -15,6 +15,7 @@
 //! # extern crate programinduction;
 //! # extern crate term_rewriting;
 //! # use programinduction::trs::{TRS, Lexicon};
+//! # use polytype::Context as TypeContext;
 //! # use term_rewriting::{Signature, parse_rule};
 //! # fn main() {
 //! let mut sig = Signature::default();
@@ -38,9 +39,9 @@
 //!     ptp![int],
 //! ];
 //!
-//! let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false);
+//! let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false, TypeContext::default());
 //!
-//! let trs = TRS::new(&lexicon, rules);
+//! let trs = TRS::new(&lexicon, rules, &lexicon.context());
 //! # }
 //! ```
 
@@ -175,12 +176,13 @@ pub fn task_by_rewrite<'a, O: Sync>(
     data: &'a [Rule],
     params: ModelParams,
     lex: &Lexicon,
-    ctx: &mut polytype::Context,
     observation: O,
 ) -> Result<Task<'a, Lexicon, TRS, O>, TypeError> {
+    let mut ctx = lex.0.read().expect("poisoned lexicon").ctx.clone();
     Ok(Task {
         oracle: Box::new(move |_s: &Lexicon, h: &TRS| -h.posterior(data, params)),
-        tp: lex.infer_rules(data, ctx)?,
+        // assuming the rules have no variables, we can use the Lexicon's ctx.
+        tp: lex.infer_rules(data, &mut ctx)?,
         observation,
     })
 }

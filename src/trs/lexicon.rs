@@ -48,6 +48,7 @@ impl Lexicon {
     /// # #[macro_use] extern crate polytype;
     /// # extern crate programinduction;
     /// # use programinduction::trs::Lexicon;
+    /// # use polytype::Context as TypeContext;
     /// # fn main() {
     /// let operators = vec![
     ///     (2, Some("PLUS".to_string()), ptp![@arrow[tp!(int), tp!(int), tp!(int)]]),
@@ -56,14 +57,18 @@ impl Lexicon {
     /// ];
     /// let deterministic = false;
     ///
-    /// let lexicon = Lexicon::new(operators, deterministic);
+    /// let lexicon = Lexicon::new(operators, deterministic, TypeContext::default());
     /// # }
     /// ```
     ///
     /// [`polytype::ptp`]: https://docs.rs/polytype/~6.0/polytype/macro.ptp.html
     /// [`polytype::TypeSchema`]: https://docs.rs/polytype/~6.0/polytype/enum.TypeSchema.html
     /// [`term_rewriting::Operator`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Operator.html
-    pub fn new(operators: Vec<(u32, Option<String>, TypeSchema)>, deterministic: bool) -> Lexicon {
+    pub fn new(
+        operators: Vec<(u32, Option<String>, TypeSchema)>,
+        deterministic: bool,
+        ctx: TypeContext,
+    ) -> Lexicon {
         let mut signature = Signature::default();
         let mut ops = Vec::with_capacity(operators.len());
         for (id, name, tp) in operators {
@@ -76,6 +81,7 @@ impl Lexicon {
             signature,
             background: vec![],
             deterministic,
+            ctx,
         })))
     }
     /// Construct a `Lexicon` with a set of background
@@ -92,6 +98,7 @@ impl Lexicon {
     /// # extern crate term_rewriting;
     /// # use programinduction::trs::Lexicon;
     /// # use term_rewriting::{Signature, parse_rule};
+    /// # use polytype::Context as TypeContext;
     /// # fn main() {
     /// let mut sig = Signature::default();
     ///
@@ -112,7 +119,7 @@ impl Lexicon {
     ///
     /// let deterministic = false;
     ///
-    /// let lexicon = Lexicon::from_signature(sig, ops, vars, background, deterministic);
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, background, deterministic, TypeContext::default());
     /// # }
     /// ```
     ///
@@ -127,6 +134,7 @@ impl Lexicon {
         vars: Vec<TypeSchema>,
         background: Vec<Rule>,
         deterministic: bool,
+        ctx: TypeContext,
     ) -> Lexicon {
         Lexicon(Arc::new(RwLock::new(Lex {
             ops,
@@ -134,6 +142,7 @@ impl Lexicon {
             signature,
             background,
             deterministic,
+            ctx,
         })))
     }
     /// Return the specified operator if possible.
@@ -147,6 +156,9 @@ impl Lexicon {
     /// All the free type variables in the lexicon.
     pub fn free_vars(&self) -> Vec<TypeVar> {
         self.0.read().expect("poisoned lexicon").free_vars()
+    }
+    pub fn context(&self) -> TypeContext {
+        self.0.read().expect("poisoned lexicon").ctx.clone()
     }
     /// Infer the [`polytype::TypeSchema`] associated with a [`term_rewriting::Context`].
     ///
@@ -176,13 +188,13 @@ impl Lexicon {
     ///
     /// let deterministic = false;
     ///
-    /// let lexicon = Lexicon::from_signature(sig, ops, vars, background, deterministic);
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, background, deterministic, TypeContext::default());
     ///
     /// let context = Context::Application {
     ///     op: succ,
     ///     args: vec![Context::Hole]
     /// };
-    /// let mut ctx = TypeContext::default();
+    /// let mut ctx = lexicon.context();
     ///
     /// let inferred_schema = lexicon.infer_context(&context, &mut ctx).unwrap();
     ///
@@ -252,10 +264,10 @@ impl Lexicon {
     ///     (0, Some("ZERO".to_string()), ptp![int]),
     /// ];
     /// let deterministic = false;
-    /// let mut lexicon = Lexicon::new(operators, deterministic);
+    /// let mut lexicon = Lexicon::new(operators, deterministic, TypeContext::default());
     ///
     /// let schema = ptp![int];
-    /// let mut ctx = TypeContext::default();
+    /// let mut ctx = lexicon.context();
     /// let invent = true;
     /// let atom_weights = (0.5, 0.25, 0.25);
     /// let max_d = 4;
@@ -395,7 +407,8 @@ impl Lexicon {
         let mut rules1 = trs1.utrs.rules[..trs1.utrs.len() - background_size].to_vec();
         let mut rules2 = trs2.utrs.rules.clone(); // includes background
         rules1.append(&mut rules2);
-        let mut trs = TRS::new(&trs1.lex, rules1)?;
+        let ctx = &self.0.read().expect("poisoned lexicon").ctx;
+        let mut trs = TRS::new(&trs1.lex, rules1, ctx)?;
         if self.0.read().expect("poisoned lexicon").deterministic {
             trs.utrs.make_deterministic(rng);
         }
@@ -427,6 +440,7 @@ pub(crate) struct Lex {
     pub(crate) background: Vec<Rule>,
     /// If `true`, then the `TRS`s should be deterministic.
     pub(crate) deterministic: bool,
+    pub(crate) ctx: TypeContext,
 }
 impl fmt::Display for Lex {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -978,7 +992,11 @@ impl GP for Lexicon {
         pop_size: usize,
         _tp: &TypeSchema,
     ) -> Vec<Self::Expression> {
-        match TRS::new(self, Vec::new()) {
+        match TRS::new(
+            self,
+            Vec::new(),
+            &self.0.read().expect("poisoned lexicon").ctx,
+        ) {
             Ok(mut trs) => {
                 if self.0.read().expect("poisoned lexicon").deterministic {
                     trs.utrs.make_deterministic(rng);
