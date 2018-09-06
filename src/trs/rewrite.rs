@@ -214,9 +214,9 @@ impl TRS {
     /// ];
     /// let mut rng = thread_rng();
     /// let atom_weights = (0.5, 0.25, 0.25);
-    /// let max_depth = 4;
+    /// let max_size = 50;
     ///
-    /// if let Ok(new_trs) = trs.add_rule(&contexts, atom_weights, max_depth, &mut rng) {
+    /// if let Ok(new_trs) = trs.add_rule(&contexts, atom_weights, max_size, &mut rng) {
     ///     assert_eq!(new_trs.len(), 3);
     /// } else {
     ///     assert_eq!(trs.len(), 2);
@@ -227,18 +227,16 @@ impl TRS {
         &self,
         contexts: &[RuleContext],
         atom_weights: (f64, f64, f64),
-        max_depth: usize,
+        max_size: usize,
         rng: &mut R,
     ) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
         let context = sample_iter(rng, contexts, 1)?[0];
-        let rule = trs.lex.sample_rule_from_context(
-            &context,
-            &mut trs.ctx,
-            atom_weights,
-            true,
-            max_depth,
-        )?;
+        println!("context: {}", context.pretty());
+        let rule =
+            trs.lex
+                .sample_rule_from_context(&context, &mut trs.ctx, atom_weights, true, max_size)?;
+        println!("rule: {}", rule.pretty());
         trs.lex
             .0
             .write()

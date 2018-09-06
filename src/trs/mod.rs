@@ -91,7 +91,7 @@ impl ::std::error::Error for TypeError {
 pub enum SampleError {
     TypeError(TypeError),
     TRSError(TRSError),
-    DepthExceeded(usize, usize),
+    SizeExceeded(usize, usize),
     OptionsExhausted,
     Subterm,
 }
@@ -120,8 +120,8 @@ impl fmt::Display for SampleError {
         match *self {
             SampleError::TypeError(ref e) => write!(f, "type error: {}", e),
             SampleError::TRSError(ref e) => write!(f, "TRS error: {}", e),
-            SampleError::DepthExceeded(depth, max_depth) => {
-                write!(f, "depth {} exceeded maximum of {}", depth, max_depth)
+            SampleError::SizeExceeded(size, max_size) => {
+                write!(f, "size {} exceeded maximum of {}", size, max_size)
             }
             SampleError::OptionsExhausted => write!(f, "failed to sample (options exhausted)"),
             SampleError::Subterm => write!(f, "cannot sample subterm"),

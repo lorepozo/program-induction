@@ -22,8 +22,8 @@ use GP;
 pub struct GeneticParams {
     /// The number of hypotheses crossover should generate.
     pub n_crosses: usize,
-    /// The maximum number of non-progressing recursive steps sampling can make without failing.
-    pub max_sample_depth: usize,
+    /// The maximum number of nodes a sampled `Term` can have without failing.
+    pub max_sample_size: usize,
     /// The probability of adding (vs. deleting) a rule during mutation.
     pub p_add: f64,
     /// The probability of keeping a rule during crossover.
@@ -270,9 +270,9 @@ impl Lexicon {
     /// let mut ctx = lexicon.context();
     /// let invent = true;
     /// let atom_weights = (0.5, 0.25, 0.25);
-    /// let max_d = 4;
+    /// let max_size = 50;
     ///
-    /// let term = lexicon.sample_term(&schema, &mut ctx, atom_weights, invent, max_d).unwrap();
+    /// let term = lexicon.sample_term(&schema, &mut ctx, atom_weights, invent, max_size).unwrap();
     /// # }
     /// ```
     ///
@@ -283,14 +283,14 @@ impl Lexicon {
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
         invent: bool,
-        max_d: usize,
+        max_size: usize,
     ) -> Result<Term, SampleError> {
         self.0.write().expect("poisoned lexicon").sample_term(
             schema,
             ctx,
             atom_weights,
             invent,
-            max_d,
+            max_size,
             0,
         )
     }
@@ -301,12 +301,12 @@ impl Lexicon {
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
         invent: bool,
-        max_d: usize,
+        max_size: usize,
     ) -> Result<Term, SampleError> {
         self.0
             .write()
             .expect("poisoned lexicon")
-            .sample_term_from_context(context, ctx, atom_weights, invent, max_d, 0)
+            .sample_term_from_context(context, ctx, atom_weights, invent, max_size, 0)
     }
     /// Sample a `Rule`.
     pub fn sample_rule(
@@ -315,14 +315,14 @@ impl Lexicon {
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
         invent: bool,
-        max_d: usize,
+        max_size: usize,
     ) -> Result<Rule, SampleError> {
         self.0.write().expect("poisoned lexicon").sample_rule(
             schema,
             ctx,
             atom_weights,
             invent,
-            max_d,
+            max_size,
             0,
         )
     }
@@ -333,12 +333,12 @@ impl Lexicon {
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
         invent: bool,
-        max_d: usize,
+        max_size: usize,
     ) -> Result<Rule, SampleError> {
         self.0
             .write()
             .expect("poisoned lexicon")
-            .sample_rule_from_context(context, ctx, atom_weights, invent, max_d, 0)
+            .sample_rule_from_context(context, ctx, atom_weights, invent, max_size, 0)
     }
     /// Give the log probability of sampling a Term.
     pub fn logprior_term(
@@ -497,27 +497,29 @@ impl Lex {
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
         invent: bool,
-        max_d: usize,
-        d: usize,
+        max_size: usize,
+        size: usize,
         vars: &mut Vec<Variable>,
     ) -> Result<Term, SampleError> {
+        let mut size = size;
         match *atom {
             Atom::Variable(ref v) => Ok(Term::Variable(v.clone())),
             Atom::Operator(ref op) => {
+                // TODO: introduce shortcut in case not enough headroom
+                size += 1;
                 let orig_ctx = ctx.clone(); // for "undo" semantics
                 let mut args = Vec::with_capacity(arg_types.len());
-                for (i, arg_tp) in arg_types.into_iter().enumerate() {
+                for arg_tp in arg_types {
                     let subtype = arg_tp.apply(ctx);
                     let arg_schema = TypeSchema::Monotype(arg_tp);
-                    let d_i = (d + 1) * ((i == 0) as usize);
                     let result =
                         self.sample_term_internal(
                             &arg_schema,
                             ctx,
                             atom_weights,
                             invent,
-                            max_d,
-                            d_i,
+                            max_size,
+                            size,
                             vars,
                         ).map_err(|_| SampleError::Subterm)
                             .and_then(|subterm| {
@@ -526,7 +528,10 @@ impl Lex {
                                 Ok(subterm)
                             });
                     match result {
-                        Ok(subterm) => args.push(subterm),
+                        Ok(subterm) => {
+                            size += subterm.size();
+                            args.push(subterm);
+                        }
                         Err(e) => {
                             *ctx = orig_ctx;
                             return Err(e);
@@ -707,10 +712,18 @@ impl Lex {
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
         invent: bool,
-        max_d: usize,
-        d: usize,
+        max_size: usize,
+        size: usize,
     ) -> Result<Term, SampleError> {
-        self.sample_term_internal(schema, ctx, atom_weights, invent, max_d, d, &mut vec![])
+        self.sample_term_internal(
+            schema,
+            ctx,
+            atom_weights,
+            invent,
+            max_size,
+            size,
+            &mut vec![],
+        )
     }
     #[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
     pub fn sample_term_internal(
@@ -719,18 +732,22 @@ impl Lex {
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
         invent: bool,
-        max_d: usize,
-        d: usize,
+        max_size: usize,
+        size: usize,
         vars: &mut Vec<Variable>,
     ) -> Result<Term, SampleError> {
-        if d > max_d {
-            return Err(SampleError::DepthExceeded(d, max_d));
+        //let spacing = iter::repeat(" ").take(size).collect::<String>();
+        //println!("{}looking for {} at {}/{}", spacing, schema, size, max_size);
+        if size >= max_size {
+            //println!("{}too big!", spacing);
+            return Err(SampleError::SizeExceeded(size, max_size));
         }
 
         let tp = schema.instantiate(ctx);
 
         for option in self.prepare_options(vars, atom_weights, invent) {
             if let Some(atom) = option {
+                //println!("{}trying {} for {} at {}/{}", spacing, atom.display(), schema, size, max_size);
                 if let Ok(arg_types) = self.fit_atom(&atom, &tp, ctx) {
                     let result = self.place_atom(
                         &atom,
@@ -738,8 +755,8 @@ impl Lex {
                         ctx,
                         atom_weights,
                         invent,
-                        max_d,
-                        d,
+                        max_size,
+                        size,
                         vars,
                     );
                     if result.is_ok() {
@@ -748,10 +765,12 @@ impl Lex {
                 }
             } else {
                 let new_var = self.invent_variable(&tp);
+                //println!("{}inventing {}", spacing, new_var.display());
                 vars.push(new_var.clone());
                 return Ok(Term::Variable(new_var));
             }
         }
+        //println!("{}exhausted",spacing);
         Err(SampleError::OptionsExhausted)
     }
     fn prepare_options(
@@ -790,8 +809,8 @@ impl Lex {
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
         invent: bool,
-        max_d: usize,
-        d: usize,
+        max_size: usize,
+        size: usize,
     ) -> Result<Term, SampleError> {
         let mut map = HashMap::new();
         let context = context.clone();
@@ -806,8 +825,8 @@ impl Lex {
                 ctx,
                 atom_weights,
                 invent,
-                max_d,
-                d,
+                max_size,
+                size,
                 &mut context_vars,
             )?;
             context.replace(&p, Context::from(subterm));
@@ -820,17 +839,31 @@ impl Lex {
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
         invent: bool,
-        max_d: usize,
-        d: usize,
+        max_size: usize,
+        size: usize,
     ) -> Result<Rule, SampleError> {
         let orig_self = self.clone();
         let orig_ctx = ctx.clone();
         loop {
             let mut vars = vec![];
-            let lhs =
-                self.sample_term_internal(schema, ctx, atom_weights, invent, max_d, d, &mut vars)?;
-            let rhs =
-                self.sample_term_internal(schema, ctx, atom_weights, false, max_d, d, &mut vars)?;
+            let lhs = self.sample_term_internal(
+                schema,
+                ctx,
+                atom_weights,
+                invent,
+                max_size,
+                size,
+                &mut vars,
+            )?;
+            let rhs = self.sample_term_internal(
+                schema,
+                ctx,
+                atom_weights,
+                false,
+                max_size,
+                size,
+                &mut vars,
+            )?;
             if let Some(rule) = Rule::new(lhs, vec![rhs]) {
                 return Ok(rule);
             } else {
@@ -845,8 +878,8 @@ impl Lex {
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
         invent: bool,
-        max_d: usize,
-        d: usize,
+        max_size: usize,
+        size: usize,
     ) -> Result<Rule, SampleError> {
         let mut map = HashMap::new();
         let mut context = context.clone();
@@ -860,8 +893,8 @@ impl Lex {
                 ctx,
                 atom_weights,
                 p[0] == 0 && invent,
-                max_d,
-                d,
+                max_size,
+                size,
                 &mut context_vars,
             )?;
             context = context
@@ -1025,7 +1058,7 @@ impl GP for Lexicon {
                 if let Ok(new_trs) = trs.add_rule(
                     &params.templates,
                     params.atom_weights,
-                    params.max_sample_depth,
+                    params.max_sample_size,
                     rng,
                 ) {
                     return new_trs;
