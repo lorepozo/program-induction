@@ -4,7 +4,7 @@ use itertools::Itertools;
 use polytype::TypeSchema;
 use rand::{seq, Rng};
 use std::cmp::Ordering;
-use utils::weighted_sample;
+use utils::{logsumexp, weighted_sample};
 
 use Task;
 
@@ -258,9 +258,11 @@ fn sample_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
         .iter()
         .map(|&(_, score)| score)
         .combinations(n)
-        .map(|combo| (-combo.iter().sum::<f64>()).exp())
+        .map(|combo| (-combo.iter().sum::<f64>()))
         .enumerate()
         .unzip();
+    let sum_scores = logsumexp(&scores);
+    let scores = scores.iter().map(|x| (x - sum_scores).exp()).collect::<Vec<_>>();
     let idx = weighted_sample(&idxs, &scores);
     *pop = options.into_iter().combinations(n).nth(*idx).unwrap();
 }
