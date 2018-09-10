@@ -404,7 +404,7 @@ impl Lexicon {
             .expect("poisoned lexicon")
             .background
             .len();
-        let mut rules1 = trs1.utrs.rules[..trs1.utrs.len() - background_size].to_vec();
+        let mut rules1 = trs1.utrs.rules[..(trs1.utrs.len() - background_size)].to_vec();
         let mut rules2 = trs2.utrs.rules.clone(); // includes background
         rules1.append(&mut rules2);
         let ctx = &self.0.read().expect("poisoned lexicon").ctx;
@@ -1074,7 +1074,7 @@ impl GP for Lexicon {
             .expect("poorly-typed TRS in crossover");
         iter::repeat(trs)
             .take(params.n_crosses)
-            .update(|trs| trs.utrs.rules.retain(|_| rng.gen_bool(params.p_keep)))
+            .update(|trs| trs.utrs.rules.retain(|r| self.0.read().expect("poisoned lexicon").background.contains(&r) || rng.gen_bool(params.p_keep)))
             .collect()
     }
 }
