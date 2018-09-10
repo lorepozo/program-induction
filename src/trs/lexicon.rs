@@ -451,7 +451,7 @@ impl fmt::Display for Lex {
         for (var, schema) in self.signature.variables().iter().zip(&self.vars) {
             writeln!(f, "{}: {}", var.display(), schema)?;
         }
-        writeln!(f, "\nBackground:")?;
+        writeln!(f, "\nBackground: {}", self.background.len())?;
         for rule in &self.background {
             writeln!(f, "{}", rule.pretty())?;
         }
@@ -736,10 +736,7 @@ impl Lex {
         size: usize,
         vars: &mut Vec<Variable>,
     ) -> Result<Term, SampleError> {
-        //let spacing = iter::repeat(" ").take(size).collect::<String>();
-        //println!("{}looking for {} at {}/{}", spacing, schema, size, max_size);
         if size >= max_size {
-            //println!("{}too big!", spacing);
             return Err(SampleError::SizeExceeded(size, max_size));
         }
 
@@ -747,7 +744,6 @@ impl Lex {
 
         for option in self.prepare_options(vars, atom_weights, invent) {
             if let Some(atom) = option {
-                //println!("{}trying {} for {} at {}/{}", spacing, atom.display(), schema, size, max_size);
                 if let Ok(arg_types) = self.fit_atom(&atom, &tp, ctx) {
                     let result = self.place_atom(
                         &atom,
@@ -765,12 +761,10 @@ impl Lex {
                 }
             } else {
                 let new_var = self.invent_variable(&tp);
-                //println!("{}inventing {}", spacing, new_var.display());
                 vars.push(new_var.clone());
                 return Ok(Term::Variable(new_var));
             }
         }
-        //println!("{}exhausted",spacing);
         Err(SampleError::OptionsExhausted)
     }
     fn prepare_options(

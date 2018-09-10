@@ -5,6 +5,7 @@
 //! - https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system
 //! - (TAPL; Pierce, 2002, ch. 22)
 
+use itertools::Itertools;
 use polytype::Context as TypeContext;
 use rand::seq::sample_iter;
 use rand::Rng;
@@ -232,11 +233,9 @@ impl TRS {
     ) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
         let context = sample_iter(rng, contexts, 1)?[0];
-        println!("context: {}", context.pretty());
         let rule =
             trs.lex
                 .sample_rule_from_context(&context, &mut trs.ctx, atom_weights, true, max_size)?;
-        println!("rule: {}", rule.pretty());
         trs.lex
             .0
             .write()
@@ -262,6 +261,13 @@ impl TRS {
 }
 impl fmt::Display for TRS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.utrs.display())
+        let true_len = self.utrs.len()-self.lex.0.read().expect("poisoned lexicon").background.len();
+        let trs_str = self.utrs.rules
+            .iter()
+            .take(true_len)
+            .map(|r| format!("{};", r.display()))
+            .join("\n");
+
+        write!(f, "{}", trs_str)
     }
 }
