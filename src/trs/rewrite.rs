@@ -59,7 +59,7 @@ impl TRS {
     ///     ptp![int],
     /// ];
     ///
-    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false, TypeContext::default());
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], vec![], false, TypeContext::default());
     ///
     /// let ctx = lexicon.context();
     ///
@@ -201,7 +201,7 @@ impl TRS {
     /// for r in &rules {
     ///     println!("{:?}", r.pretty());
     /// }
-    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false, TypeContext::default());
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], vec![], false, TypeContext::default());
     ///
     /// let mut trs = TRS::new(&lexicon, rules, &lexicon.context()).unwrap();
     ///
@@ -233,9 +233,13 @@ impl TRS {
     ) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
         let context = sample_iter(rng, contexts, 1)?[0];
-        let rule =
-            trs.lex
-                .sample_rule_from_context(&context, &mut trs.ctx, atom_weights, true, max_size)?;
+        let rule = trs.lex.sample_rule_from_context(
+            &context,
+            &mut trs.ctx,
+            atom_weights,
+            true,
+            max_size,
+        )?;
         trs.lex
             .0
             .write()
@@ -254,15 +258,25 @@ impl TRS {
             Err(SampleError::OptionsExhausted)
         } else {
             let mut trs = self.clone();
-            trs.utrs.remove_clauses(sample_iter(rng, deletable, 1)?[0])?;
+            trs.utrs
+                .remove_clauses(sample_iter(rng, deletable, 1)?[0])?;
             Ok(trs)
         }
     }
 }
 impl fmt::Display for TRS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let true_len = self.utrs.len()-self.lex.0.read().expect("poisoned lexicon").background.len();
-        let trs_str = self.utrs.rules
+        let true_len = self.utrs.len()
+            - self
+                .lex
+                .0
+                .read()
+                .expect("poisoned lexicon")
+                .background
+                .len();
+        let trs_str = self
+            .utrs
+            .rules
             .iter()
             .take(true_len)
             .map(|r| format!("{};", r.display()))

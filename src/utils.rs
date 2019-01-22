@@ -75,7 +75,7 @@ pub fn weighted_sample<'a, T>(xs: &'a [T], ws: &[f64]) -> &'a T {
     let total = ws.iter().fold(0f64, |acc, x| acc + x);
     let threshold: f64 = Uniform::new(0f64, total).sample(&mut thread_rng());
     let mut cum = 0f64;
-    for (wp, x) in ws.into_iter().zip(xs) {
+    for (wp, x) in ws.iter().zip(xs) {
         cum += *wp;
         if threshold <= cum {
             return x;

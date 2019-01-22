@@ -39,7 +39,7 @@
 //!     ptp![int],
 //! ];
 //!
-//! let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false, TypeContext::default());
+//! let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], vec![], false, TypeContext::default());
 //!
 //! let trs = TRS::new(&lexicon, rules, &lexicon.context());
 //! # }
@@ -135,7 +135,7 @@ impl ::std::error::Error for SampleError {
 }
 
 /// Parameters for a TRS-based probabilistic model.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct ModelParams {
     /// How much partial credit is given for incorrect answers; it should be a
     /// probability (i.e. in [0, 1]).

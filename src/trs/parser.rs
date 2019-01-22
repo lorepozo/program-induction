@@ -44,12 +44,14 @@ impl ::std::error::Error for ParseError {
 pub fn parse_lexicon(
     input: &str,
     background: &str,
+    templates: &str,
     deterministic: bool,
     ctx: TypeContext,
 ) -> Result<Lexicon, ParseError> {
     if let Ok((CompleteStr(""), l)) = lexicon(
         CompleteStr(input),
         CompleteStr(background),
+        CompleteStr(templates),
         Signature::default(),
         vec![],
         vec![],
@@ -205,12 +207,14 @@ fn simple_lexicon<'a>(
                 >> many0!(ws!(comment))
                 >> ()
         ))),
-        |_| Lexicon::from_signature(sig, ops, vars, vec![], deterministic, ctx)
+        |_| Lexicon::from_signature(sig, ops, vars, vec![], vec![], deterministic, ctx)
     )
 }
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
 fn lexicon<'a>(
     input: CompleteStr<'a>,
     bg: CompleteStr<'a>,
+    temp: CompleteStr<'a>,
     sig: Signature,
     vars: Vec<TypeSchema>,
     ops: Vec<TypeSchema>,
@@ -222,6 +226,12 @@ fn lexicon<'a>(
     match trs(bg, &mut lex, &mut ctx)? {
         (CompleteStr(""), trs) => {
             lex.0.write().expect("poisoned lexicon").background = trs.utrs.rules;
+        }
+        _ => return Err(Err::Error(Nomtext::Code(bg, nom::ErrorKind::Custom(0)))),
+    }
+    match templates(temp, &mut lex, &mut ctx)? {
+        (CompleteStr(""), templates) => {
+            lex.0.write().expect("poisoned lexicon").templates = templates;
             lex.0.write().expect("poisoned lexicon").ctx = ctx;
             Ok((remaining, lex))
         }
@@ -358,6 +368,7 @@ mod tests {
         let res = lexicon(
             CompleteStr("# COMMENT\nSUCC: int -> int;\nx_: list(int);"),
             CompleteStr(""),
+            CompleteStr(""),
             Signature::default(),
             vec![],
             vec![],
@@ -371,6 +382,7 @@ mod tests {
     fn typed_rule_test() {
         let mut lex = lexicon(
             CompleteStr("ZERO: int; SUCC: int -> int;"),
+            CompleteStr(""),
             CompleteStr(""),
             Signature::default(),
             vec![],
@@ -390,6 +402,7 @@ mod tests {
     fn trs_test() {
         let mut lex = lexicon(
             CompleteStr("ZERO: int; SUCC: int -> int; PLUS: int -> int -> int;"),
+            CompleteStr(""),
             CompleteStr(""),
             Signature::default(),
             vec![],
@@ -417,6 +430,7 @@ mod tests {
         let mut lex = lexicon(
             CompleteStr("ZERO: int; SUCC: int -> int; PLUS: int -> int -> int;"),
             CompleteStr(""),
+            CompleteStr(""),
             Signature::default(),
             vec![],
             vec![],
@@ -436,6 +450,7 @@ mod tests {
         let mut lex = lexicon(
             CompleteStr("ZERO: int; SUCC: int -> int; PLUS: int -> int -> int;"),
             CompleteStr(""),
+            CompleteStr(""),
             Signature::default(),
             vec![],
             vec![],
@@ -454,6 +469,7 @@ mod tests {
     fn templates_test() {
         let mut lex = lexicon(
             CompleteStr("ZERO: int; SUCC: int -> int; PLUS: int -> int -> int;"),
+            CompleteStr(""),
             CompleteStr(""),
             Signature::default(),
             vec![],

@@ -10,21 +10,25 @@ use Task;
 
 /// The mechanism by which individuals are selected for inclusion in the
 /// population.
+#[derive(Deserialize, Serialize)]
 pub enum GPSelection {
     /// `Deterministic` implies a strict survival-of-the-fittest selection
     /// mechanism, in which the best individuals are always retained. An
     /// individual can only be removed from a population if a better-scoring
     /// individual arises to take its place.
+    #[serde(alias = "deterministic")]
     Deterministic,
     /// `Probabilistic` implies a noisy survival-of-the-fittest selection
     /// mechanism, in which a population is selected probabilistically from a
     /// set of possible populations in proportion to its overall fitness. An
     /// individual can be removed from a population even by lower-scoring
     /// individuals, though this is relatively unlikely.
+    #[serde(alias = "probabilistic")]
     Probabilistic,
 }
 
 /// Parameters for genetic programming.
+#[derive(Deserialize, Serialize)]
 pub struct GPParams {
     /// The mechanism by which individuals are selected for inclusion in the
     /// population.
@@ -262,7 +266,10 @@ fn sample_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
         .enumerate()
         .unzip();
     let sum_scores = logsumexp(&scores);
-    let scores = scores.iter().map(|x| (x - sum_scores).exp()).collect::<Vec<_>>();
+    let scores = scores
+        .iter()
+        .map(|x| (x - sum_scores).exp())
+        .collect::<Vec<_>>();
     let idx = weighted_sample(&idxs, &scores);
     *pop = options.into_iter().combinations(n).nth(*idx).unwrap();
 }

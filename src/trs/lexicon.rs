@@ -14,7 +14,7 @@ use super::{SampleError, TypeError, TRS};
 use utils::{logsumexp, weighted_permutation};
 use GP;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// Parameters for [`Lexicon`] genetic programming ([`GP`]).
 ///
 /// [`Lexicon`]: struct.Lexicon.html
@@ -28,8 +28,6 @@ pub struct GeneticParams {
     pub p_add: f64,
     /// The probability of keeping a rule during crossover.
     pub p_keep: f64,
-    /// Rule templates to use when sampling rules.
-    pub templates: Vec<RuleContext>,
     /// The weight to assign variables, constants, and non-constant operators, respectively.
     pub atom_weights: (f64, f64, f64),
 }
@@ -80,6 +78,7 @@ impl Lexicon {
             vars: Vec::new(),
             signature,
             background: vec![],
+            templates: vec![],
             deterministic,
             ctx,
         })))
@@ -97,7 +96,7 @@ impl Lexicon {
     /// # extern crate programinduction;
     /// # extern crate term_rewriting;
     /// # use programinduction::trs::Lexicon;
-    /// # use term_rewriting::{Signature, parse_rule};
+    /// # use term_rewriting::{Signature, parse_rule, parse_rulecontext};
     /// # use polytype::Context as TypeContext;
     /// # fn main() {
     /// let mut sig = Signature::default();
@@ -117,9 +116,13 @@ impl Lexicon {
     ///     parse_rule(&mut sig, "PLUS(x_ SUCC(y_)) = SUCC(PLUS(x_ y_))").expect("parsed rule"),
     /// ];
     ///
+    /// let templates = vec![
+    ///     parse_rulecontext(&mut sig, "[!] = [!]").expect("parsed rulecontext"),
+    /// ];
+    ///
     /// let deterministic = false;
     ///
-    /// let lexicon = Lexicon::from_signature(sig, ops, vars, background, deterministic, TypeContext::default());
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, background, templates, deterministic, TypeContext::default());
     /// # }
     /// ```
     ///
@@ -133,6 +136,7 @@ impl Lexicon {
         ops: Vec<TypeSchema>,
         vars: Vec<TypeSchema>,
         background: Vec<Rule>,
+        templates: Vec<RuleContext>,
         deterministic: bool,
         ctx: TypeContext,
     ) -> Lexicon {
@@ -141,6 +145,7 @@ impl Lexicon {
             vars,
             signature,
             background,
+            templates,
             deterministic,
             ctx,
         })))
@@ -185,10 +190,11 @@ impl Lexicon {
     /// ops.push(ptp![int]);
     ///
     /// let background = vec![];
+    /// let templates = vec![];
     ///
     /// let deterministic = false;
     ///
-    /// let lexicon = Lexicon::from_signature(sig, ops, vars, background, deterministic, TypeContext::default());
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, background, templates, deterministic, TypeContext::default());
     ///
     /// let context = Context::Application {
     ///     op: succ,
@@ -438,6 +444,8 @@ pub(crate) struct Lex {
     pub(crate) vars: Vec<TypeSchema>,
     pub(crate) signature: Signature,
     pub(crate) background: Vec<Rule>,
+    /// Rule templates to use when sampling rules.
+    pub(crate) templates: Vec<RuleContext>,
     /// If `true`, then the `TRS`s should be deterministic.
     pub(crate) deterministic: bool,
     pub(crate) ctx: TypeContext,
@@ -489,7 +497,7 @@ impl Lex {
             .map(|o| o.into_iter().cloned().collect())
             .unwrap_or_else(Vec::new))
     }
-    #[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
     fn place_atom(
         &mut self,
         atom: &Atom,
@@ -512,8 +520,8 @@ impl Lex {
                 for arg_tp in arg_types {
                     let subtype = arg_tp.apply(ctx);
                     let arg_schema = TypeSchema::Monotype(arg_tp);
-                    let result =
-                        self.sample_term_internal(
+                    let result = self
+                        .sample_term_internal(
                             &arg_schema,
                             ctx,
                             atom_weights,
@@ -521,12 +529,13 @@ impl Lex {
                             max_size,
                             size,
                             vars,
-                        ).map_err(|_| SampleError::Subterm)
-                            .and_then(|subterm| {
-                                let tp = self.infer_term(&subterm, ctx)?.instantiate_owned(ctx);
-                                ctx.unify_fast(subtype, tp)?;
-                                Ok(subterm)
-                            });
+                        )
+                        .map_err(|_| SampleError::Subterm)
+                        .and_then(|subterm| {
+                            let tp = self.infer_term(&subterm, ctx)?.instantiate_owned(ctx);
+                            ctx.unify_fast(subtype, tp)?;
+                            Ok(subterm)
+                        });
                     match result {
                         Ok(subterm) => {
                             size += subterm.size();
@@ -725,7 +734,7 @@ impl Lex {
             &mut vec![],
         )
     }
-    #[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
     pub fn sample_term_internal(
         &mut self,
         schema: &TypeSchema,
@@ -1050,7 +1059,7 @@ impl GP for Lexicon {
         loop {
             if rng.gen_bool(params.p_add) {
                 if let Ok(new_trs) = trs.add_rule(
-                    &params.templates,
+                    &self.0.read().expect("poisoned lexicon").templates,
                     params.atom_weights,
                     params.max_sample_size,
                     rng,
