@@ -250,7 +250,7 @@ pub trait GP: Send + Sync + Sized {
     }
 }
 
-/// Given a mutable vector, `pop`, of item-score pairs sorted by score, and a
+/// Given a mutable `Vec`, `pop`, of item-score pairs sorted by score, and a
 /// `Vec` of expressions, `new_exprs`, sample a new score-sorted population in
 /// inverse proportion to its overall score. The length of `pop` does *not* change.
 fn sample_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {

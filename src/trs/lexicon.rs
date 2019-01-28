@@ -215,10 +215,8 @@ impl Lexicon {
         context: &Context,
         ctx: &mut TypeContext,
     ) -> Result<TypeSchema, TypeError> {
-        self.0
-            .write()
-            .expect("poisoned lexicon")
-            .infer_context(context, ctx)
+        let lex = self.0.write().expect("poisoned lexicon");
+        lex.infer_context(context, ctx)
     }
     /// Infer the `TypeSchema` associated with a `RuleContext`.
     pub fn infer_rulecontext(
@@ -226,18 +224,13 @@ impl Lexicon {
         context: &RuleContext,
         ctx: &mut TypeContext,
     ) -> Result<TypeSchema, TypeError> {
-        self.0
-            .write()
-            .expect("poisoned lexicon")
-            .infer_rulecontext(context, ctx)
+        let lex = self.0.write().expect("poisoned lexicon");
+        lex.infer_rulecontext(context, ctx)
     }
     /// Infer the `TypeSchema` associated with a `Rule`.
     pub fn infer_rule(&self, rule: &Rule, ctx: &mut TypeContext) -> Result<TypeSchema, TypeError> {
-        self.0
-            .write()
-            .expect("poisoned lexicon")
-            .infer_rule(rule, ctx)
-            .map(|(r, _, _)| r)
+        let lex = self.0.write().expect("poisoned lexicon");
+        lex.infer_rule(rule, ctx).map(|(r, _, _)| r)
     }
     /// Infer the `TypeSchema` associated with a collection of `Rules`.
     pub fn infer_rules(
@@ -245,10 +238,8 @@ impl Lexicon {
         rules: &[Rule],
         ctx: &mut TypeContext,
     ) -> Result<TypeSchema, TypeError> {
-        self.0
-            .write()
-            .expect("poisoned lexicon")
-            .infer_rules(rules, ctx)
+        let lex = self.0.write().expect("poisoned lexicon");
+        lex.infer_rules(rules, ctx)
     }
     /// Infer the `TypeSchema` associated with a `Rule`.
     pub fn infer_op(&self, op: &Operator) -> Result<TypeSchema, TypeError> {
@@ -293,15 +284,8 @@ impl Lexicon {
         variable: bool,
         max_size: usize,
     ) -> Result<Term, SampleError> {
-        self.0.write().expect("poisoned lexicon").sample_term(
-            schema,
-            ctx,
-            atom_weights,
-            invent,
-            variable,
-            max_size,
-            0,
-        )
+        let mut lex = self.0.write().expect("poisoned lexicon");
+        lex.sample_term(schema, ctx, atom_weights, invent, variable, max_size, 0)
     }
     /// Sample a `Term` conditioned on a `Context` rather than a `TypeSchema`.
     pub fn sample_term_from_context(
@@ -313,10 +297,8 @@ impl Lexicon {
         variable: bool,
         max_size: usize,
     ) -> Result<Term, SampleError> {
-        self.0
-            .write()
-            .expect("poisoned lexicon")
-            .sample_term_from_context(context, ctx, atom_weights, invent, variable, max_size, 0)
+        let mut lex = self.0.write().expect("poisoned lexicon");
+        lex.sample_term_from_context(context, ctx, atom_weights, invent, variable, max_size, 0)
     }
     /// Sample a `Rule`.
     pub fn sample_rule(
@@ -327,14 +309,8 @@ impl Lexicon {
         invent: bool,
         max_size: usize,
     ) -> Result<Rule, SampleError> {
-        self.0.write().expect("poisoned lexicon").sample_rule(
-            schema,
-            ctx,
-            atom_weights,
-            invent,
-            max_size,
-            0,
-        )
+        let mut lex = self.0.write().expect("poisoned lexicon");
+        lex.sample_rule(schema, ctx, atom_weights, invent, max_size, 0)
     }
     /// Sample a `Rule` conditioned on a `Context` rather than a `TypeSchema`.
     pub fn sample_rule_from_context(
@@ -345,10 +321,8 @@ impl Lexicon {
         invent: bool,
         max_size: usize,
     ) -> Result<Rule, SampleError> {
-        self.0
-            .write()
-            .expect("posioned lexicon")
-            .sample_rule_from_context(context, ctx, atom_weights, invent, max_size, 0)
+        let mut lex = self.0.write().expect("posioned lexicon");
+        lex.sample_rule_from_context(context, ctx, atom_weights, invent, max_size, 0)
     }
     /// Give the log probability of sampling a Term.
     pub fn logprior_term(
@@ -359,13 +333,8 @@ impl Lexicon {
         atom_weights: (f64, f64, f64),
         invent: bool,
     ) -> Result<f64, SampleError> {
-        self.0.read().expect("poisoned lexicon").logprior_term(
-            term,
-            schema,
-            ctx,
-            atom_weights,
-            invent,
-        )
+        let lex = self.0.read().expect("posioned lexicon");
+        lex.logprior_term(term, schema, ctx, atom_weights, invent)
     }
     /// Give the log probability of sampling a Rule.
     pub fn logprior_rule(
@@ -376,13 +345,8 @@ impl Lexicon {
         atom_weights: (f64, f64, f64),
         invent: bool,
     ) -> Result<f64, SampleError> {
-        self.0.read().expect("poisoned lexicon").logprior_rule(
-            rule,
-            schema,
-            ctx,
-            atom_weights,
-            invent,
-        )
+        let lex = self.0.read().expect("poisoned lexicon");
+        lex.logprior_rule(rule, schema, ctx, atom_weights, invent)
     }
     /// Give the log probability of sampling a TRS.
     pub fn logprior_utrs(
@@ -394,14 +358,8 @@ impl Lexicon {
         atom_weights: (f64, f64, f64),
         invent: bool,
     ) -> Result<f64, SampleError> {
-        self.0.read().expect("poisoned lexicon").logprior_utrs(
-            utrs,
-            schemas,
-            p_rule,
-            ctx,
-            atom_weights,
-            invent,
-        )
+        let lex = self.0.read().expect("poisoned lexicon");
+        lex.logprior_utrs(utrs, schemas, p_rule, ctx, atom_weights, invent)
     }
 
     /// merge two `TRS` into a single `TRS`.
