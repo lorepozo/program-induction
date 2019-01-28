@@ -1,4 +1,4 @@
-use itertools::Itertools;
+use itertools::{repeat_n, Itertools};
 use polytype::{Context as TypeContext, Type, TypeSchema, Variable as TypeVar};
 use rand::Rng;
 use std::collections::HashMap;
@@ -1000,21 +1000,34 @@ impl GP for Lexicon {
     type Params = GeneticParams;
     fn genesis<R: Rng>(
         &self,
-        _params: &Self::Params,
+        params: &Self::Params,
         rng: &mut R,
         pop_size: usize,
         _tp: &TypeSchema,
     ) -> Vec<Self::Expression> {
-        match TRS::new(
+        let trs = TRS::new(
             self,
             Vec::new(),
             &self.0.read().expect("poisoned lexicon").ctx,
-        ) {
+        );
+        match trs {
             Ok(mut trs) => {
                 if self.0.read().expect("poisoned lexicon").deterministic {
                     trs.utrs.make_deterministic(rng);
                 }
-                iter::repeat(trs).take(pop_size).collect()
+                let templates = self.0.read().expect("poisoned lexicon").templates.clone();
+                repeat_n(trs, pop_size)
+                    .map(|trs| loop {
+                        if let Ok(new_trs) = trs.add_rule(
+                            &templates,
+                            params.atom_weights,
+                            params.max_sample_size,
+                            rng,
+                        ) {
+                            return new_trs;
+                        }
+                    })
+                    .collect()
             }
             Err(err) => {
                 let lex = self.0.read().expect("poisoned lexicon");
@@ -1069,5 +1082,27 @@ impl GP for Lexicon {
                 })
             })
             .collect()
+    }
+
+    fn valid_individuals(
+        &self,
+        params: &Self::Params,
+        population: &[(Self::Expression, f64)],
+        individuals: Vec<Self::Expression>,
+    ) -> Vec<Self::Expression> {
+        // select alpha-unique individuals that are not yet in the population
+        let mut valids = vec![];
+        for individual in individuals {
+            let in_population = population
+                .iter()
+                .any(|p| UntypedTRS::alphas(&p.0.utrs, &individual.utrs));
+            let in_valids = valids
+                .iter()
+                .any(|v: &Self::Expression| UntypedTRS::alphas(&v.utrs, &individual.utrs));
+            if !in_population & !in_valids {
+                valids.push(individual);
+            }
+        }
+        valids
     }
 }
