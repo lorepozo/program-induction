@@ -131,7 +131,19 @@ impl TRS {
     /// Compute the log likelihood for a single datum.
     fn single_log_likelihood(&self, datum: &Rule, params: ModelParams) -> f64 {
         let ll = if let Some(ref rhs) = datum.rhs() {
-            let mut trace = Trace::new(&self.utrs, &datum.lhs, params.p_observe, params.max_size);
+            let bg_len = self
+                .lex
+                .0
+                .read()
+                .expect("poisoned lexicon")
+                .background
+                .len();
+            let mut trs = self.utrs.clone();
+            let mut bg = self.utrs.clone();
+            let trs_len = trs.rules.len() - bg_len;
+            bg.rules.drain(..trs_len);
+            trs.rules.drain(trs_len..);
+            let mut trace = Trace::new(&trs, &bg, &datum.lhs, params.p_observe, params.max_size);
             trace.rewrites_to(params.max_steps, rhs)
         } else {
             NEG_INFINITY
@@ -232,9 +244,9 @@ impl TRS {
         rng: &mut R,
     ) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
-        let context = sample_iter(rng, contexts, 1)?[0];
+        let context = sample_iter(rng, contexts, 1)?[0].clone();
         let rule = trs.lex.sample_rule_from_context(
-            &context,
+            context,
             &mut trs.ctx,
             atom_weights,
             true,
