@@ -203,6 +203,18 @@ pub trait GP: Send + Sync + Sized {
             .sorted_by(|&(_, ref x), &(_, ref y)| x.partial_cmp(y).expect("found NaN"))
     }
 
+    /// Determines whether some newly created offspring is even viable for
+    /// consideration as part of the population. This allows you to do things
+    /// like ensure a population of unique individuals.
+    fn valid_individuals(
+        &self,
+        params: &Self::Params,
+        population: &[(Self::Expression, f64)],
+        individuals: Vec<Self::Expression>,
+    ) -> Vec<Self::Expression> {
+        individuals
+    }
+
     /// Evolves a population. This will repeatedly run a Bernoulli trial with parameter
     /// [`mutation_prob`] and perform mutation or crossover depending on the outcome until
     /// [`n_delta`] expressions are determined.
@@ -217,32 +229,32 @@ pub trait GP: Send + Sync + Sized {
         task: &Task<Self, Self::Expression, O>,
         population: &mut Vec<(Self::Expression, f64)>,
     ) {
-        let mut new_exprs = Vec::with_capacity(gpparams.n_delta);
-        while new_exprs.len() < gpparams.n_delta {
+        let mut individuals = Vec::with_capacity(gpparams.n_delta);
+        while individuals.len() < gpparams.n_delta {
             if rng.gen_bool(gpparams.mutation_prob) {
                 let parent = self.tournament(rng, gpparams.tournament_size, population);
                 let child = self.mutate(params, rng, parent);
-                let fitness = (task.oracle)(self, &child);
-                new_exprs.push((child, fitness));
+                individuals.push(child);
             } else {
                 let parent1 = self.tournament(rng, gpparams.tournament_size, population);
                 let parent2 = self.tournament(rng, gpparams.tournament_size, population);
-                let children = self.crossover(params, rng, parent1, parent2);
-                let mut scored_children = children
-                    .into_iter()
-                    .map(|child| {
-                        let fitness = (task.oracle)(self, &child);
-                        (child, fitness)
-                    })
-                    .collect();
-                new_exprs.append(&mut scored_children);
+                let mut children = self.crossover(params, rng, parent1, parent2);
+                individuals.append(&mut children);
             }
+            individuals = self.valid_individuals(params, population, individuals);
         }
-        new_exprs.truncate(gpparams.n_delta);
+        individuals.truncate(gpparams.n_delta);
+        let scored_children = individuals
+            .into_iter()
+            .map(|child| {
+                let fitness = (task.oracle)(self, &child);
+                (child, fitness)
+            })
+            .collect();
         match gpparams.selection {
-            GPSelection::Probabilistic => sample_pop(new_exprs, population),
+            GPSelection::Probabilistic => sample_pop(scored_children, population),
             GPSelection::Deterministic => {
-                for child in new_exprs {
+                for child in scored_children {
                     sorted_place(child, population);
                 }
             }
