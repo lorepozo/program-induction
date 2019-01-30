@@ -12,7 +12,7 @@ use rand::Rng;
 use std::f64::NEG_INFINITY;
 use std::fmt;
 use term_rewriting::trace::Trace;
-use term_rewriting::{Rule, RuleContext, TRS as UntypedTRS};
+use term_rewriting::{Rule, RuleContext, Strategy as RewriteStrategy, TRS as UntypedTRS};
 
 use super::{Lexicon, ModelParams, SampleError, TypeError};
 
@@ -143,7 +143,14 @@ impl TRS {
             let trs_len = trs.rules.len() - bg_len;
             bg.rules.drain(..trs_len);
             trs.rules.drain(trs_len..);
-            let mut trace = Trace::new(&trs, &bg, &datum.lhs, params.p_observe, params.max_size);
+            let mut trace = Trace::new(
+                &trs,
+                &bg,
+                &datum.lhs,
+                params.p_observe,
+                params.max_size,
+                RewriteStrategy::All,
+            );
             trace.rewrites_to(params.max_steps, rhs)
         } else {
             NEG_INFINITY
