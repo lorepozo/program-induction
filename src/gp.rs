@@ -237,14 +237,14 @@ pub trait GP: Send + Sync + Sized {
         tp: &TypeSchema,
     ) -> Vec<Self::Expression>;
 
-    /// Mutate a single program.
+    /// Mutate a single program, potentially producing multiple offspring
     fn mutate<R: Rng>(
         &self,
         params: &Self::Params,
         rng: &mut R,
         prog: &Self::Expression,
         obs: &Self::Observation,
-    ) -> Self::Expression;
+    ) -> Vec<Self::Expression>;
 
     /// Perform crossover between two programs. There must be at least one child.
     fn crossover<R: Rng>(
@@ -329,7 +329,7 @@ pub trait GP: Send + Sync + Sized {
         while children.len() < gpparams.n_delta {
             let mut offspring = if rng.gen_bool(gpparams.mutation_prob) {
                 let parent = self.tournament(rng, gpparams.tournament_size, population);
-                vec![self.mutate(params, rng, parent, &task.observation)]
+                self.mutate(params, rng, parent, &task.observation)
             } else {
                 let parent1 = self.tournament(rng, gpparams.tournament_size, population);
                 let parent2 = self.tournament(rng, gpparams.tournament_size, population);

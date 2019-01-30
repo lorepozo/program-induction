@@ -1053,17 +1053,17 @@ impl GP for Lexicon {
         rng: &mut R,
         trs: &Self::Expression,
         _obs: &Self::Observation,
-    ) -> Self::Expression {
+    ) -> Vec<Self::Expression> {
         loop {
             if trs.is_empty() | rng.gen_bool(params.p_add) {
                 let templates = self.0.read().expect("poisoned lexicon").templates.clone();
                 if let Ok(new_trs) =
                     trs.add_rule(&templates, params.atom_weights, params.max_sample_size, rng)
                 {
-                    return new_trs;
+                    return vec![new_trs];
                 }
             } else if let Ok(new_trs) = trs.delete_rule(rng) {
-                return new_trs;
+                return vec![new_trs];
             }
         }
     }
