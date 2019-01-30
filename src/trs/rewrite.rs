@@ -128,6 +128,59 @@ impl TRS {
             .sum()
     }
 
+    /// test the likelihood
+    pub fn test_single_likelihood(&self, datum: &Rule, params: ModelParams) {
+        println!("datum: {}", datum.pretty());
+        let ll = if let Some(ref rhs) = datum.rhs() {
+            let bg_len = self
+                .lex
+                .0
+                .read()
+                .expect("poisoned lexicon")
+                .background
+                .len();
+            let mut trs = self.utrs.clone();
+            let mut bg = self.utrs.clone();
+            let trs_len = trs.rules.len() - bg_len;
+            bg.rules.drain(..trs_len);
+            trs.rules.drain(trs_len..);
+            let mut trace = Trace::new(
+                &trs,
+                &bg,
+                &datum.lhs,
+                params.p_observe,
+                params.max_size,
+                RewriteStrategy::All,
+            );
+            for i in 0..params.max_steps {
+                let leaf = trace.next().unwrap();
+                println!(
+                    "{}, {:?}, {}, {}, {}",
+                    i,
+                    leaf.state(),
+                    leaf.term().pretty(),
+                    leaf.log_p(),
+                    leaf.depth()
+                );
+            }
+            println!("trace size: {}", trace.size());
+            let partial = trace.rewrites_to(params.max_steps, rhs);
+            println!("trace size: {}", trace.size());
+            partial
+        } else {
+            println!("ouch! NEG_INFINITY");
+            NEG_INFINITY
+        };
+        println!("partial result: {}", ll);
+
+        let result = if ll == NEG_INFINITY {
+            params.p_partial.ln()
+        } else {
+            (1.0 - params.p_partial).ln() + ll
+        };
+        println!("computed likelihood: {}", result);
+    }
+
     /// Compute the log likelihood for a single datum.
     fn single_log_likelihood(&self, datum: &Rule, params: ModelParams) -> f64 {
         let ll = if let Some(ref rhs) = datum.rhs() {
