@@ -372,11 +372,11 @@ impl Lexicon {
             .expect("poisoned lexicon")
             .background
             .len();
-        let mut rules1 = trs1.utrs.rules[..(trs1.utrs.len() - background_size)].to_vec();
-        let mut rules2 = trs2.utrs.rules.clone(); // includes background
-        rules1.append(&mut rules2);
+        let rules1 = trs1.utrs.rules[..(trs1.utrs.len() - background_size)].to_vec();
+        let rules2 = trs2.utrs.rules[..(trs2.utrs.len() - background_size)].to_vec();
         let ctx = &self.0.read().expect("poisoned lexicon").ctx;
         let mut trs = TRS::new(&trs1.lex, rules1, ctx)?;
+        trs.utrs.pushes(rules2).unwrap(); // hack?
         if self.0.read().expect("poisoned lexicon").deterministic {
             trs.utrs.make_deterministic(rng);
         }
