@@ -763,7 +763,7 @@ impl Lex {
             })
             .collect();
         // iterate through a weighted permutation to find an option that typechecks
-        for option in weighted_permutation(&options, &weights) {
+        for option in weighted_permutation(&options, &weights, None) {
             let atom = option.unwrap_or_else(|| {
                 let new_var = self.invent_variable(tp);
                 vars.push(new_var.clone());

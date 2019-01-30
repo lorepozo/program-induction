@@ -4,7 +4,7 @@ use itertools::Itertools;
 use polytype::TypeSchema;
 use rand::{seq, Rng};
 use std::cmp::Ordering;
-use utils::{logsumexp, weighted_sample};
+use utils::{logsumexp, weighted_permutation, weighted_sample};
 
 use Task;
 
@@ -18,6 +18,15 @@ pub enum GPSelection {
     /// individual arises to take its place.
     #[serde(alias = "deterministic")]
     Deterministic,
+    /// `Hybrid` implies a selection mechanism in which half the population
+    /// (rounding down) is selected deterministically such that the best
+    /// individuals are always retained. The remainder of the population is
+    /// sampled without replacement from the remaining individuals. An individual
+    /// can be removed from a population by lower-scoring individuals, though
+    /// this is relatively unlikely, and impossible if the individual is in the
+    /// top 50% of the population.
+    #[serde(alias = "hybrid")]
+    Hybrid,
     /// `Probabilistic` implies a noisy survival-of-the-fittest selection
     /// mechanism, in which a population is selected probabilistically from a
     /// set of possible populations in proportion to its overall fitness. An
@@ -253,6 +262,7 @@ pub trait GP: Send + Sync + Sized {
             .collect();
         match gpparams.selection {
             GPSelection::Probabilistic => sample_pop(scored_children, population),
+            GPSelection::Hybrid => hybrid_pop(scored_children, population),
             GPSelection::Deterministic => {
                 for child in scored_children {
                     sorted_place(child, population);
@@ -284,6 +294,20 @@ fn sample_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
         .collect::<Vec<_>>();
     let idx = weighted_sample(&idxs, &scores);
     *pop = options.into_iter().combinations(n).nth(*idx).unwrap();
+}
+
+fn hybrid_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
+    // put the top half into pop, randomly sample the rest
+    let n = pop.len();
+    let n_2 = ((n as f64) / 2.0).ceil() as usize;
+    let mut options = Vec::with_capacity(n);
+    options.append(pop);
+    options.append(&mut new_exprs);
+    options.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+    let (best, rest) = options.split_at(n_2);
+    let weights = rest.iter().map(|x| (-x.1).exp()).collect_vec();
+    *pop = best.to_vec();
+    pop.extend(weighted_permutation(rest, &weights, Some(n - n_2)));
 }
 
 /// Given a mutable vector, `pop`, of item-score pairs sorted by score, insert

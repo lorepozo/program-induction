@@ -3,6 +3,7 @@ use rand::{
     distributions::{Distribution, Uniform},
     thread_rng,
 };
+use std::cmp;
 use std::f64;
 
 /// We wrap crossbeam_channel's sender/receiver so that `Sender`s will not
@@ -55,11 +56,12 @@ pub fn logsumexp(lps: &[f64]) -> f64 {
     largest + x
 }
 
-pub fn weighted_permutation<T: Clone>(xs: &[T], ws: &[f64]) -> Vec<T> {
+pub fn weighted_permutation<T: Clone>(xs: &[T], ws: &[f64], n: Option<usize>) -> Vec<T> {
     let mut ws = ws.to_vec();
     let mut idxs: Vec<_> = (0..(ws.len())).collect();
     let mut permutation = vec![];
-    while !ws.is_empty() {
+    let length = cmp::min(n.unwrap_or_else(|| xs.len()), xs.len());
+    while permutation.len() < length {
         let jidxs: Vec<_> = idxs.iter().cloned().enumerate().collect();
         let &(jdx, idx): &(usize, usize) = weighted_sample(&jidxs, &ws);
         permutation.push(xs[idx].clone());
