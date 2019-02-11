@@ -132,21 +132,8 @@ impl TRS {
     pub fn test_single_likelihood(&self, datum: &Rule, params: ModelParams) {
         println!("datum: {}", datum.pretty());
         let ll = if let Some(ref rhs) = datum.rhs() {
-            let bg_len = self
-                .lex
-                .0
-                .read()
-                .expect("poisoned lexicon")
-                .background
-                .len();
-            let mut trs = self.utrs.clone();
-            let mut bg = self.utrs.clone();
-            let trs_len = trs.rules.len() - bg_len;
-            bg.rules.drain(..trs_len);
-            trs.rules.drain(trs_len..);
             let mut trace = Trace::new(
-                &trs,
-                &bg,
+                &self.utrs,
                 &datum.lhs,
                 params.p_observe,
                 params.max_size,
@@ -184,21 +171,8 @@ impl TRS {
     /// Compute the log likelihood for a single datum.
     fn single_log_likelihood(&self, datum: &Rule, params: ModelParams) -> f64 {
         let ll = if let Some(ref rhs) = datum.rhs() {
-            let bg_len = self
-                .lex
-                .0
-                .read()
-                .expect("poisoned lexicon")
-                .background
-                .len();
-            let mut trs = self.utrs.clone();
-            let mut bg = self.utrs.clone();
-            let trs_len = trs.rules.len() - bg_len;
-            bg.rules.drain(..trs_len);
-            trs.rules.drain(trs_len..);
             let mut trace = Trace::new(
-                &trs,
-                &bg,
+                &self.utrs,
                 &datum.lhs,
                 params.p_observe,
                 params.max_size,
