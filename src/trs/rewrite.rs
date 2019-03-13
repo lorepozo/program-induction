@@ -309,6 +309,87 @@ impl TRS {
             Ok(trs)
         }
     }
+/// Move a Rule from one place in the TRS to another at random, excluding the background.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # extern crate rand;
+    /// # extern crate term_rewriting;
+    /// # use programinduction::trs::{TRS, Lexicon};
+    /// # use rand::{thread_rng};
+    /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
+    /// # fn main() {
+    /// let mut sig = Signature::default();
+    ///
+    /// let mut ops = vec![];
+    /// sig.new_op(2, Some(".".to_string()));
+    /// ops.push(ptp![0, 1; @arrow[tp!(@arrow[tp!(0), tp!(1)]), tp!(0), tp!(1)]]);
+    /// sig.new_op(2, Some("PLUS".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int), tp!(int)]]);
+    /// sig.new_op(1, Some("SUCC".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int)]]);
+    /// sig.new_op(0, Some("ZERO".to_string()));
+    /// ops.push(ptp![int]);
+    ///
+    /// let rules = vec![
+    ///     parse_rule(&mut sig, "PLUS(x_ ZERO) = x_").expect("parsed rule"),
+    ///     parse_rule(&mut sig, "PLUS(x_ SUCC(y_)) = SUCC(PLUS(x_ y_))").expect("parsed rule"),
+    /// ];
+    ///
+    /// let vars = vec![
+    ///     ptp![int],
+    ///     ptp![int],
+    ///     ptp![int],
+    /// ];
+    ///
+    /// println!("{:?}", sig.operators());
+    /// for op in sig.operators() {
+    ///     println!("{:?}/{}", op.name(&sig), op.arity(&sig))
+    /// }
+    /// for r in &rules {
+    ///     println!("{:?}", r);
+    /// }
+    /// let lexicon = Lexicon::from_signature(sig.clone(), ops, vars, vec![], false);
+    ///
+    /// let mut trs = TRS::new(&lexicon, rules).unwrap();
+    ///
+    /// let pretty_before = trs.pretty_utrs(&sig);
+    ///
+    /// let mut rng = thread_rng();
+    ///
+    /// let new_trs = trs.randomly_move_rule(&mut rng).expect("failed when moving rule");
+    ///
+    /// assert_ne!(pretty_before, new_trs.pretty_utrs(&sig));
+    /// assert_eq!(pretty_before, "PLUS(x_, 0) = x_;\nPLUS(x_, SUCC(y_)) = SUCC(PLUS(x_, y_));");
+    /// assert_eq!(new_trs.pretty_utrs(&sig), "PLUS(x_, SUCC(y_)) = SUCC(PLUS(x_, y_));\nPLUS(x_, 0) = x_;");
+    /// # }
+    /// ```
+    pub fn randomly_move_rule<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
+        let mut trs = self.clone();
+        let num_rules = self.len();
+        let num_background = self
+            .lex
+            .0
+            .read()
+            .expect("poisoned lexicon")
+            .background
+            .len();
+        if num_background >= num_rules - 1 {
+            return Ok(trs);
+        }
+        let i: usize = rng.gen_range(num_background, num_rules);
+        let mut j: usize = rng.gen_range(num_background, num_rules);
+        while j == i {
+            j = rng.gen_range(0, num_rules);
+        }
+        trs.utrs
+            .move_rule(i, j)
+            .expect("moving rule from random locations i to j");
+        Ok(trs)
+}
 }
 impl fmt::Display for TRS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
