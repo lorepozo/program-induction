@@ -597,6 +597,152 @@ impl TRS {
             }
         }
     }
+    /// swap lhs and rhs only if there is only one
+    /// returns none if they can not be swapped
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # extern crate rand;
+    /// # extern crate term_rewriting;
+    /// # use programinduction::trs::{TRS, Lexicon};
+    /// # use rand::{thread_rng};
+    /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
+    /// # fn main() {
+    /// let mut sig = Signature::default();
+    ///
+    /// let rule = parse_rule(&mut sig, "A(x_) = B(x_)").expect("parse of A(x_) = B(x_)");
+    ///
+    /// let new_rule = TRS::swap_lhs_and_one_rhs_helper(&rule);
+    ///
+    /// if new_rule == None {
+    ///     assert!(false);
+    /// } else {
+    ///     assert_eq!(new_rule.unwrap().display(&sig), "B(x_) = A(x_)");
+    /// }
+    /// # }
+    /// ```
+    pub fn swap_lhs_and_one_rhs_helper(rule: &Rule) -> Option<Rule> {
+        let r = rule.clone();
+        let rhs = match r.rhs() {
+            Some(rh) => rh,
+            None => {
+                return None;
+            }
+        };
+        if rhs.variables().len() == r.lhs.variables().len() {
+            let new_rhs = vec![r.lhs];
+            return Rule::new(rhs, new_rhs);
+        }
+        return None;
+    }
+    /// returns a vector of a rules with each rhs being the lhs of the original
+    /// rule and each lhs is each rhs of the original.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # extern crate rand;
+    /// # extern crate term_rewriting;
+    /// # extern crate itertools;
+    /// # use programinduction::trs::{TRS, Lexicon};
+    /// # use rand::{thread_rng};
+    /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
+    /// # use itertools::Itertools;
+    /// # fn main() {
+    /// let mut sig = Signature::default();
+    ///
+    /// let rule = parse_rule(&mut sig, "A(x_) = B(x_) | C(x_)").expect("parse of A(x_) = B(x_) | C(x_)");
+    ///
+    /// let new_rules = TRS::swap_lhs_and_all_rhs_helper(&rule);
+    /// if new_rules == None {
+    ///     assert!(false);
+    /// } else {
+    ///     let rules = new_rules.unwrap().iter().map(|r| format!("{};", r.display(&sig))).join("\n");
+    ///     assert_eq!(rules, "B(x_) = A(x_);\nC(x_) = A(x_);");
+    /// }
+    /// # }
+    /// ```
+    pub fn swap_lhs_and_all_rhs_helper(rule: &Rule) -> Option<Vec<Rule>> {
+        let mut rules: Vec<Rule> = vec![];
+        let num_vars = rule.variables().len();
+        for idx in 0..rule.len() {
+            if rule.rhs[idx].variables().len() == num_vars {
+                let lhs = rule.rhs[idx].clone();
+                let rhs = vec![rule.lhs.clone()];
+                let temp_rule = Rule::new(lhs, rhs);
+                if temp_rule != None {
+                    rules.push(temp_rule.unwrap());
+                }
+            }
+        }
+        if rules.len() == 0 {
+            return None;
+        }
+        return Some(rules);
+    }
+    /// Selects a rule from the TRS at random, swaps the LHS and RHS if possible and inserts the resulting rules
+    /// back into the TRS imediately after the background.
+    pub fn swap_lhs_and_rhs<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
+        let mut trs = self.clone();
+        let num_rules = self.len();
+        let num_background = self
+            .lex
+            .0
+            .read()
+            .expect("poisoned lexicon")
+            .background
+            .len();
+        if num_background >= num_rules - 1 {
+            return Ok(trs);
+        }
+        let idx: usize = rng.gen_range(num_background, num_rules);
+        let rules = TRS::swap_lhs_and_all_rhs_helper(&trs.utrs.rules[idx]);
+        if rules == None {
+            return Ok(trs);
+        }
+        trs.utrs.remove_idx(idx).expect("removing original rule");
+        trs.utrs
+            .inserts_idx(num_background, rules.unwrap())
+            .expect("inserting rules back into trs");
+        Ok(trs)
+    }
+    /// Selects a rule from the TRS at random, swaps the LHS and all RHS if possible and inserts the resulting rules
+    /// back into copies of the TRS imediately after the background.
+    pub fn swap_lhs_and_rhs_vec<R: Rng>(&self, rng: &mut R) -> Result<Vec<TRS>, SampleError> {
+        let mut trs = self.clone();
+        let num_rules = self.len();
+        let num_background = self
+            .lex
+            .0
+            .read()
+            .expect("poisoned lexicon")
+            .background
+            .len();
+        if num_background >= num_rules - 1 {
+            return Ok(vec![trs]);
+        }
+        let idx: usize = rng.gen_range(num_background, num_rules);
+        let result = TRS::swap_lhs_and_all_rhs_helper(&trs.utrs.rules[idx]);
+        if result == None {
+            return Ok(vec![trs]);
+        }
+        trs.utrs.remove_idx(idx).expect("removing original rule");
+        let rules = result.unwrap();
+        let mut trs_vec = vec![];
+        for idx in 0..rules.len() {
+            let mut temp_trs = trs.clone();
+            temp_trs
+                .utrs
+                .insert_idx(num_background, rules[idx].clone())?;
+            trs_vec.push(temp_trs);
+        }
+        Ok(trs_vec)
+    }
 }
 impl fmt::Display for TRS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
