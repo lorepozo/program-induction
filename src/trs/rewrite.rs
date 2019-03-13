@@ -12,7 +12,7 @@ use rand::Rng;
 use std::f64::NEG_INFINITY;
 use std::fmt;
 use term_rewriting::trace::Trace;
-use term_rewriting::{Rule, RuleContext, Strategy as RewriteStrategy, TRS as UntypedTRS};
+use term_rewriting::{Rule, RuleContext, Strategy as RewriteStrategy, Term, TRS as UntypedTRS};
 
 use super::{Lexicon, ModelParams, SampleError, TypeError};
 
@@ -348,6 +348,165 @@ impl TRS {
             .move_rule(i, j)
             .expect("moving rule from random locations i to j");
         Ok(trs)
+    }
+    /// Selects a rule from the TRS at random, finds all differences in the LHS and RHS,
+    /// and makes rules from those differences and inserts them back into copies of the TRS imediately after the background.
+    pub fn local_difference_vec<R: Rng>(&self, rng: &mut R) -> Result<Vec<TRS>, SampleError> {
+        let mut trs = self.clone();
+        let num_rules = self.len();
+        let num_background = self
+            .lex
+            .0
+            .read()
+            .expect("poisoned lexicon")
+            .background
+            .len();
+        if num_rules == num_background {
+            return Ok(vec![trs]);
+        }
+        let idx = rng.gen_range(num_background, num_rules);
+        let result = TRS::local_difference_helper(&trs.utrs.rules[idx]);
+        if result == None {
+            return Ok(vec![trs]);
+        }
+        trs.utrs.remove_idx(idx).expect("removing original rule");
+        let new_rules = result.unwrap();
+        let mut trs_vec = vec![];
+        for idx in 0..new_rules.len() {
+            let mut temp_trs = trs.clone();
+            temp_trs
+                .utrs
+                .insert_idx(num_background, new_rules[idx].clone())?;
+            trs_vec.push(temp_trs);
+        }
+        Ok(trs_vec)
+    }
+    /// Selects a rule from the TRS at random, finds all differences in the LHS and RHS,
+    /// and makes rules from those differences and inserts them back into the TRS imediately after the background.
+    pub fn local_difference<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
+        let mut trs = self.clone();
+        let num_rules = self.len();
+        let num_background = self
+            .lex
+            .0
+            .read()
+            .expect("poisoned lexicon")
+            .background
+            .len();
+        if num_rules == num_background {
+            return Ok(trs);
+        }
+        let idx = rng.gen_range(num_background, num_rules);
+        let result = TRS::local_difference_helper(&trs.utrs.rules[idx]);
+        if result == None {
+            return Ok(trs);
+        }
+        trs.utrs.remove_idx(idx).expect("removing original rule");
+        let new_rules = result.unwrap();
+        trs.utrs.inserts_idx(num_background, new_rules)?;
+        Ok(trs)
+    }
+    /// Given a rule that has similar terms in the lhs and rhs,
+    /// returns a list of rules where each similarity is removed one at a time
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # extern crate rand;
+    /// # extern crate term_rewriting;
+    /// # use programinduction::trs::{TRS, Lexicon};
+    /// # use rand::{thread_rng};
+    /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
+    /// # fn main() {
+    /// let mut sig = Signature::default();
+    ///
+    /// let r = parse_rule(&mut sig, "F(A(B C(x_))) = F(A(D E(x_)))").expect("parse of F(A(B C(x_))) = F(A(D E(x_)))");
+    ///
+    /// let result = TRS::local_difference_helper(&r);
+    ///
+    /// if result == None {
+    ///     assert!(false);
+    /// } else {
+    ///     let rules = result.unwrap();
+    ///     assert_eq!(rules.len(), 4);
+    ///     assert_eq!(rules[0].display(&sig), "F(A(B C(x_))) = F(A(D E(x_)))");
+    ///     assert_eq!(rules[1].display(&sig), "A(B C(x_)) = A(D E(x_))");
+    ///     assert_eq!(rules[2].display(&sig), "B = D");
+    ///     assert_eq!(rules[3].display(&sig), "C(x_) = E(x_)");
+    /// }
+    /// # }
+    /// ```
+    pub fn local_difference_helper(rule: &Rule) -> Option<Vec<Rule>> {
+        let r = rule.clone();
+        let rhs = r.rhs();
+        if rhs == None {
+            return None;
+        }
+        let temp_differences = TRS::find_differences(r.lhs, rhs.unwrap());
+        if temp_differences == None {
+            return None;
+        }
+        let differences = temp_differences.unwrap();
+        let mut rules: Vec<Rule> = vec![];
+        for idx in 0..differences.len() {
+            let temp_rule = Rule::new(differences[idx].0.clone(), vec![differences[idx].1.clone()]);
+            if temp_rule != None {
+                rules.push(temp_rule.unwrap());
+            }
+        }
+        if rules == vec![] {
+            return None;
+        }
+        Some(rules)
+    }
+    // helper for local difference, finds differences in the given lhs and rhs recursively
+    pub fn find_differences(lhs: Term, rhs: Term) -> Option<Vec<(Term, Term)>> {
+        if lhs == rhs {
+            return None;
+        }
+        match lhs.clone() {
+            Term::Variable(_x) => {
+                return None;
+            }
+            Term::Application {
+                op: lop,
+                args: largs,
+            } => {
+                if largs.len() == 0 {
+                    return Some(vec![(lhs, rhs)]);
+                }
+                match rhs.clone() {
+                    Term::Variable(_x) => {
+                        return Some(vec![(lhs, rhs)]);
+                    }
+                    Term::Application {
+                        op: rop,
+                        args: rargs,
+                    } => {
+                        if lop != rop {
+                            return Some(vec![(lhs, rhs)]);
+                        }
+                        let mut differences: Vec<(Term, Term)> = vec![(lhs, rhs)];
+                        for idx in 0..largs.len() {
+                            let diff =
+                                TRS::find_differences(largs[idx].clone(), rargs[idx].clone());
+                            if diff != None {
+                                let new_diffs = diff.unwrap();
+                                for ids in 0..new_diffs.len() {
+                                    differences.push(new_diffs[ids].clone());
+                                }
+                            }
+                        }
+                        if differences == vec![] {
+                            return None;
+                        }
+                        return Some(differences);
+                    }
+                }
+            }
+        }
     }
 }
 impl fmt::Display for TRS {
