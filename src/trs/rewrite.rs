@@ -620,7 +620,7 @@ impl TRS {
     /// if new_rule == None {
     ///     assert!(false);
     /// } else {
-    ///     assert_eq!(new_rule.unwrap().display(&sig), "B(x_) = A(x_)");
+    ///     assert_eq!(new_rule.unwrap().display(), "B(x_) = A(x_)");
     /// }
     /// # }
     /// ```
@@ -662,7 +662,7 @@ impl TRS {
     /// if new_rules == None {
     ///     assert!(false);
     /// } else {
-    ///     let rules = new_rules.unwrap().iter().map(|r| format!("{};", r.display(&sig))).join("\n");
+    ///     let rules = new_rules.unwrap().iter().map(|r| format!("{};", r.display())).join("\n");
     ///     assert_eq!(rules, "B(x_) = A(x_);\nC(x_) = A(x_);");
     /// }
     /// # }
