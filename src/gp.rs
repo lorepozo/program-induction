@@ -212,9 +212,11 @@ pub trait GP: Send + Sync + Sized {
             .sorted_by(|&(_, ref x), &(_, ref y)| x.partial_cmp(y).expect("found NaN"))
     }
 
-    /// Determines whether some newly created offspring is even viable for
-    /// consideration as part of the population. This allows you to do things
-    /// like ensure a population of unique individuals.
+    /// This should be a filter-like operation returning a subset of
+    /// `individuals`. The intended semantics is that `valid_individuals`
+    /// reduces the set of newly created offspring in `individuals` to just
+    /// those viable for consideration as part of the population. This allows
+    /// you to do things like ensure a population of unique individuals.
     fn valid_individuals(
         &self,
         params: &Self::Params,
