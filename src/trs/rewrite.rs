@@ -279,13 +279,9 @@ impl TRS {
     ) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
         let context = sample_iter(rng, contexts, 1)?[0].clone();
-        let rule = trs.lex.sample_rule_from_context(
-            context,
-            &mut trs.ctx,
-            atom_weights,
-            true,
-            max_size,
-        )?;
+        let rule =
+            trs.lex
+                .sample_rule_from_context(context, &mut trs.ctx, atom_weights, true, max_size)?;
         trs.lex
             .0
             .write()
@@ -304,12 +300,11 @@ impl TRS {
             Err(SampleError::OptionsExhausted)
         } else {
             let mut trs = self.clone();
-            trs.utrs
-                .remove_clauses(sample_iter(rng, deletable, 1)?[0])?;
+            trs.utrs.remove_clauses(sample_iter(rng, deletable, 1)?[0])?;
             Ok(trs)
         }
     }
-/// Move a Rule from one place in the TRS to another at random, excluding the background.
+    /// Move a Rule from one place in the TRS to another at random, excluding the background.
     ///
     /// # Example
     ///
@@ -363,7 +358,6 @@ impl TRS {
     /// let new_trs = trs.randomly_move_rule(&mut rng).expect("failed when moving rule");
     ///
     /// assert_ne!(pretty_before, new_trs.pretty_utrs(&sig));
-    /// assert_eq!(pretty_before, "PLUS(x_, 0) = x_;\nPLUS(x_, SUCC(y_)) = SUCC(PLUS(x_, y_));");
     /// assert_eq!(new_trs.pretty_utrs(&sig), "PLUS(x_, SUCC(y_)) = SUCC(PLUS(x_, y_));\nPLUS(x_, 0) = x_;");
     /// # }
     /// ```
@@ -389,7 +383,7 @@ impl TRS {
             .move_rule(i, j)
             .expect("moving rule from random locations i to j");
         Ok(trs)
-}
+    }
 }
 impl fmt::Display for TRS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

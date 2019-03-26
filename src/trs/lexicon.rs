@@ -488,8 +488,8 @@ impl Lex {
                 for arg_tp in arg_types {
                     let subtype = arg_tp.apply(ctx);
                     let arg_schema = TypeSchema::Monotype(arg_tp);
-                    let result = self
-                        .sample_term_internal(
+                    let result =
+                        self.sample_term_internal(
                             &arg_schema,
                             ctx,
                             atom_weights,
@@ -498,13 +498,12 @@ impl Lex {
                             max_size,
                             size,
                             vars,
-                        )
-                        .map_err(|_| SampleError::Subterm)
-                        .and_then(|subterm| {
-                            let tp = self.infer_term(&subterm, ctx)?.instantiate_owned(ctx);
-                            ctx.unify_fast(subtype, tp)?;
-                            Ok(subterm)
-                        });
+                        ).map_err(|_| SampleError::Subterm)
+                            .and_then(|subterm| {
+                                let tp = self.infer_term(&subterm, ctx)?.instantiate_owned(ctx);
+                                ctx.unify_fast(subtype, tp)?;
+                                Ok(subterm)
+                            });
                     match result {
                         Ok(subterm) => {
                             size += subterm.size();
@@ -1077,8 +1076,7 @@ impl GP for Lexicon {
                         .read()
                         .expect("poisoned lexicon")
                         .background
-                        .contains(&r)
-                        || rng.gen_bool(params.p_keep)
+                        .contains(&r) || rng.gen_bool(params.p_keep)
                 })
             })
             .collect()
