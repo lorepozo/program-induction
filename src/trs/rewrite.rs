@@ -351,6 +351,67 @@ impl TRS {
     }
     /// Selects a rule from the TRS at random, finds all differences in the LHS and RHS,
     /// and makes rules from those differences and inserts them back into copies of the TRS imediately after the background.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # extern crate rand;
+    /// # extern crate term_rewriting;
+    /// # use programinduction::trs::{TRS, Lexicon};
+    /// # use polytype::Context as TypeContext;
+    /// # use rand::{thread_rng};
+    /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
+    /// # fn main() {
+    /// let mut sig = Signature::default();
+    ///
+    /// let mut ops = vec![];
+    /// sig.new_op(2, Some(".".to_string()));
+    /// ops.push(ptp![0, 1; @arrow[tp!(@arrow[tp!(0), tp!(1)]), tp!(0), tp!(1)]]);
+    /// sig.new_op(2, Some("PLUS".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int), tp!(int)]]);
+    /// sig.new_op(1, Some("SUCC".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int)]]);
+    /// sig.new_op(0, Some("ZERO".to_string()));
+    /// ops.push(ptp![int]);
+    ///
+    /// let rules = vec![
+    ///     parse_rule(&mut sig, "SUCC(PLUS(x_ SUCC(y_))) = SUCC(SUCC(PLUS(x_ y_)))").expect("parsed rule"),
+    /// ];
+    ///
+    /// let vars = vec![
+    ///     ptp![int],
+    ///     ptp![int],
+    ///     ptp![int],
+    /// ];
+    ///
+    /// for op in sig.operators() {
+    ///     println!("{:?}/{}", op.name(), op.arity())
+    /// }
+    /// for r in &rules {
+    ///     println!("{:?}", r.pretty());
+    /// }
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], vec![], false, TypeContext::default());
+    ///
+    /// let mut trs = TRS::new(&lexicon, rules, &lexicon.context()).unwrap();
+    ///
+    /// assert_eq!(trs.len(), 1);
+    ///
+    /// let mut rng = thread_rng();
+    ///
+    /// if let Ok(trs_vec) = trs.local_difference_vec(&mut rng) {
+    ///     assert_eq!(trs_vec.len(), 2);
+    ///     let display_str_0 = format!("{}", trs_vec[0]);
+    ///     assert_eq!(display_str_0, "SUCC(PLUS(x_ SUCC(y_))) = SUCC(SUCC(PLUS(x_ y_)));");
+    ///
+    ///     let display_str_1 = format!("{}", trs_vec[1]);
+    ///     assert_eq!(display_str_1, "PLUS(x_ SUCC(y_)) = SUCC(PLUS(x_ y_));");
+    /// } else {
+    ///     assert_eq!(trs.len(), 1);
+    /// }
+    /// # }
+    /// ```
     pub fn local_difference_vec<R: Rng>(&self, rng: &mut R) -> Result<Vec<TRS>, SampleError> {
         let mut trs = self.clone();
         let num_rules = self.len();
@@ -383,6 +444,64 @@ impl TRS {
     }
     /// Selects a rule from the TRS at random, finds all differences in the LHS and RHS,
     /// and makes rules from those differences and inserts them back into the TRS imediately after the background.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate polytype;
+    /// # extern crate programinduction;
+    /// # extern crate rand;
+    /// # extern crate term_rewriting;
+    /// # use programinduction::trs::{TRS, Lexicon};
+    /// # use polytype::Context as TypeContext;
+    /// # use rand::{thread_rng};
+    /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
+    /// # fn main() {
+    /// let mut sig = Signature::default();
+    ///
+    /// let mut ops = vec![];
+    /// sig.new_op(2, Some(".".to_string()));
+    /// ops.push(ptp![0, 1; @arrow[tp!(@arrow[tp!(0), tp!(1)]), tp!(0), tp!(1)]]);
+    /// sig.new_op(2, Some("PLUS".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int), tp!(int)]]);
+    /// sig.new_op(1, Some("SUCC".to_string()));
+    /// ops.push(ptp![@arrow[tp!(int), tp!(int)]]);
+    /// sig.new_op(0, Some("ZERO".to_string()));
+    /// ops.push(ptp![int]);
+    ///
+    /// let rules = vec![
+    ///     parse_rule(&mut sig, "SUCC(PLUS(x_ SUCC(y_))) = SUCC(SUCC(PLUS(x_ y_)))").expect("parsed rule"),
+    /// ];
+    ///
+    /// let vars = vec![
+    ///     ptp![int],
+    ///     ptp![int],
+    ///     ptp![int],
+    /// ];
+    ///
+    /// for op in sig.operators() {
+    ///     println!("{:?}/{}", op.name(), op.arity())
+    /// }
+    /// for r in &rules {
+    ///     println!("{:?}", r.pretty());
+    /// }
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], vec![], false, TypeContext::default());
+    ///
+    /// let mut trs = TRS::new(&lexicon, rules, &lexicon.context()).unwrap();
+    ///
+    /// assert_eq!(trs.len(), 1);
+    ///
+    /// let mut rng = thread_rng();
+    ///
+    /// if let Ok(new_trs) = trs.local_difference(&mut rng) {
+    ///     assert_eq!(new_trs.len(), 2);
+    ///     let display_str = format!("{}", new_trs);
+    ///     assert_eq!(display_str, "SUCC(PLUS(x_ SUCC(y_))) = SUCC(SUCC(PLUS(x_ y_)));\nPLUS(x_ SUCC(y_)) = SUCC(PLUS(x_ y_));");
+    /// } else {
+    ///     assert_eq!(trs.len(), 1);
+    /// }
+    /// # }
+    /// ```
     pub fn local_difference<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
         let num_rules = self.len();
@@ -408,37 +527,7 @@ impl TRS {
     }
     /// Given a rule that has similar terms in the lhs and rhs,
     /// returns a list of rules where each similarity is removed one at a time
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # extern crate rand;
-    /// # extern crate term_rewriting;
-    /// # use programinduction::trs::{TRS, Lexicon};
-    /// # use rand::{thread_rng};
-    /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
-    /// # fn main() {
-    /// let mut sig = Signature::default();
-    ///
-    /// let r = parse_rule(&mut sig, "F(A(B C(x_))) = F(A(D E(x_)))").expect("parse of F(A(B C(x_))) = F(A(D E(x_)))");
-    ///
-    /// let result = TRS::local_difference_helper(&r);
-    ///
-    /// if result == None {
-    ///     assert!(false);
-    /// } else {
-    ///     let rules = result.unwrap();
-    ///     assert_eq!(rules.len(), 4);
-    ///     assert_eq!(rules[0].display(&sig), "F(A(B C(x_))) = F(A(D E(x_)))");
-    ///     assert_eq!(rules[1].display(&sig), "A(B C(x_)) = A(D E(x_))");
-    ///     assert_eq!(rules[2].display(&sig), "B = D");
-    ///     assert_eq!(rules[3].display(&sig), "C(x_) = E(x_)");
-    /// }
-    /// # }
-    /// ```
-    pub fn local_difference_helper(rule: &Rule) -> Option<Vec<Rule>> {
+    fn local_difference_helper(rule: &Rule) -> Option<Vec<Rule>> {
         let r = rule.clone();
         let rhs = r.rhs();
         if rhs == None {
@@ -462,7 +551,7 @@ impl TRS {
         Some(rules)
     }
     // helper for local difference, finds differences in the given lhs and rhs recursively
-    pub fn find_differences(lhs: Term, rhs: Term) -> Option<Vec<(Term, Term)>> {
+    fn find_differences(lhs: Term, rhs: Term) -> Option<Vec<(Term, Term)>> {
         if lhs == rhs {
             return None;
         }
