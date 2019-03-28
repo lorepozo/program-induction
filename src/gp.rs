@@ -18,15 +18,18 @@ pub enum GPSelection {
     /// individual arises to take its place.
     #[serde(alias = "deterministic")]
     Deterministic,
-    /// `Hybrid` implies a selection mechanism in which half the population
-    /// (rounding down) is selected deterministically such that the best
-    /// individuals are always retained. The remainder of the population is
-    /// sampled without replacement from the remaining individuals. An individual
-    /// can be removed from a population by lower-scoring individuals, though
-    /// this is relatively unlikely, and impossible if the individual is in the
-    /// top 50% of the population.
+    /// `Hybrid` implies a selection mechanism in which some portion of the
+    /// population is selected deterministically such that the best individuals
+    /// are always retained. The remainder of the population is sampled without
+    /// replacement from the remaining individuals. An individual can be removed
+    /// from a population by lower-scoring individuals, though this is
+    /// relatively unlikely, and impossible if the individual is considered one
+    /// of the "best" in the population. The number of "best" individuals is
+    /// `floor(population.len() * deterministic_proportion)`, where
+    /// `deterministic_proportion` is `GPSelection::Hybrid.0`. It should vary
+    /// from 0 to 1.
     #[serde(alias = "hybrid")]
-    Hybrid,
+    Hybrid(f64),
     /// `Probabilistic` implies a noisy survival-of-the-fittest selection
     /// mechanism, in which a population is selected probabilistically from a
     /// set of possible populations in proportion to its overall fitness. An
@@ -264,7 +267,7 @@ pub trait GP: Send + Sync + Sized {
             .collect();
         match gpparams.selection {
             GPSelection::Probabilistic => sample_pop(scored_children, population),
-            GPSelection::Hybrid => hybrid_pop(scored_children, population),
+            GPSelection::Hybrid(prop) => hybrid_pop(scored_children, population, prop),
             GPSelection::Deterministic => {
                 for child in scored_children {
                     sorted_place(child, population);
@@ -298,10 +301,14 @@ fn sample_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
     *pop = options.into_iter().combinations(n).nth(*idx).unwrap();
 }
 
-fn hybrid_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
+fn hybrid_pop<T: Clone>(
+    mut new_exprs: Vec<(T, f64)>,
+    pop: &mut Vec<(T, f64)>,
+    deterministic_proportion: f64,
+) {
     // put the top half into pop, randomly sample the rest
     let n = pop.len();
-    let n_2 = ((n as f64) / 2.0).ceil() as usize;
+    let n_2 = ((n as f64) * deterministic_proportion).ceil() as usize;
     let mut options = Vec::with_capacity(n);
     options.append(pop);
     options.append(&mut new_exprs);
