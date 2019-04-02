@@ -4,7 +4,7 @@ use itertools::Itertools;
 use polytype::TypeSchema;
 use rand::{seq, Rng};
 use std::cmp::Ordering;
-use utils::{logsumexp, weighted_permutation, weighted_sample};
+use utils::{logsumexp, weighted_sample};
 
 use Task;
 
@@ -37,6 +37,38 @@ pub enum GPSelection {
     /// individuals, though this is relatively unlikely.
     #[serde(alias = "probabilistic")]
     Probabilistic,
+}
+
+impl GPSelection {
+    pub(crate) fn update_population<T: Clone>(
+        &self,
+        population: &mut Vec<(T, f64)>,
+        mut scored_children: Vec<(T, f64)>,
+    ) {
+        match self {
+            GPSelection::Deterministic => {
+                for child in scored_children {
+                    sorted_place(child, population);
+                }
+            }
+            _ => {
+                let pop_size = population.len();
+                let mut options = Vec::with_capacity(pop_size + scored_children.len());
+                options.append(population);
+                options.append(&mut scored_children);
+                let mut sample_size = pop_size;
+                if let GPSelection::Hybrid(det_proportion) = self {
+                    let n_best = (pop_size as f64 * det_proportion).ceil() as usize;
+                    sample_size -= n_best;
+                    options.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+                    let rest = options.split_off(n_best);
+                    *population = options;
+                    options = rest;
+                }
+                population.append(&mut sample_pop(options, sample_size));
+            }
+        }
+    }
 }
 
 /// Parameters for genetic programming.
@@ -265,30 +297,23 @@ pub trait GP: Send + Sync + Sized {
                 (child, fitness)
             })
             .collect();
-        match gpparams.selection {
-            GPSelection::Probabilistic => sample_pop(scored_children, population),
-            GPSelection::Hybrid(prop) => hybrid_pop(scored_children, population, prop),
-            GPSelection::Deterministic => {
-                for child in scored_children {
-                    sorted_place(child, population);
-                }
-            }
-        }
+        gpparams
+            .selection
+            .update_population(population, scored_children);
     }
 }
 
-/// Given a mutable `Vec`, `pop`, of item-score pairs sorted by score, and a
-/// `Vec` of expressions, `new_exprs`, sample a new score-sorted population in
-/// inverse proportion to its overall score. The length of `pop` does *not* change.
-fn sample_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
-    let n = pop.len();
-    let mut options = vec![];
-    options.append(pop);
-    options.append(&mut new_exprs);
+/// Given a `Vec` of item-score pairs sorted by score, and some `sample_size`,
+/// return a score-sorted sample selected in inverse proportion to its overall
+/// score.
+fn sample_pop<T: Clone>(options: Vec<(T, f64)>, sample_size: usize) -> Vec<(T, f64)> {
+    // TODO: Is this necessary. Could we just sample a weighted permutation
+    // rather than do all the combinatorics?
+    // https://softwareengineering.stackexchange.com/questions/233541
     let (idxs, scores): (Vec<usize>, Vec<f64>) = options
         .iter()
         .map(|&(_, score)| score)
-        .combinations(n)
+        .combinations(sample_size)
         .map(|combo| (-combo.iter().sum::<f64>()))
         .enumerate()
         .unzip();
@@ -298,25 +323,11 @@ fn sample_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
         .map(|x| (x - sum_scores).exp())
         .collect::<Vec<_>>();
     let idx = weighted_sample(&idxs, &scores);
-    *pop = options.into_iter().combinations(n).nth(*idx).unwrap();
-}
-
-fn hybrid_pop<T: Clone>(
-    mut new_exprs: Vec<(T, f64)>,
-    pop: &mut Vec<(T, f64)>,
-    deterministic_proportion: f64,
-) {
-    // put the top half into pop, randomly sample the rest
-    let n = pop.len();
-    let n_2 = ((n as f64) * deterministic_proportion).ceil() as usize;
-    let mut options = Vec::with_capacity(n);
-    options.append(pop);
-    options.append(&mut new_exprs);
-    options.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
-    let (best, rest) = options.split_at(n_2);
-    let weights = rest.iter().map(|x| (-x.1).exp()).collect_vec();
-    *pop = best.to_vec();
-    pop.extend(weighted_permutation(rest, &weights, Some(n - n_2)));
+    options
+        .into_iter()
+        .combinations(sample_size)
+        .nth(*idx)
+        .unwrap()
 }
 
 /// Given a mutable vector, `pop`, of item-score pairs sorted by score, insert
