@@ -40,7 +40,45 @@ impl ::std::error::Error for ParseError {
     }
 }
 
-/// Parse a `Lexicon`.
+/// Parse a [`Lexicon`], including its `background` knowledge, and any `templates`
+/// that might be used during learning, ensuring that `background` and
+/// `templates` typecheck according to the types in the newly instantiated
+/// [`Lexicon`]. Syntax errors and failed typechecking both lead to `Err`.
+///
+/// # Lexicon syntax
+///
+/// `input` is parsed as a `lexicon`, defined below in [augmented Backus-Naur
+/// form]. The definition of `schema` is as given in [`polytype`], while other
+/// terms are as given in [`term_rewriting`]:
+///
+/// ```text
+/// lexicon = *wsp *( *comment declaration ";" *comment ) *wsp
+///
+/// declaration = *wsp identifier *wsp ":" *wsp schema *wsp
+/// ```
+///
+/// # Background syntax
+///
+/// `background` is parsed as a `rule_list`, defined below in [augmented Backus-Naur form].
+/// The format of the other terms is as given in [`term_rewriting`]:
+///
+/// ```text
+/// rule_list = *wsp *( *comment rule ";" *comment ) *wsp
+/// ```
+///
+/// # Template Syntax
+///
+/// `templates` is parsed as a `rulecontext_list`, defined below in [augmented Backus-Naur form].
+/// The format of the other terms is as given in [`term_rewriting`]:
+///
+/// ```text
+/// rulecontext_list = *wsp *( *comment rulecontext ";" *comment ) *wsp
+/// ```
+///
+/// [`Lexicon`]: ../struct.Lexicon.html
+/// [`term_rewriting`]: ../../../term_rewriting/index.html
+/// [`polytype`]: ../../../polytype/index.html
+/// [augmented Backus-Naur form]: https://en.wikipedia.org/wiki/Augmented_Backus–Naur_form
 pub fn parse_lexicon(
     input: &str,
     background: &str,
@@ -64,7 +102,12 @@ pub fn parse_lexicon(
     }
 }
 
-/// Parse a `TRS`.
+/// Given a [`Lexicon`], parse and typecheck a [`TRS`]. The format of the
+/// [`TRS`] is as given in [`term_rewriting`].
+///
+/// [`Lexicon`]: ../struct.Lexicon.html
+/// [`TRS`]: struct.TRS.html
+/// [`term_rewriting`]: ../../../term_rewriting/index.html
 pub fn parse_trs(input: &str, lex: &mut Lexicon) -> Result<TRS, ParseError> {
     let mut ctx = lex.0.read().expect("poisoned lexicon").ctx.clone();
     if let Ok((CompleteStr(""), t)) = trs(CompleteStr(input), lex, &mut ctx) {
@@ -74,7 +117,12 @@ pub fn parse_trs(input: &str, lex: &mut Lexicon) -> Result<TRS, ParseError> {
     }
 }
 
-/// Parse a `Context`.
+/// Given a [`Lexicon`], parse and typecheck a [`Context`]. The format of the
+/// [`Context`] is as given in [`term_rewriting`].
+///
+/// [`Lexicon`]: ../struct.Lexicon.html
+/// [`Context`]: ../../../term_rewriting/enum.Context.html
+/// [`term_rewriting`]: ../../../term_rewriting/index.html
 pub fn parse_context(
     input: &str,
     lex: &mut Lexicon,
@@ -87,7 +135,12 @@ pub fn parse_context(
     }
 }
 
-/// Parse a `RuleContext`.
+/// Given a [`Lexicon`], parse and typecheck a [`RuleContext`]. The format of the
+/// [`RuleContext`] is as given in [`term_rewriting`].
+///
+/// [`Lexicon`]: ../struct.Lexicon.html
+/// [`RuleContext`]: ../../../term_rewriting/struct.RuleContext.html
+/// [`term_rewriting`]: ../../../term_rewriting/index.html
 pub fn parse_rulecontext(
     input: &str,
     lex: &mut Lexicon,
@@ -100,7 +153,12 @@ pub fn parse_rulecontext(
     }
 }
 
-/// Parse a `Rule`.
+/// Given a [`Lexicon`], parse and typecheck a [`Rule`]. The format of the
+/// [`Rule`] is as given in [`term_rewriting`].
+///
+/// [`Lexicon`]: ../struct.Lexicon.html
+/// [`Rule`]: ../../../term_rewriting/struct.Rule.html
+/// [`term_rewriting`]: ../../../term_rewriting/index.html
 pub fn parse_rule(
     input: &str,
     lex: &mut Lexicon,
@@ -113,7 +171,15 @@ pub fn parse_rule(
     }
 }
 
-/// Parse a list of `RuleContext`s.
+/// Given a [`Lexicon`], parse and typecheck a list of [`RuleContext`s] (e.g.
+/// `templates` in [`parse_lexicon`]). The format of a [`RuleContext`] is as
+/// given in [`term_rewriting`].
+///
+/// [`Lexicon`]: ../struct.Lexicon.html
+/// [`RuleContext`s]: ../../../term_rewriting/struct.RuleContext.html
+/// [`RuleContext`]: ../../../term_rewriting/struct.RuleContext.html
+/// [`parse_lexicon`]: fn.parse_lexicon.html
+/// [`term_rewriting`]: ../../../term_rewriting/index.html
 pub fn parse_templates(input: &str, lex: &mut Lexicon) -> Result<Vec<RuleContext>, ParseError> {
     let mut ctx = lex.0.write().expect("poisoned lexicon").ctx.clone();
     if let Ok((CompleteStr(""), t)) = templates(CompleteStr(input), lex, &mut ctx) {
