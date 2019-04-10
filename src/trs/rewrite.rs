@@ -885,12 +885,12 @@ impl TRS {
             .background
             .len();
         if num_background >= num_rules {
-            return Ok(vec![trs]);
+            return Err(SampleError::OptionsExhausted);
         }
         let idx: usize = rng.gen_range(num_background, num_rules);
         let result = TRS::swap_lhs_and_all_rhs_helper(&trs.utrs.rules[idx]);
         if result == None {
-            return Ok(vec![trs]);
+            return Err(SampleError::OptionsExhausted);
         }
         trs.utrs.remove_idx(idx).expect("removing original rule");
         let rules = result.unwrap();
