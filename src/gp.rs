@@ -247,18 +247,19 @@ pub trait GP: Send + Sync + Sized {
             .sorted_by(|&(_, ref x), &(_, ref y)| x.partial_cmp(y).expect("found NaN"))
     }
 
-    /// This should be a filter-like operation returning a subset of
-    /// `individuals`. The intended semantics is that `valid_individuals`
-    /// reduces the set of newly created offspring in `individuals` to just
-    /// those viable for consideration as part of the population. This allows
-    /// you to do things like ensure a population of unique individuals.
-    fn valid_individuals(
+    /// This should be a filter-like operation on `offspring`. The intended
+    /// semantics is that `validate_offspring` reduces the set of newly created
+    /// individuals in `offspring` to just those viable for consideration as
+    /// part of the total `population`, taking into account other `children`
+    /// that are part of the current generation. This allows you to do things
+    /// like ensure a population of unique individuals.
+    fn validate_offspring(
         &self,
-        params: &Self::Params,
-        population: &[(Self::Expression, f64)],
-        individuals: Vec<Self::Expression>,
-    ) -> Vec<Self::Expression> {
-        individuals
+        _params: &Self::Params,
+        _population: &[(Self::Expression, f64)],
+        _children: &[Self::Expression],
+        _offspring: &mut Vec<Self::Expression>,
+    ) {
     }
 
     /// Evolves a population. This will repeatedly run a Bernoulli trial with parameter
@@ -275,22 +276,21 @@ pub trait GP: Send + Sync + Sized {
         task: &Task<Self, Self::Expression, O>,
         population: &mut Vec<(Self::Expression, f64)>,
     ) {
-        let mut individuals = Vec::with_capacity(gpparams.n_delta);
-        while individuals.len() < gpparams.n_delta {
-            if rng.gen_bool(gpparams.mutation_prob) {
+        let mut children = Vec::with_capacity(gpparams.n_delta);
+        while children.len() < gpparams.n_delta {
+            let mut offspring = if rng.gen_bool(gpparams.mutation_prob) {
                 let parent = self.tournament(rng, gpparams.tournament_size, population);
-                let child = self.mutate(params, rng, parent);
-                individuals.push(child);
+                vec![self.mutate(params, rng, parent)]
             } else {
                 let parent1 = self.tournament(rng, gpparams.tournament_size, population);
                 let parent2 = self.tournament(rng, gpparams.tournament_size, population);
-                let mut children = self.crossover(params, rng, parent1, parent2);
-                individuals.append(&mut children);
-            }
-            individuals = self.valid_individuals(params, population, individuals);
+                self.crossover(params, rng, parent1, parent2)
+            };
+            self.validate_offspring(params, population, &children, &mut offspring);
+            children.append(&mut offspring);
         }
-        individuals.truncate(gpparams.n_delta);
-        let scored_children = individuals
+        children.truncate(gpparams.n_delta);
+        let scored_children = children
             .into_iter()
             .map(|child| {
                 let fitness = (task.oracle)(self, &child);

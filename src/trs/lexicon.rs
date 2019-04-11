@@ -1084,25 +1084,27 @@ impl GP for Lexicon {
             .collect()
     }
 
-    fn valid_individuals(
+    fn validate_offspring(
         &self,
         params: &Self::Params,
         population: &[(Self::Expression, f64)],
-        individuals: Vec<Self::Expression>,
-    ) -> Vec<Self::Expression> {
+        children: &[Self::Expression],
+        offspring: &mut Vec<Self::Expression>,
+    ) {
         // select alpha-unique individuals that are not yet in the population
-        let mut valids = vec![];
-        for individual in individuals {
-            let in_population = population
+        offspring.retain(|ref x| {
+            !population
                 .iter()
-                .any(|p| UntypedTRS::alphas(&p.0.utrs, &individual.utrs));
-            let in_valids = valids
-                .iter()
-                .any(|v: &Self::Expression| UntypedTRS::alphas(&v.utrs, &individual.utrs));
-            if !in_population & !in_valids {
-                valids.push(individual);
+                .any(|p| UntypedTRS::alphas(&p.0.utrs, &x.utrs))
+                & !children
+                    .iter()
+                    .any(|c| UntypedTRS::alphas(&c.utrs, &x.utrs))
+        });
+        *offspring = offspring.iter().fold(vec![], |mut acc, ref x| {
+            if !acc.iter().any(|a| UntypedTRS::alphas(&a.utrs, &x.utrs)) {
+                acc.push((*x).clone());
             }
-        }
-        valids
+            acc
+        });
     }
 }
