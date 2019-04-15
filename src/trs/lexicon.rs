@@ -83,9 +83,11 @@ impl Lexicon {
             ctx,
         })))
     }
-    /// Construct a `Lexicon` with a set of background
-    /// [`term_rewriting::Operator`]s, [`term_rewriting::Variable`]s, and
-    /// [`term_rewriting::Rule`]s.
+    /// Convert a [`term_rewriting::Signature`] into a `Lexicon`:
+    /// - `ops` are types for the [`term_rewriting::Operator`]s
+    /// - `vars` are types for the [`term_rewriting::Variable`]s,
+    /// - `background` are [`term_rewriting::Rule`]s that never change
+    /// - `templates` are [`term_rewriting::RuleContext`]s that can serve as templates during learning
     ///
     /// # Example
     ///
@@ -128,9 +130,11 @@ impl Lexicon {
     ///
     /// [`polytype::ptp`]: https://docs.rs/polytype/~6.0/polytype/macro.ptp.html
     /// [`polytype::TypeSchema`]: https://docs.rs/polytype/~6.0/polytype/enum.TypeSchema.html
+    /// [`term_rewriting::Signature`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Signature.html
     /// [`term_rewriting::Operator`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Operator.html
     /// [`term_rewriting::Rule`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Rule.html
     /// [`term_rewriting::Variable`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Variable.html
+    /// [`term_rewriting::RuleContext`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.RuleContext.html
     pub fn from_signature(
         signature: Signature,
         ops: Vec<TypeSchema>,
@@ -155,7 +159,9 @@ impl Lexicon {
         let sig = &self.0.read().expect("poisoned lexicon").signature;
         sig.operators()
             .into_iter()
-            .find(|op| op.arity() == arity && op.name().as_ref().map(|x| x.as_str()) == name)
+            .find(|op| {
+                op.arity() == arity && op.name().as_ref().map(std::string::String::as_str) == name
+            })
             .ok_or(())
     }
     /// All the free type variables in the lexicon.
@@ -1086,7 +1092,7 @@ impl GP for Lexicon {
 
     fn validate_offspring(
         &self,
-        params: &Self::Params,
+        _params: &Self::Params,
         population: &[(Self::Expression, f64)],
         children: &[Self::Expression],
         offspring: &mut Vec<Self::Expression>,
