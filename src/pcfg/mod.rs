@@ -121,14 +121,14 @@ impl Grammar {
     /// );
     /// # }
     /// ```
-    pub fn enumerate(&self) -> Box<Iterator<Item = (AppliedRule, f64)>> {
+    pub fn enumerate(&self) -> Box<dyn Iterator<Item = (AppliedRule, f64)>> {
         self.enumerate_nonterminal(self.start.clone())
     }
     /// Enumerate subsentences in the Grammar for the given nonterminal.
     pub fn enumerate_nonterminal(
         &self,
         nonterminal: Type,
-    ) -> Box<Iterator<Item = (AppliedRule, f64)>> {
+    ) -> Box<dyn Iterator<Item = (AppliedRule, f64)>> {
         let (tx, rx) = bounded(1);
         let g = self.clone();
         spawn(move || {
@@ -202,11 +202,10 @@ impl Grammar {
     where
         F: Fn(&str, &[V]) -> Result<V, E>,
     {
-        let args = ar
-            .2
-            .iter()
-            .map(|ar| self.eval(ar, evaluator))
-            .collect::<Result<Vec<V>, E>>()?;
+        let args =
+            ar.2.iter()
+                .map(|ar| self.eval(ar, evaluator))
+                .collect::<Result<Vec<V>, E>>()?;
         evaluator(self.rules[&ar.0][ar.1].name, &args)
     }
     /// Sample a statement of the PCFG.
@@ -709,11 +708,10 @@ mod gp {
             if ar.2.is_empty() {
                 WeightedAppliedRule(ar.0, ar.1, 1.0, vec![])
             } else {
-                let children: Vec<_> = ar
-                    .2
-                    .into_iter()
-                    .map(|ar| WeightedAppliedRule::new(params, ar))
-                    .collect();
+                let children: Vec<_> =
+                    ar.2.into_iter()
+                        .map(|ar| WeightedAppliedRule::new(params, ar))
+                        .collect();
                 let children_weight: f64 = children.iter().map(|arc| arc.2).sum();
                 let weight = 1.0 + params.progeny_factor * children_weight;
                 WeightedAppliedRule(ar.0, ar.1, weight, children)

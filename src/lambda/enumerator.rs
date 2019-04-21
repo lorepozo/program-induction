@@ -128,7 +128,7 @@ fn enumerate(
     env: &Rc<LinkedList<Type>>,
     budget: (f64, f64),
     depth: u32,
-    cb: &mut FnMut(Expression, f64, Context) -> bool,
+    cb: &mut dyn FnMut(Expression, f64, Context) -> bool,
 ) -> bool {
     if budget.1 <= 0f64 || depth > MAX_DEPTH {
         true
@@ -153,7 +153,7 @@ fn enumerate(
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+#[allow(clippy::too_many_arguments)]
 fn enumerate_many(
     dsl: &Language,
     ctx: &Context,
@@ -164,7 +164,7 @@ fn enumerate_many(
     budget: (f64, f64),
     offset: f64,
     depth: u32,
-    cb: &mut FnMut(Expression, f64, Context) -> bool,
+    cb: &mut dyn FnMut(Expression, f64, Context) -> bool,
 ) -> bool {
     if budget.1 <= 0f64 {
         true
@@ -312,7 +312,7 @@ mod bfs {
                 _ => false,
             }
         }
-        #[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+        #[allow(clippy::too_many_arguments)]
         fn enumerate_dfs(
             &self,
             dsl: &Language,
@@ -321,7 +321,7 @@ mod bfs {
             budget: (f64, f64),
             idx: Option<(usize, &Expression)>,
             abs_depth: usize,
-            cb: &mut FnMut(Expression, f64, Context) -> bool,
+            cb: &mut dyn FnMut(Expression, f64, Context) -> bool,
         ) -> bool {
             match *self {
                 HoleExpression::Hole(ref req) => {

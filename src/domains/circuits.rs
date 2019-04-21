@@ -139,7 +139,7 @@ pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Expression, Vec<boo
 /// weights for sampling the respective gate.
 ///
 /// [`make_tasks`]: fn.make_tasks.html
-#[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+#[allow(clippy::too_many_arguments)]
 pub fn make_tasks_advanced(
     count: u32,
     n_input_dist: [u32; 8],

@@ -172,7 +172,7 @@ impl Language {
     /// ```
     ///
     /// [`add_symmetry_violation`]: #method.add_symmetry_violation
-    pub fn enumerate(&self, tp: TypeSchema) -> Box<Iterator<Item = (Expression, f64)>> {
+    pub fn enumerate(&self, tp: TypeSchema) -> Box<dyn Iterator<Item = (Expression, f64)>> {
         let (tx, rx) = bounded(1);
         let dsl = self.clone();
         spawn(move || {
@@ -650,11 +650,13 @@ impl Expression {
         indices: &mut HashMap<usize, Type>,
     ) -> Result<Type, InferenceError> {
         match *self {
-            Expression::Primitive(num) => if let Some(prim) = dsl.primitives.get(num as usize) {
-                Ok(prim.1.clone().instantiate_owned(ctx))
-            } else {
-                Err(InferenceError::InvalidPrimitive(num))
-            },
+            Expression::Primitive(num) => {
+                if let Some(prim) = dsl.primitives.get(num as usize) {
+                    Ok(prim.1.clone().instantiate_owned(ctx))
+                } else {
+                    Err(InferenceError::InvalidPrimitive(num))
+                }
+            }
             Expression::Application(ref f, ref x) => {
                 let f_tp = f.infer(dsl, &mut ctx, env, indices)?;
                 let x_tp = x.infer(dsl, &mut ctx, env, indices)?;
@@ -685,11 +687,13 @@ impl Expression {
                     Ok(tp)
                 }
             }
-            Expression::Invented(num) => if let Some(inv) = dsl.invented.get(num as usize) {
-                Ok(inv.1.clone().instantiate_owned(ctx))
-            } else {
-                Err(InferenceError::InvalidInvention(num))
-            },
+            Expression::Invented(num) => {
+                if let Some(inv) = dsl.invented.get(num as usize) {
+                    Ok(inv.1.clone().instantiate_owned(ctx))
+                } else {
+                    Err(InferenceError::InvalidInvention(num))
+                }
+            }
         }
     }
     /// Puts a beta-normalized expression in eta-long form. Invalid types or non-beta-normalized
@@ -895,11 +899,13 @@ impl Expression {
     fn show(&self, dsl: &Language, is_function: bool) -> String {
         match *self {
             Expression::Primitive(num) => dsl.primitives[num as usize].0.clone(),
-            Expression::Application(ref f, ref x) => if is_function {
-                format!("{} {}", f.show(dsl, true), x.show(dsl, false))
-            } else {
-                format!("({} {})", f.show(dsl, true), x.show(dsl, false))
-            },
+            Expression::Application(ref f, ref x) => {
+                if is_function {
+                    format!("{} {}", f.show(dsl, true), x.show(dsl, false))
+                } else {
+                    format!("({} {})", f.show(dsl, true), x.show(dsl, false))
+                }
+            }
             Expression::Abstraction(ref body) => format!("(λ {})", body.show(dsl, false)),
             Expression::Index(i) => format!("${}", i),
             Expression::Invented(num) => {
