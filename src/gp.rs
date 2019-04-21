@@ -4,27 +4,75 @@ use itertools::Itertools;
 use polytype::TypeSchema;
 use rand::{seq, Rng};
 use std::cmp::Ordering;
-use utils::weighted_sample;
+use utils::{logsumexp, weighted_sample};
 
 use Task;
 
 /// The mechanism by which individuals are selected for inclusion in the
 /// population.
+#[derive(Deserialize, Serialize)]
 pub enum GPSelection {
     /// `Deterministic` implies a strict survival-of-the-fittest selection
     /// mechanism, in which the best individuals are always retained. An
     /// individual can only be removed from a population if a better-scoring
     /// individual arises to take its place.
+    #[serde(alias = "deterministic")]
     Deterministic,
+    /// `Hybrid` implies a selection mechanism in which some portion of the
+    /// population is selected deterministically such that the best individuals
+    /// are always retained. The remainder of the population is sampled without
+    /// replacement from the remaining individuals. An individual can be removed
+    /// from a population by lower-scoring individuals, though this is
+    /// relatively unlikely, and impossible if the individual is considered one
+    /// of the "best" in the population. The number of "best" individuals is
+    /// `floor(population.len() * deterministic_proportion)`, where
+    /// `deterministic_proportion` is `GPSelection::Hybrid.0`. It should vary
+    /// from 0 to 1.
+    #[serde(alias = "hybrid")]
+    Hybrid(f64),
     /// `Probabilistic` implies a noisy survival-of-the-fittest selection
     /// mechanism, in which a population is selected probabilistically from a
     /// set of possible populations in proportion to its overall fitness. An
     /// individual can be removed from a population even by lower-scoring
     /// individuals, though this is relatively unlikely.
+    #[serde(alias = "probabilistic")]
     Probabilistic,
 }
 
+impl GPSelection {
+    pub(crate) fn update_population<T: Clone>(
+        &self,
+        population: &mut Vec<(T, f64)>,
+        mut scored_children: Vec<(T, f64)>,
+    ) {
+        match self {
+            GPSelection::Deterministic => {
+                for child in scored_children {
+                    sorted_place(child, population);
+                }
+            }
+            _ => {
+                let pop_size = population.len();
+                let mut options = Vec::with_capacity(pop_size + scored_children.len());
+                options.append(population);
+                options.append(&mut scored_children);
+                let mut sample_size = pop_size;
+                if let GPSelection::Hybrid(det_proportion) = self {
+                    let n_best = (pop_size as f64 * det_proportion).ceil() as usize;
+                    sample_size -= n_best;
+                    options.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+                    let rest = options.split_off(n_best);
+                    *population = options;
+                    options = rest;
+                }
+                population.append(&mut sample_pop(options, sample_size));
+            }
+        }
+    }
+}
+
 /// Parameters for genetic programming.
+#[derive(Deserialize, Serialize)]
 pub struct GPParams {
     /// The mechanism by which individuals are selected for inclusion in the
     /// population.
@@ -199,6 +247,21 @@ pub trait GP: Send + Sync + Sized {
             .sorted_by(|&(_, ref x), &(_, ref y)| x.partial_cmp(y).expect("found NaN"))
     }
 
+    /// This should be a filter-like operation on `offspring`. The intended
+    /// semantics is that `validate_offspring` reduces the set of newly created
+    /// individuals in `offspring` to just those viable for consideration as
+    /// part of the total `population`, taking into account other `children`
+    /// that are part of the current generation. This allows you to do things
+    /// like ensure a population of unique individuals.
+    fn validate_offspring(
+        &self,
+        _params: &Self::Params,
+        _population: &[(Self::Expression, f64)],
+        _children: &[Self::Expression],
+        _offspring: &mut Vec<Self::Expression>,
+    ) {
+    }
+
     /// Evolves a population. This will repeatedly run a Bernoulli trial with parameter
     /// [`mutation_prob`] and perform mutation or crossover depending on the outcome until
     /// [`n_delta`] expressions are determined.
@@ -213,56 +276,58 @@ pub trait GP: Send + Sync + Sized {
         task: &Task<Self, Self::Expression, O>,
         population: &mut Vec<(Self::Expression, f64)>,
     ) {
-        let mut new_exprs = Vec::with_capacity(gpparams.n_delta);
-        while new_exprs.len() < gpparams.n_delta {
-            if rng.gen_bool(gpparams.mutation_prob) {
+        let mut children = Vec::with_capacity(gpparams.n_delta);
+        while children.len() < gpparams.n_delta {
+            let mut offspring = if rng.gen_bool(gpparams.mutation_prob) {
                 let parent = self.tournament(rng, gpparams.tournament_size, population);
-                let child = self.mutate(params, rng, parent);
-                let fitness = (task.oracle)(self, &child);
-                new_exprs.push((child, fitness));
+                vec![self.mutate(params, rng, parent)]
             } else {
                 let parent1 = self.tournament(rng, gpparams.tournament_size, population);
                 let parent2 = self.tournament(rng, gpparams.tournament_size, population);
-                let children = self.crossover(params, rng, parent1, parent2);
-                let mut scored_children = children
-                    .into_iter()
-                    .map(|child| {
-                        let fitness = (task.oracle)(self, &child);
-                        (child, fitness)
-                    })
-                    .collect();
-                new_exprs.append(&mut scored_children);
-            }
+                self.crossover(params, rng, parent1, parent2)
+            };
+            self.validate_offspring(params, population, &children, &mut offspring);
+            children.append(&mut offspring);
         }
-        new_exprs.truncate(gpparams.n_delta);
-        match gpparams.selection {
-            GPSelection::Probabilistic => sample_pop(new_exprs, population),
-            GPSelection::Deterministic => {
-                for child in new_exprs {
-                    sorted_place(child, population);
-                }
-            }
-        }
+        children.truncate(gpparams.n_delta);
+        let scored_children = children
+            .into_iter()
+            .map(|child| {
+                let fitness = (task.oracle)(self, &child);
+                (child, fitness)
+            })
+            .collect();
+        gpparams
+            .selection
+            .update_population(population, scored_children);
     }
 }
 
-/// Given a mutable vector, `pop`, of item-score pairs sorted by score, and a
-/// `Vec` of expressions, `new_exprs`, sample a new score-sorted population in
-/// inverse proportion to its overall score. The length of `pop` does *not* change.
-fn sample_pop<T: Clone>(mut new_exprs: Vec<(T, f64)>, pop: &mut Vec<(T, f64)>) {
-    let n = pop.len();
-    let mut options = vec![];
-    options.append(pop);
-    options.append(&mut new_exprs);
+/// Given a `Vec` of item-score pairs sorted by score, and some `sample_size`,
+/// return a score-sorted sample selected in inverse proportion to its overall
+/// score.
+fn sample_pop<T: Clone>(options: Vec<(T, f64)>, sample_size: usize) -> Vec<(T, f64)> {
+    // TODO: Is this necessary. Could we just sample a weighted permutation
+    // rather than do all the combinatorics?
+    // https://softwareengineering.stackexchange.com/questions/233541
     let (idxs, scores): (Vec<usize>, Vec<f64>) = options
         .iter()
         .map(|&(_, score)| score)
-        .combinations(n)
-        .map(|combo| (-combo.iter().sum::<f64>()).exp())
+        .combinations(sample_size)
+        .map(|combo| (-combo.iter().sum::<f64>()))
         .enumerate()
         .unzip();
+    let sum_scores = logsumexp(&scores);
+    let scores = scores
+        .iter()
+        .map(|x| (x - sum_scores).exp())
+        .collect::<Vec<_>>();
     let idx = weighted_sample(&idxs, &scores);
-    *pop = options.into_iter().combinations(n).nth(*idx).unwrap();
+    options
+        .into_iter()
+        .combinations(sample_size)
+        .nth(*idx)
+        .unwrap()
 }
 
 /// Given a mutable vector, `pop`, of item-score pairs sorted by score, insert

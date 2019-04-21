@@ -109,6 +109,9 @@ extern crate nom;
 extern crate polytype;
 extern crate rand;
 extern crate rayon;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 extern crate term_rewriting;
 
 pub mod domains;

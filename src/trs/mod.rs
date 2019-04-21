@@ -15,6 +15,7 @@
 //! # extern crate programinduction;
 //! # extern crate term_rewriting;
 //! # use programinduction::trs::{TRS, Lexicon};
+//! # use polytype::Context as TypeContext;
 //! # use term_rewriting::{Signature, parse_rule};
 //! # fn main() {
 //! let mut sig = Signature::default();
@@ -38,15 +39,19 @@
 //!     ptp![int],
 //! ];
 //!
-//! let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false);
+//! let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], vec![], false, TypeContext::default());
 //!
-//! let trs = TRS::new(&lexicon, rules);
+//! let trs = TRS::new(&lexicon, rules, &lexicon.context());
 //! # }
 //! ```
 
 mod lexicon;
+pub mod parser;
 mod rewrite;
-pub use self::lexicon::{GeneticParams, LexDisplay, Lexicon};
+pub use self::lexicon::{GeneticParams, Lexicon};
+pub use self::parser::{
+    parse_context, parse_lexicon, parse_rule, parse_rulecontext, parse_templates, parse_trs,
+};
 pub use self::rewrite::TRS;
 use Task;
 
@@ -86,7 +91,7 @@ impl ::std::error::Error for TypeError {
 pub enum SampleError {
     TypeError(TypeError),
     TRSError(TRSError),
-    DepthExceeded(usize, usize),
+    SizeExceeded(usize, usize),
     OptionsExhausted,
     Subterm,
 }
@@ -115,8 +120,8 @@ impl fmt::Display for SampleError {
         match *self {
             SampleError::TypeError(ref e) => write!(f, "type error: {}", e),
             SampleError::TRSError(ref e) => write!(f, "TRS error: {}", e),
-            SampleError::DepthExceeded(depth, max_depth) => {
-                write!(f, "depth {} exceeded maximum of {}", depth, max_depth)
+            SampleError::SizeExceeded(size, max_size) => {
+                write!(f, "size {} exceeded maximum of {}", size, max_size)
             }
             SampleError::OptionsExhausted => write!(f, "failed to sample (options exhausted)"),
             SampleError::Subterm => write!(f, "cannot sample subterm"),
@@ -130,7 +135,7 @@ impl ::std::error::Error for SampleError {
 }
 
 /// Parameters for a TRS-based probabilistic model.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct ModelParams {
     /// How much partial credit is given for incorrect answers; it should be a
     /// probability (i.e. in [0, 1]).
@@ -167,16 +172,17 @@ impl Default for ModelParams {
 /// [`term_rewriting::Rule`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Rule.html
 /// [`Task`]: ../struct.Task.html
 /// [`TRS`]: struct.TRS.html
-pub fn task_by_rewrite<O: Sync>(
-    data: &[Rule],
+pub fn task_by_rewrite<'a, O: Sync>(
+    data: &'a [Rule],
     params: ModelParams,
-    tp: polytype::TypeSchema,
+    lex: &Lexicon,
     observation: O,
-) -> Task<Lexicon, TRS, O> {
-    Task {
+) -> Result<Task<'a, Lexicon, TRS, O>, TypeError> {
+    let mut ctx = lex.0.read().expect("poisoned lexicon").ctx.clone();
+    Ok(Task {
         oracle: Box::new(move |_s: &Lexicon, h: &TRS| -h.posterior(data, params)),
-        // TODO: compute type schema from the data
-        tp,
+        // assuming the data have no variables, we can use the Lexicon's ctx.
+        tp: lex.infer_rules(data, &mut ctx)?,
         observation,
-    }
+    })
 }

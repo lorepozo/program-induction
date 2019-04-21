@@ -5,20 +5,20 @@
 //! - https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system
 //! - (TAPL; Pierce, 2002, ch. 22)
 
+use itertools::Itertools;
 use polytype::Context as TypeContext;
 use rand::seq::sample_iter;
 use rand::Rng;
 use std::f64::NEG_INFINITY;
 use std::fmt;
 use term_rewriting::trace::Trace;
-use term_rewriting::{Rule, RuleContext, TRS as UntypedTRS};
+use term_rewriting::{Rule, RuleContext, Strategy as RewriteStrategy, TRS as UntypedTRS};
 
 use super::{Lexicon, ModelParams, SampleError, TypeError};
 
 /// Manages the semantics of a term rewriting system.
 #[derive(Debug, PartialEq, Clone)]
 pub struct TRS {
-    // TODO: may also want to track background knowledge here.
     pub(crate) lex: Lexicon,
     // INVARIANT: UntypedTRS.rules ends with lex.background
     pub(crate) utrs: UntypedTRS,
@@ -36,6 +36,7 @@ impl TRS {
     /// # extern crate term_rewriting;
     /// # use programinduction::trs::{TRS, Lexicon};
     /// # use term_rewriting::{Signature, parse_rule};
+    /// # use polytype::Context as TypeContext;
     /// # fn main() {
     /// let mut sig = Signature::default();
     ///
@@ -58,25 +59,35 @@ impl TRS {
     ///     ptp![int],
     /// ];
     ///
-    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false);
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], vec![], false, TypeContext::default());
     ///
-    /// let trs = TRS::new(&lexicon, rules).unwrap();
+    /// let ctx = lexicon.context();
+    ///
+    /// let trs = TRS::new(&lexicon, rules, &ctx).unwrap();
     ///
     /// assert_eq!(trs.size(), 12);
     /// # }
     /// ```
     /// [`Lexicon`]: struct.Lexicon.html
-    pub fn new(lex: &Lexicon, mut rules: Vec<Rule>) -> Result<TRS, TypeError> {
-        let lex = lex.clone();
-        let mut ctx = TypeContext::default();
+    pub fn new(
+        lexicon: &Lexicon,
+        mut rules: Vec<Rule>,
+        ctx: &TypeContext,
+    ) -> Result<TRS, TypeError> {
+        let lexicon = lexicon.clone();
+        let mut ctx = ctx.clone();
         let utrs = {
-            let lex = lex.0.read().expect("poisoned lexicon");
+            let lex = lexicon.0.read().expect("poisoned lexicon");
             rules.append(&mut lex.background.clone());
             let utrs = UntypedTRS::new(rules);
             lex.infer_utrs(&utrs, &mut ctx)?;
             utrs
         };
-        Ok(TRS { lex, utrs, ctx })
+        Ok(TRS {
+            lex: lexicon,
+            utrs,
+            ctx,
+        })
     }
 
     /// The size of the underlying [`term_rewriting::TRS`].
@@ -120,7 +131,13 @@ impl TRS {
     /// Compute the log likelihood for a single datum.
     fn single_log_likelihood(&self, datum: &Rule, params: ModelParams) -> f64 {
         let ll = if let Some(ref rhs) = datum.rhs() {
-            let mut trace = Trace::new(&self.utrs, &datum.lhs, params.p_observe, params.max_size);
+            let mut trace = Trace::new(
+                &self.utrs,
+                &datum.lhs,
+                params.p_observe,
+                params.max_size,
+                RewriteStrategy::All,
+            );
             trace.rewrites_to(params.max_steps, rhs)
         } else {
             NEG_INFINITY
@@ -157,6 +174,7 @@ impl TRS {
     /// # extern crate rand;
     /// # extern crate term_rewriting;
     /// # use programinduction::trs::{TRS, Lexicon};
+    /// # use polytype::Context as TypeContext;
     /// # use rand::{thread_rng};
     /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
     /// # fn main() {
@@ -183,16 +201,15 @@ impl TRS {
     ///     ptp![int],
     /// ];
     ///
-    /// println!("{:?}", sig.operators());
     /// for op in sig.operators() {
-    ///     println!("{:?}/{}", op.name(&sig), op.arity(&sig))
+    ///     println!("{:?}/{}", op.name(), op.arity())
     /// }
     /// for r in &rules {
-    ///     println!("{:?}", r);
+    ///     println!("{:?}", r.pretty());
     /// }
-    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], false);
+    /// let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], vec![], false, TypeContext::default());
     ///
-    /// let mut trs = TRS::new(&lexicon, rules).unwrap();
+    /// let mut trs = TRS::new(&lexicon, rules, &lexicon.context()).unwrap();
     ///
     /// assert_eq!(trs.len(), 2);
     ///
@@ -204,9 +221,9 @@ impl TRS {
     /// ];
     /// let mut rng = thread_rng();
     /// let atom_weights = (0.5, 0.25, 0.25);
-    /// let max_depth = 4;
+    /// let max_size = 50;
     ///
-    /// if let Ok(new_trs) = trs.add_rule(&contexts, atom_weights, max_depth, &mut rng) {
+    /// if let Ok(new_trs) = trs.add_rule(&contexts, atom_weights, max_size, &mut rng) {
     ///     assert_eq!(new_trs.len(), 3);
     /// } else {
     ///     assert_eq!(trs.len(), 2);
@@ -217,17 +234,17 @@ impl TRS {
         &self,
         contexts: &[RuleContext],
         atom_weights: (f64, f64, f64),
-        max_depth: usize,
+        max_size: usize,
         rng: &mut R,
     ) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
-        let context = sample_iter(rng, contexts, 1)?[0];
+        let context = sample_iter(rng, contexts, 1)?[0].clone();
         let rule = trs.lex.sample_rule_from_context(
-            &context,
+            context,
             &mut trs.ctx,
             atom_weights,
             true,
-            max_depth,
+            max_size,
         )?;
         trs.lex
             .0
@@ -247,14 +264,30 @@ impl TRS {
             Err(SampleError::OptionsExhausted)
         } else {
             let mut trs = self.clone();
-            trs.utrs.remove_clauses(sample_iter(rng, deletable, 1)?[0])?;
+            trs.utrs
+                .remove_clauses(sample_iter(rng, deletable, 1)?[0])?;
             Ok(trs)
         }
     }
 }
 impl fmt::Display for TRS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let sig = &self.lex.0.read().expect("poisoned lexicon").signature;
-        write!(f, "{}", self.utrs.display(sig))
+        let true_len = self.utrs.len()
+            - self
+                .lex
+                .0
+                .read()
+                .expect("poisoned lexicon")
+                .background
+                .len();
+        let trs_str = self
+            .utrs
+            .rules
+            .iter()
+            .take(true_len)
+            .map(|r| format!("{};", r.display()))
+            .join("\n");
+
+        write!(f, "{}", trs_str)
     }
 }
