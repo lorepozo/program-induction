@@ -205,7 +205,7 @@ impl Language {
     /// let ec_params = ECParams {
     ///     frontier_limit: 10,
     ///     search_limit_timeout: None,
-    ///     search_limit_description_length: Some(10.0),
+    ///     search_limit_description_length: Some(11.0),
     /// };
     /// let params = lambda::CompressionParams::default();
     ///
