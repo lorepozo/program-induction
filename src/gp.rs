@@ -2,7 +2,7 @@
 
 use itertools::Itertools;
 use polytype::TypeSchema;
-use rand::{seq, Rng};
+use rand::{seq::IteratorRandom, Rng};
 use std::cmp::Ordering;
 use utils::{logsumexp, weighted_sample};
 
@@ -219,8 +219,8 @@ pub trait GP: Send + Sync + Sized {
         tournament_size: usize,
         population: &'a [(Self::Expression, f64)],
     ) -> &'a Self::Expression {
-        seq::sample_iter(rng, 0..population.len(), tournament_size)
-            .expect("tournament size was bigger than population")
+        (0..population.len())
+            .choose_multiple(rng, tournament_size)
             .into_iter()
             .map(|i| &population[i])
             .max_by(|&&(_, ref x), &&(_, ref y)| x.partial_cmp(y).expect("found NaN"))

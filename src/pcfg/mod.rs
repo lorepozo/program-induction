@@ -44,6 +44,7 @@ use crossbeam_channel::bounded;
 use itertools::Itertools;
 use polytype::{Type, TypeSchema};
 use rand::distributions::{Distribution, Uniform};
+use rand::seq::SliceRandom;
 use rand::Rng;
 use rayon::prelude::*;
 use rayon::spawn;
@@ -452,7 +453,7 @@ impl GP for Grammar {
                     if candidates.is_empty() {
                         ar
                     } else {
-                        rng.shuffle(&mut candidates);
+                        candidates.shuffle(rng);
                         AppliedRule(ar.0, candidates[0], ar.2)
                     }
                 })

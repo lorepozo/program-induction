@@ -7,7 +7,7 @@
 
 use itertools::Itertools;
 use polytype::Context as TypeContext;
-use rand::seq::sample_iter;
+use rand::seq::SliceRandom;
 use rand::Rng;
 use std::f64::NEG_INFINITY;
 use std::fmt;
@@ -238,9 +238,9 @@ impl TRS {
         rng: &mut R,
     ) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
-        let context = sample_iter(rng, contexts, 1)?[0].clone();
+        let context = contexts.choose(rng).ok_or(SampleError::OptionsExhausted)?;
         let rule = trs.lex.sample_rule_from_context(
-            context,
+            context.clone(),
             &mut trs.ctx,
             atom_weights,
             true,
@@ -265,7 +265,7 @@ impl TRS {
         } else {
             let mut trs = self.clone();
             trs.utrs
-                .remove_clauses(sample_iter(rng, deletable, 1)?[0])?;
+                .remove_clauses(deletable.choose(rng).ok_or(SampleError::OptionsExhausted)?)?;
             Ok(trs)
         }
     }
