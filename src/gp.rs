@@ -245,6 +245,7 @@ pub trait GP: Send + Sync + Sized {
                 (expr, l)
             })
             .sorted_by(|&(_, ref x), &(_, ref y)| x.partial_cmp(y).expect("found NaN"))
+            .collect()
     }
 
     /// This should be a filter-like operation on `offspring`. The intended

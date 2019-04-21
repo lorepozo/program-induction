@@ -37,7 +37,6 @@ fn enumerate(
             .enumerate()
             .filter(move |&(_, r)| -r.logprob <= budget.1)
             .sorted()
-            .into_iter()
             .all(move |(i, r)| {
                 let ar = AppliedRule(tp.clone(), i, vec![]);
                 let arg_tps: VecDeque<Type> = r

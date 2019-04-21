@@ -329,7 +329,6 @@ impl Language {
                         ypost.partial_cmp(xpost).unwrap()
                     }
                 })
-                .into_iter()
                 .take(topk)
                 .map(|(expr, logprior, loglikelihood, _)| (expr.clone(), logprior, loglikelihood))
                 .collect();
