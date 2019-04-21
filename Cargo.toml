@@ -15,7 +15,7 @@ categories = ["algorithms", "science"]
 rustdoc-args = ["--html-in-header", ".cargo/registry/src/github.com-1ecc6299db9ec823/programinduction-0.3.0/rustdoc-include-katex-header.html"]
 
 [dependencies]
-crossbeam-channel = "0.2"
+crossbeam-channel = "0.3"
 itertools = "0.7"
 lazy_static = "1.0"
 maplit = "1.0"

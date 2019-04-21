@@ -1,5 +1,6 @@
 //! Representations capable of Exploration-Compression.
 
+use crossbeam_channel::bounded;
 use polytype::TypeSchema;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -7,7 +8,6 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
-use utils::bounded;
 
 use Task;
 
@@ -319,7 +319,7 @@ where
             thread::sleep(duration);
             tx.send(()).unwrap_or(())
         });
-        timeout_complete = Box::new(move || rx.try_recv().is_some());
+        timeout_complete = Box::new(move || rx.try_recv().is_ok());
     }
     let mut dl_complete: Box<dyn Fn(f64) -> bool + Send + Sync> = Box::new(|_| false);
     if let Some(dl) = params.search_limit_description_length {

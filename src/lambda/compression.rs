@@ -1,3 +1,4 @@
+use crossbeam_channel::bounded;
 use itertools::Itertools;
 use polytype::{Context, Type, TypeSchema};
 use rayon::join;
@@ -10,7 +11,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 
 use super::{Expression, Language, LinkedList};
-use utils::bounded;
 use {ECFrontier, Task};
 
 /// Parameters for grammar induction.
@@ -403,7 +403,7 @@ impl Language {
                     u
                 },
             );
-        let joint_mdl = rx.take(frontiers.len()).sum();
+        let joint_mdl = rx.into_iter().take(frontiers.len()).sum();
         (joint_mdl, u)
     }
 

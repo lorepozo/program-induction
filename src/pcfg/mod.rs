@@ -40,6 +40,7 @@ mod enumerator;
 mod parser;
 pub use self::parser::ParseError;
 
+use crossbeam_channel::bounded;
 use itertools::Itertools;
 use polytype::{Type, TypeSchema};
 use rand::distributions::{Distribution, Uniform};
@@ -53,7 +54,6 @@ use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use utils::bounded;
 use {ECFrontier, Task, EC, GP};
 
 /// (representation) Probabilistic context-free grammar. Currently cannot handle bound variables or
@@ -136,7 +136,7 @@ impl Grammar {
             let termination_condition = &mut |expr, logprior| tx.send((expr, logprior)).is_err();
             enumerator::new(&g, nonterminal, termination_condition)
         });
-        Box::new(rx)
+        Box::new(rx.into_iter())
     }
     /// Set parameters based on supplied sentences. This is performed by [`Grammar::compress`].
     ///

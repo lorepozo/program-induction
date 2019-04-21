@@ -98,7 +98,6 @@
 //! [`pcfg`]: pcfg/index.html
 //! [`unit`]: https://doc.rust-lang.org/std/primitive.unit.html
 
-#[macro_use]
 extern crate crossbeam_channel;
 extern crate itertools;
 #[macro_use]
