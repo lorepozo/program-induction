@@ -40,11 +40,18 @@ pub enum GPSelection {
 }
 
 impl GPSelection {
-    pub(crate) fn update_population<T: Clone>(
+    pub(crate) fn update_population<'a, R: Rng, X: Clone + Send + Sync>(
         &self,
-        population: &mut Vec<(T, f64)>,
-        mut scored_children: Vec<(T, f64)>,
+        population: &mut Vec<(X, f64)>,
+        children: Vec<X>,
     ) {
+        let mut scored_children = children
+            .into_iter()
+            .map(|child| {
+                let fitness = oracle(&child);
+                (child, fitness)
+            })
+            .collect_vec();
         match self {
             GPSelection::Deterministic => {
                 for child in scored_children {
@@ -291,13 +298,6 @@ pub trait GP: Send + Sync + Sized {
             children.append(&mut offspring);
         }
         children.truncate(gpparams.n_delta);
-        let scored_children = children
-            .into_iter()
-            .map(|child| {
-                let fitness = (task.oracle)(self, &child);
-                (child, fitness)
-            })
-            .collect();
         gpparams
             .selection
             .update_population(population, scored_children);
