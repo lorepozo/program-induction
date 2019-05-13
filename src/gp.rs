@@ -85,6 +85,10 @@ pub struct GPParams {
     /// population.
     pub selection: GPSelection,
     pub population_size: usize,
+    // The number of individuals selected uniformly at random to participate in
+    // a tournament. If 1, a single individual is selected uniformly at random,
+    // as if the population were unweighted. This is useful for mimicking
+    // uniform weights after resampling, as in a particle filter.
     pub tournament_size: usize,
     /// Probability for a mutation. If mutation doesn't happen, the crossover will happen.
     pub mutation_prob: f64,
