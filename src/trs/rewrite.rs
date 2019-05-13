@@ -433,11 +433,9 @@ impl TRS {
         trs.utrs.remove_idx(idx).expect("removing original rule");
         let new_rules = result.unwrap();
         let mut trs_vec = vec![];
-        for idx in 0..new_rules.len() {
+        for rule in &new_rules {
             let mut temp_trs = trs.clone();
-            temp_trs
-                .utrs
-                .insert_idx(num_background, new_rules[idx].clone())?;
+            temp_trs.utrs.insert_idx(num_background, rule.clone())?;
             trs_vec.push(temp_trs);
         }
         Ok(trs_vec)
@@ -539,8 +537,8 @@ impl TRS {
         }
         let differences = temp_differences.unwrap();
         let mut rules: Vec<Rule> = vec![];
-        for idx in 0..differences.len() {
-            let temp_rule = Rule::new(differences[idx].0.clone(), vec![differences[idx].1.clone()]);
+        for difference in &differences {
+            let temp_rule = Rule::new(difference.0.clone(), vec![difference.1.clone()]);
             if temp_rule != None {
                 rules.push(temp_rule.unwrap());
             }
@@ -556,20 +554,16 @@ impl TRS {
             return None;
         }
         match lhs.clone() {
-            Term::Variable(_x) => {
-                return None;
-            }
+            Term::Variable(_x) => None,
             Term::Application {
                 op: lop,
                 args: largs,
             } => {
-                if largs.len() == 0 {
+                if largs.is_empty() {
                     return Some(vec![(lhs, rhs)]);
                 }
                 match rhs.clone() {
-                    Term::Variable(_x) => {
-                        return Some(vec![(lhs, rhs)]);
-                    }
+                    Term::Variable(_x) => Some(vec![(lhs, rhs)]),
                     Term::Application {
                         op: rop,
                         args: rargs,
@@ -583,15 +577,15 @@ impl TRS {
                                 TRS::find_differences(largs[idx].clone(), rargs[idx].clone());
                             if diff != None {
                                 let new_diffs = diff.unwrap();
-                                for ids in 0..new_diffs.len() {
-                                    differences.push(new_diffs[ids].clone());
+                                for new_diff in &new_diffs {
+                                    differences.push(new_diff.clone());
                                 }
                             }
                         }
                         if differences == vec![] {
                             return None;
                         }
-                        return Some(differences);
+                        Some(differences)
                     }
                 }
             }
@@ -636,7 +630,7 @@ impl TRS {
             let new_rhs = vec![r.lhs];
             return Rule::new(rhs, new_rhs);
         }
-        return None;
+        None
     }
     /// returns a vector of a rules with each rhs being the lhs of the original
     /// rule and each lhs is each rhs of the original.
@@ -688,10 +682,10 @@ impl TRS {
                 }
             }
         }
-        if rules.len() == 0 {
+        if rules.is_empty() {
             return None;
         }
-        return Some(rules);
+        Some(rules)
     }
     /// Selects a rule from the TRS at random, swaps the LHS and RHS if possible and inserts the resulting rules
     /// back into the TRS imediately after the background.
@@ -895,11 +889,9 @@ impl TRS {
         trs.utrs.remove_idx(idx).expect("removing original rule");
         let rules = result.unwrap();
         let mut trs_vec = vec![];
-        for idx in 0..rules.len() {
+        for rule in &rules {
             let mut temp_trs = trs.clone();
-            temp_trs
-                .utrs
-                .insert_idx(num_background, rules[idx].clone())?;
+            temp_trs.utrs.insert_idx(num_background, rule.clone())?;
             trs_vec.push(temp_trs);
         }
         Ok(trs_vec)

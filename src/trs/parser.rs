@@ -412,7 +412,8 @@ mod tests {
             &mut sig,
             &mut vars,
             &mut ops,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(a.display(), "SUCC");
         assert_eq!(s.to_string(), "int → int");
     }
@@ -454,8 +455,9 @@ mod tests {
             vec![],
             false,
             TypeContext::default(),
-        ).unwrap()
-            .1;
+        )
+        .unwrap()
+        .1;
         let mut ctx = lex.0.read().expect("poisoned lexicon").ctx.clone();
         let res = typed_rule("SUCC(x_) = ZERO", &mut lex, &mut ctx);
 
@@ -473,8 +475,9 @@ mod tests {
             vec![],
             false,
             TypeContext::default(),
-        ).unwrap()
-            .1;
+        )
+        .unwrap()
+        .1;
         let mut ctx = lex.0.read().expect("poisoned lexicon").ctx.clone();
         let res = trs(
             CompleteStr("PLUS(ZERO x_) = ZERO; PLUS(SUCC(x_) y_) = SUCC(PLUS(x_ y_));"),
@@ -499,8 +502,9 @@ mod tests {
             vec![],
             false,
             TypeContext::default(),
-        ).unwrap()
-            .1;
+        )
+        .unwrap()
+        .1;
         let mut ctx = lex.0.read().expect("poisoned lexicon").ctx.clone();
         let res = typed_context(CompleteStr("PLUS(x_ [!])"), &mut lex, &mut ctx);
 
@@ -518,8 +522,9 @@ mod tests {
             vec![],
             false,
             TypeContext::default(),
-        ).unwrap()
-            .1;
+        )
+        .unwrap()
+        .1;
         let mut ctx = lex.0.read().expect("poisoned lexicon").ctx.clone();
         let res = typed_rulecontext(CompleteStr("PLUS(x_ [!]) = ZERO"), &mut lex, &mut ctx);
 
@@ -537,8 +542,9 @@ mod tests {
             vec![],
             false,
             TypeContext::default(),
-        ).unwrap()
-            .1;
+        )
+        .unwrap()
+        .1;
         let mut ctx = lex.0.read().expect("poisoned lexicon").ctx.clone();
         let res = templates(
             CompleteStr("PLUS(x_ [!]) = ZERO; [!] = SUCC(ZERO);"),
