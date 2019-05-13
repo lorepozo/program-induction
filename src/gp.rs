@@ -218,6 +218,8 @@ pub trait GP: Send + Sync + Sized {
     type Expression: Clone + Send + Sync;
     /// Extra parameters for a representation go here.
     type Params;
+    // task-specific information, e.g. an input/output pair, goes here.
+    type Observation: Clone + Send + Sync;
 
     /// Create an initial population for a particular requesting type.
     fn genesis<R: Rng>(
@@ -234,6 +236,7 @@ pub trait GP: Send + Sync + Sized {
         params: &Self::Params,
         rng: &mut R,
         prog: &Self::Expression,
+        obs: &Self::Observation,
     ) -> Self::Expression;
 
     /// Perform crossover between two programs. There must be at least one child.
@@ -243,6 +246,7 @@ pub trait GP: Send + Sync + Sized {
         rng: &mut R,
         parent1: &Self::Expression,
         parent2: &Self::Expression,
+        obs: &Self::Observation,
     ) -> Vec<Self::Expression>;
 
     /// A tournament selects an individual from a population.
@@ -306,23 +310,23 @@ pub trait GP: Send + Sync + Sized {
     ///
     /// [`mutation_prob`]: struct.GPParams.html#mutation_prob
     /// [`n_delta`]: struct.GPParams.html#n_delta
-    fn evolve<R: Rng, O: Sync>(
+    fn evolve<R: Rng>(
         &self,
         params: &Self::Params,
         rng: &mut R,
         gpparams: &GPParams,
-        task: &Task<Self, Self::Expression, O>,
+        task: &Task<Self, Self::Expression, Self::Observation>,
         population: &mut Vec<(Self::Expression, f64)>,
     ) {
         let mut children = Vec::with_capacity(gpparams.n_delta);
         while children.len() < gpparams.n_delta {
             let mut offspring = if rng.gen_bool(gpparams.mutation_prob) {
                 let parent = self.tournament(rng, gpparams.tournament_size, population);
-                vec![self.mutate(params, rng, parent)]
+                vec![self.mutate(params, rng, parent, &task.observation)]
             } else {
                 let parent1 = self.tournament(rng, gpparams.tournament_size, population);
                 let parent2 = self.tournament(rng, gpparams.tournament_size, population);
-                self.crossover(params, rng, parent1, parent2)
+                self.crossover(params, rng, parent1, parent2, &task.observation)
             };
             self.validate_offspring(params, population, &children, &mut offspring);
             children.append(&mut offspring);

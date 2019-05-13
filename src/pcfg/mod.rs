@@ -418,6 +418,7 @@ impl Default for GeneticParams {
 impl GP for Grammar {
     type Expression = AppliedRule;
     type Params = GeneticParams;
+    type Observation = ();
 
     fn genesis<R: Rng>(
         &self,
@@ -437,6 +438,7 @@ impl GP for Grammar {
         params: &Self::Params,
         rng: &mut R,
         prog: &Self::Expression,
+        _obs: &Self::Observation,
     ) -> Self::Expression {
         let tot = params.mutation_point + params.mutation_subtree + params.mutation_reproduction;
         match Uniform::from(0f64..tot).sample(rng) {
@@ -472,6 +474,7 @@ impl GP for Grammar {
         rng: &mut R,
         parent1: &Self::Expression,
         parent2: &Self::Expression,
+        _obs: &Self::Observation,
     ) -> Vec<Self::Expression> {
         vec![
             crossover_random_node(params, parent1, parent2, rng),
