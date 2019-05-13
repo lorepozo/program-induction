@@ -230,13 +230,17 @@ pub trait GP: Send + Sync + Sized {
         tournament_size: usize,
         population: &'a [(Self::Expression, f64)],
     ) -> &'a Self::Expression {
-        (0..population.len())
-            .choose_multiple(rng, tournament_size)
-            .into_iter()
-            .map(|i| &population[i])
-            .max_by(|&&(_, ref x), &&(_, ref y)| x.partial_cmp(y).expect("found NaN"))
-            .map(|&(ref expr, _)| expr)
-            .expect("tournament cannot select winner from no contestants")
+        if tournament_size == 1 {
+            &population[rng.gen_range(0, population.len())].0
+        } else {
+            (0..population.len())
+                .choose_multiple(rng, tournament_size)
+                .into_iter()
+                .map(|i| &population[i])
+                .max_by(|&&(_, ref x), &&(_, ref y)| x.partial_cmp(y).expect("found NaN"))
+                .map(|&(ref expr, _)| expr)
+                .expect("tournament cannot select winner from no contestants")
+        }
     }
 
     /// Initializes a population, which is a list of programs and their scores sorted by score.
