@@ -245,7 +245,7 @@ impl EvaluatorT for Evaluator {
             },
             Op::Map => match (&inps[0], &inps[1]) {
                 (&Func(ref f), &List(ref xs)) => Ok(List(
-                    xs.into_iter()
+                    xs.iter()
                         .map(|x| f.eval(&[x.clone()]).map_err(|_| ()))
                         .collect::<Result<_, _>>()?,
                 )),
@@ -297,12 +297,12 @@ impl EvaluatorT for Evaluator {
 /// list.
 ///
 /// [`Task`]: ../../struct.Task.html
-#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
+#[allow(clippy::type_complexity)]
 pub fn make_tasks(
     count: usize,
     n_examples: usize,
 ) -> Vec<Task<'static, Language, Expression, Vec<(Vec<Space>, Space)>>> {
-    (0..(1 + count / 1467)) // make_examples yields 1467 tasks
+    (0..=count / 1467) // make_examples yields 1467 tasks
         .flat_map(|_| make_examples(n_examples))
         .take(count)
         .map(|(_name, tp, examples)| {
@@ -360,7 +360,7 @@ enum Op {
 }
 
 lazy_static! {
-    static ref OPERATIONS: ::std::collections::HashMap<&'static str, Op> = hashmap!{
+    static ref OPERATIONS: ::std::collections::HashMap<&'static str, Op> = hashmap! {
         "0" => Op::Zero,
         "+1" => Op::Incr,
         "-1" => Op::Decr,
@@ -440,9 +440,9 @@ mod gen {
         (0..size).map(|_| white_word(rng)).join(&delim.to_string())
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(cyclomatic_complexity))]
-    #[cfg_attr(feature = "cargo-clippy", allow(redundant_closure_call))]
-    #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
+    #[allow(clippy::cyclomatic_complexity)]
+    #[allow(clippy::redundant_closure_call)]
+    #[allow(clippy::type_complexity)]
     pub fn make_examples(
         n_examples: usize,
     ) -> Vec<(&'static str, TypeSchema, Vec<(Vec<Space>, Space)>)> {

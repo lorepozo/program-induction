@@ -40,9 +40,11 @@ mod enumerator;
 mod parser;
 pub use self::parser::ParseError;
 
+use crossbeam_channel::bounded;
 use itertools::Itertools;
 use polytype::{Type, TypeSchema};
 use rand::distributions::{Distribution, Uniform};
+use rand::seq::SliceRandom;
 use rand::Rng;
 use rayon::prelude::*;
 use rayon::spawn;
@@ -53,7 +55,6 @@ use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use utils::bounded;
 use {ECFrontier, Task, EC, GP};
 
 /// (representation) Probabilistic context-free grammar. Currently cannot handle bound variables or
@@ -121,14 +122,14 @@ impl Grammar {
     /// );
     /// # }
     /// ```
-    pub fn enumerate(&self) -> Box<Iterator<Item = (AppliedRule, f64)>> {
+    pub fn enumerate(&self) -> Box<dyn Iterator<Item = (AppliedRule, f64)>> {
         self.enumerate_nonterminal(self.start.clone())
     }
     /// Enumerate subsentences in the Grammar for the given nonterminal.
     pub fn enumerate_nonterminal(
         &self,
         nonterminal: Type,
-    ) -> Box<Iterator<Item = (AppliedRule, f64)>> {
+    ) -> Box<dyn Iterator<Item = (AppliedRule, f64)>> {
         let (tx, rx) = bounded(1);
         let g = self.clone();
         spawn(move || {
@@ -136,7 +137,7 @@ impl Grammar {
             let termination_condition = &mut |expr, logprior| tx.send((expr, logprior)).is_err();
             enumerator::new(&g, nonterminal, termination_condition)
         });
-        Box::new(rx)
+        Box::new(rx.into_iter())
     }
     /// Set parameters based on supplied sentences. This is performed by [`Grammar::compress`].
     ///
@@ -202,11 +203,10 @@ impl Grammar {
     where
         F: Fn(&str, &[V]) -> Result<V, E>,
     {
-        let args = ar
-            .2
-            .iter()
-            .map(|ar| self.eval(ar, evaluator))
-            .collect::<Result<Vec<V>, E>>()?;
+        let args =
+            ar.2.iter()
+                .map(|ar| self.eval(ar, evaluator))
+                .collect::<Result<Vec<V>, E>>()?;
         evaluator(self.rules[&ar.0][ar.1].name, &args)
     }
     /// Sample a statement of the PCFG.
@@ -453,7 +453,7 @@ impl GP for Grammar {
                     if candidates.is_empty() {
                         ar
                     } else {
-                        rng.shuffle(&mut candidates);
+                        candidates.shuffle(rng);
                         AppliedRule(ar.0, candidates[0], ar.2)
                     }
                 })
@@ -709,11 +709,10 @@ mod gp {
             if ar.2.is_empty() {
                 WeightedAppliedRule(ar.0, ar.1, 1.0, vec![])
             } else {
-                let children: Vec<_> = ar
-                    .2
-                    .into_iter()
-                    .map(|ar| WeightedAppliedRule::new(params, ar))
-                    .collect();
+                let children: Vec<_> =
+                    ar.2.into_iter()
+                        .map(|ar| WeightedAppliedRule::new(params, ar))
+                        .collect();
                 let children_weight: f64 = children.iter().map(|arc| arc.2).sum();
                 let weight = 1.0 + params.progeny_factor * children_weight;
                 WeightedAppliedRule(ar.0, ar.1, weight, children)

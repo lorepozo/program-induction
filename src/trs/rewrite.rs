@@ -7,7 +7,7 @@
 
 use itertools::Itertools;
 use polytype::Context as TypeContext;
-use rand::seq::sample_iter;
+use rand::seq::SliceRandom;
 use rand::Rng;
 use std::f64::NEG_INFINITY;
 use std::fmt;
@@ -128,46 +128,6 @@ impl TRS {
             .sum()
     }
 
-    /// test the likelihood
-    pub fn test_single_likelihood(&self, datum: &Rule, params: ModelParams) {
-        println!("datum: {}", datum.pretty());
-        let ll = if let Some(ref rhs) = datum.rhs() {
-            let mut trace = Trace::new(
-                &self.utrs,
-                &datum.lhs,
-                params.p_observe,
-                params.max_size,
-                RewriteStrategy::All,
-            );
-            for i in 0..params.max_steps {
-                let leaf = trace.next().unwrap();
-                println!(
-                    "{}, {:?}, {}, {}, {}",
-                    i,
-                    leaf.state(),
-                    leaf.term().pretty(),
-                    leaf.log_p(),
-                    leaf.depth()
-                );
-            }
-            println!("trace size: {}", trace.size());
-            let partial = trace.rewrites_to(params.max_steps, rhs);
-            println!("trace size: {}", trace.size());
-            partial
-        } else {
-            println!("ouch! NEG_INFINITY");
-            NEG_INFINITY
-        };
-        println!("partial result: {}", ll);
-
-        let result = if ll == NEG_INFINITY {
-            params.p_partial.ln()
-        } else {
-            (1.0 - params.p_partial).ln() + ll
-        };
-        println!("computed likelihood: {}", result);
-    }
-
     /// Compute the log likelihood for a single datum.
     fn single_log_likelihood(&self, datum: &Rule, params: ModelParams) -> f64 {
         let ll = if let Some(ref rhs) = datum.rhs() {
@@ -278,10 +238,14 @@ impl TRS {
         rng: &mut R,
     ) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
-        let context = sample_iter(rng, contexts, 1)?[0].clone();
-        let rule =
-            trs.lex
-                .sample_rule_from_context(context, &mut trs.ctx, atom_weights, true, max_size)?;
+        let context = contexts.choose(rng).ok_or(SampleError::OptionsExhausted)?;
+        let rule = trs.lex.sample_rule_from_context(
+            context.clone(),
+            &mut trs.ctx,
+            atom_weights,
+            true,
+            max_size,
+        )?;
         trs.lex
             .0
             .write()
@@ -300,7 +264,8 @@ impl TRS {
             Err(SampleError::OptionsExhausted)
         } else {
             let mut trs = self.clone();
-            trs.utrs.remove_clauses(sample_iter(rng, deletable, 1)?[0])?;
+            trs.utrs
+                .remove_clauses(deletable.choose(rng).ok_or(SampleError::OptionsExhausted)?)?;
             Ok(trs)
         }
     }

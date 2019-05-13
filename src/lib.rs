@@ -1,3 +1,5 @@
+#![deny(bare_trait_objects)]
+
 //! A library for program induction and learning representations.
 //!
 //! # Bayesian program learning with the EC algorithm
@@ -96,7 +98,6 @@
 //! [`pcfg`]: pcfg/index.html
 //! [`unit`]: https://doc.rust-lang.org/std/primitive.unit.html
 
-#[macro_use]
 extern crate crossbeam_channel;
 extern crate itertools;
 #[macro_use]
@@ -109,9 +110,8 @@ extern crate nom;
 extern crate polytype;
 extern crate rand;
 extern crate rayon;
-extern crate serde;
 #[macro_use]
-extern crate serde_derive;
+extern crate serde;
 extern crate term_rewriting;
 
 pub mod domains;
@@ -137,7 +137,7 @@ use std::f64;
 pub struct Task<'a, R: Send + Sync + Sized, X: Clone + Send + Sync, O: Sync> {
     /// Assess an expression. For [`EC`] this should return a log-likelihood. For [`GP`] this
     /// should return the fitness, where smaller values correspond to better expressions.
-    pub oracle: Box<Fn(&R, &X) -> f64 + Send + Sync + 'a>,
+    pub oracle: Box<dyn Fn(&R, &X) -> f64 + Send + Sync + 'a>,
     /// An expression that is considered valid for the `oracle` is one of this type.
     pub tp: TypeSchema,
     /// Some program induction methods can take advantage of observations. This may often

@@ -27,7 +27,7 @@ fn enumerate(
     tp: Type,
     budget: (f64, f64),
     depth: u32,
-    cb: &mut FnMut(AppliedRule, f64) -> bool,
+    cb: &mut dyn FnMut(AppliedRule, f64) -> bool,
 ) -> bool {
     if budget.1 <= 0f64 || depth > MAX_DEPTH {
         true
@@ -37,7 +37,6 @@ fn enumerate(
             .enumerate()
             .filter(move |&(_, r)| -r.logprob <= budget.1)
             .sorted()
-            .into_iter()
             .all(move |(i, r)| {
                 let ar = AppliedRule(tp.clone(), i, vec![]);
                 let arg_tps: VecDeque<Type> = r
@@ -58,7 +57,7 @@ fn enumerate_many(
     budget: (f64, f64),
     offset: f64,
     depth: u32,
-    cb: &mut FnMut(AppliedRule, f64) -> bool,
+    cb: &mut dyn FnMut(AppliedRule, f64) -> bool,
 ) -> bool {
     if let Some(arg_tp) = arg_tps.pop_front() {
         let cb = &mut |arg, ll| {

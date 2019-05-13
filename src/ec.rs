@@ -1,5 +1,6 @@
 //! Representations capable of Exploration-Compression.
 
+use crossbeam_channel::bounded;
 use polytype::TypeSchema;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -7,7 +8,6 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
-use utils::bounded;
 
 use Task;
 
@@ -247,7 +247,7 @@ pub trait EC: Send + Sync + Sized {
         tasks: &[Task<Self, Self::Expression, O>],
     ) -> Vec<ECFrontier<Self>> {
         let mut tps = HashMap::new();
-        for (i, task) in tasks.into_iter().enumerate() {
+        for (i, task) in tasks.iter().enumerate() {
             tps.entry(&task.tp).or_insert_with(Vec::new).push((i, task))
         }
         let mut results: Vec<ECFrontier<Self>> =
@@ -312,16 +312,16 @@ where
     let frontiers = Arc::new(RwLock::new(frontiers));
 
     // termination conditions
-    let mut timeout_complete: Box<Fn() -> bool + Send + Sync> = Box::new(|| false);
+    let mut timeout_complete: Box<dyn Fn() -> bool + Send + Sync> = Box::new(|| false);
     let (tx, rx) = bounded(1);
     if let Some(duration) = params.search_limit_timeout {
         thread::spawn(move || {
             thread::sleep(duration);
             tx.send(()).unwrap_or(())
         });
-        timeout_complete = Box::new(move || rx.try_recv().is_some());
+        timeout_complete = Box::new(move || rx.try_recv().is_ok());
     }
-    let mut dl_complete: Box<Fn(f64) -> bool + Send + Sync> = Box::new(|_| false);
+    let mut dl_complete: Box<dyn Fn(f64) -> bool + Send + Sync> = Box::new(|_| false);
     if let Some(dl) = params.search_limit_description_length {
         dl_complete = Box::new(move |logprior| -logprior > dl);
     }
@@ -365,7 +365,9 @@ where
                 | frontiers
                     .read()
                     .expect("enumeration frontiers poisoned")
-                    .is_empty() | timeout_complete() | dl_complete(logprior)
+                    .is_empty()
+                | timeout_complete()
+                | dl_complete(logprior)
             {
                 *is_terminated = true;
                 true

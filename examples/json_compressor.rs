@@ -1,9 +1,8 @@
 extern crate polytype;
 extern crate programinduction;
 extern crate rayon;
-extern crate serde;
 #[macro_use]
-extern crate serde_derive;
+extern crate serde;
 extern crate serde_json;
 
 use polytype::TypeSchema;

@@ -110,11 +110,6 @@ impl From<polytype::UnificationError> for SampleError {
         SampleError::TypeError(TypeError::Unification(e))
     }
 }
-impl<T> From<Vec<T>> for SampleError {
-    fn from(_e: Vec<T>) -> SampleError {
-        SampleError::OptionsExhausted
-    }
-}
 impl fmt::Display for SampleError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {

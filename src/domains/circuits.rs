@@ -23,8 +23,7 @@
 
 use itertools::Itertools;
 use polytype::{Type, TypeSchema};
-use rand;
-use rand::distributions::{Distribution, Weighted, WeightedChoice};
+use rand::distributions::{Distribution, WeightedIndex};
 use std::f64;
 use std::iter;
 
@@ -134,128 +133,40 @@ pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Expression, Vec<boo
 
 /// Like [`make_tasks`], but with a configurable circuit distribution.
 ///
-/// The `n_input_dist` and `n_gate_dist` arguments specify the relative distributions for the
+/// The `n_input_weights` and `n_gate_weights` arguments specify the relative distributions for the
 /// number of inputs and the number of gates from 1 to 8. The `gate_` arguments are relative
 /// weights for sampling the respective gate.
 ///
 /// [`make_tasks`]: fn.make_tasks.html
-#[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+#[allow(clippy::too_many_arguments)]
 pub fn make_tasks_advanced(
     count: u32,
-    n_input_dist: [u32; 8],
-    n_gate_dist: [u32; 8],
+    n_input_weights: [u32; 8],
+    n_gate_weights: [u32; 8],
     gate_not: u32,
     gate_and: u32,
     gate_or: u32,
     gate_mux2: u32,
     gate_mux4: u32,
 ) -> Vec<Task<'static, Language, Expression, Vec<bool>>> {
-    let mut n_input_weights = vec![
-        Weighted {
-            weight: n_input_dist[0],
-            item: 1,
-        },
-        Weighted {
-            weight: n_input_dist[1],
-            item: 2,
-        },
-        Weighted {
-            weight: n_input_dist[2],
-            item: 3,
-        },
-        Weighted {
-            weight: n_input_dist[3],
-            item: 4,
-        },
-        Weighted {
-            weight: n_input_dist[4],
-            item: 5,
-        },
-        Weighted {
-            weight: n_input_dist[5],
-            item: 6,
-        },
-        Weighted {
-            weight: n_input_dist[6],
-            item: 7,
-        },
-        Weighted {
-            weight: n_input_dist[7],
-            item: 8,
-        },
-    ];
-    let n_input_distribution = WeightedChoice::new(&mut n_input_weights);
-    let mut n_gate_weights = vec![
-        Weighted {
-            weight: n_gate_dist[0],
-            item: 1,
-        },
-        Weighted {
-            weight: n_gate_dist[1],
-            item: 2,
-        },
-        Weighted {
-            weight: n_gate_dist[2],
-            item: 3,
-        },
-        Weighted {
-            weight: n_gate_dist[3],
-            item: 4,
-        },
-        Weighted {
-            weight: n_gate_dist[4],
-            item: 5,
-        },
-        Weighted {
-            weight: n_gate_dist[5],
-            item: 6,
-        },
-        Weighted {
-            weight: n_gate_dist[6],
-            item: 7,
-        },
-        Weighted {
-            weight: n_gate_dist[7],
-            item: 8,
-        },
-    ];
-    let n_gate_distribution = WeightedChoice::new(&mut n_gate_weights);
-
-    let mut gate_weights = vec![
-        Weighted {
-            weight: gate_not,
-            item: Gate::Not,
-        },
-        Weighted {
-            weight: gate_and,
-            item: Gate::And,
-        },
-        Weighted {
-            weight: gate_or,
-            item: Gate::Or,
-        },
-        Weighted {
-            weight: gate_mux2,
-            item: Gate::Mux2,
-        },
-        Weighted {
-            weight: gate_mux4,
-            item: Gate::Mux4,
-        },
-    ];
-    let gate_distribution = WeightedChoice::new(&mut gate_weights);
+    let n_input_distribution =
+        WeightedIndex::new(&n_input_weights).expect("invalid weights for number of circuit inputs");
+    let n_gate_distribution =
+        WeightedIndex::new(&n_gate_weights).expect("invalid weights for number of circuit gates");
+    let gate_weights = WeightedIndex::new(&[gate_not, gate_and, gate_or, gate_mux2, gate_mux4])
+        .expect("invalid weights for circuit gates");
 
     let mut rng = rand::thread_rng();
     (0..count)
         .map(move |_| {
-            let mut n_inputs = n_input_distribution.sample(&mut rng);
-            let mut n_gates = n_gate_distribution.sample(&mut rng);
+            let mut n_inputs = 1 + n_input_distribution.sample(&mut rng);
+            let mut n_gates = 1 + n_gate_distribution.sample(&mut rng);
             while n_inputs / n_gates >= 3 {
-                n_inputs = n_input_distribution.sample(&mut rng);
-                n_gates = n_gate_distribution.sample(&mut rng);
+                n_inputs = 1 + n_input_distribution.sample(&mut rng);
+                n_gates = 1 + n_gate_distribution.sample(&mut rng);
             }
             let tp = TypeSchema::Monotype(Type::from(vec![tp!(bool); n_inputs + 1]));
-            let circuit = Circuit::new(&mut rng, &gate_distribution, n_inputs as u32, n_gates);
+            let circuit = Circuit::new(&mut rng, &gate_weights, n_inputs as u32, n_gates);
             let outputs: Vec<_> = iter::repeat(vec![false, true])
                 .take(n_inputs)
                 .multi_cartesian_product()
@@ -290,10 +201,15 @@ pub fn make_tasks_advanced(
         .collect()
 }
 
-use self::gates::{Circuit, Gate};
+use self::gates::Circuit;
 mod gates {
-    use rand::distributions::{Distribution, WeightedChoice};
-    use rand::Rng;
+    use rand::{
+        distributions::{Distribution, WeightedIndex},
+        seq::SliceRandom,
+        Rng,
+    };
+
+    const GATE_CHOICES: [Gate; 5] = [Gate::Not, Gate::And, Gate::Or, Gate::Mux2, Gate::Mux4];
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum Gate {
@@ -333,7 +249,7 @@ mod gates {
     impl Circuit {
         pub fn new<T: Rng>(
             rng: &mut T,
-            gate_distribution: &WeightedChoice<Gate>,
+            gate_distribution: &WeightedIndex<u32>,
             n_inputs: u32,
             n_gates: usize,
         ) -> Self {
@@ -343,7 +259,7 @@ mod gates {
             };
             loop {
                 while circuit.operations.len() < n_gates {
-                    let gate = gate_distribution.sample(rng);
+                    let gate = GATE_CHOICES[gate_distribution.sample(rng)];
                     match gate {
                         Gate::Mux2 | Gate::Mux4 if n_inputs < gate.n_inputs() => continue,
                         _ => (),
@@ -353,7 +269,7 @@ mod gates {
                     }
                     let mut valid_inputs: Vec<u32> =
                         (0..n_inputs + (circuit.operations.len() as u32)).collect();
-                    rng.shuffle(valid_inputs.as_mut_slice());
+                    valid_inputs.shuffle(rng);
                     let args = valid_inputs[..(gate.n_inputs() as usize)].to_vec();
                     circuit.operations.push((gate, args));
                 }

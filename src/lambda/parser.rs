@@ -27,7 +27,7 @@ impl error::Error for ParseError {
 }
 
 pub fn parse(dsl: &Language, inp: &str) -> Result<Expression, ParseError> {
-    let s = inp.trim_left();
+    let s = inp.trim_start();
     let offset = inp.len() - s.len();
     streaming_parse(dsl, s, offset).and_then(move |(di, expr)| {
         if s[di..].chars().all(char::is_whitespace) {
@@ -120,7 +120,7 @@ fn streaming_parse(
         if inp.chars().nth(0) == Some('$') && inp.len() > 1 {
             inp[1..]
                 .find(|c: char| c.is_whitespace() || c == ')')
-                .and_then(|i| inp[1..1 + i].parse::<usize>().ok().map(|num| (1 + i, num)))
+                .and_then(|i| inp[1..=i].parse::<usize>().ok().map(|num| (1 + i, num)))
                 .map(|(di, num)| Ok((di, Expression::Index(num))))
         } else {
             None
@@ -131,7 +131,8 @@ fn streaming_parse(
             Some(1)
         } else {
             None
-        }.map(|mut di| {
+        }
+        .map(|mut di| {
             let (ndi, expr) = streaming_parse(dsl, &inp[di..], offset + di)?;
             di += ndi;
             if let Some(num) = dsl.invented.iter().position(|&(ref x, _, _)| x == &expr) {
@@ -149,7 +150,8 @@ fn streaming_parse(
             None if !inp.is_empty() => Some(inp.len()),
             Some(next) if next > 0 => Some(next),
             _ => None,
-        }.map(|di| {
+        }
+        .map(|di| {
             if let Some(num) = dsl
                 .primitives
                 .iter()

@@ -1,3 +1,4 @@
+use crossbeam_channel::bounded;
 use itertools::Itertools;
 use polytype::{Context, Type, TypeSchema};
 use rayon::join;
@@ -10,7 +11,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 
 use super::{Expression, Language, LinkedList};
-use utils::bounded;
 use {ECFrontier, Task};
 
 /// Parameters for grammar induction.
@@ -109,7 +109,7 @@ impl Default for CompressionParams {
 /// [`lambda::CompressionParams`]: struct.CompressionParams.html
 /// [`lambda::Expression`]: enum.Expression.html
 /// [`lambda::Language`]: struct.Language.html
-#[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+#[allow(clippy::too_many_arguments)]
 pub fn induce<O: Sync, I, X, P, D, F, R>(
     dsl: &Language,
     params: &CompressionParams,
@@ -130,10 +130,14 @@ where
             &[(TypeSchema, Vec<(Expression, f64, f64)>)],
             &CompressionParams,
             &mut Vec<X>,
-        )
-        + Sync,
-    D: Fn(&I, &X, &mut Language, &[(TypeSchema, Vec<(Expression, f64, f64)>)], &CompressionParams)
-            -> Option<f64>
+        ) + Sync,
+    D: Fn(
+            &I,
+            &X,
+            &mut Language,
+            &[(TypeSchema, Vec<(Expression, f64, f64)>)],
+            &CompressionParams,
+        ) -> Option<f64>
         + Sync,
     F: Fn(Expression) -> Expression,
     R: Fn(
@@ -312,24 +316,22 @@ impl Language {
         topk: usize,
         topk_use_only_likelihood: bool,
     ) -> RescoredFrontier {
-        let xs = f
-            .1
-            .iter()
-            .map(|&(ref expr, _, loglikelihood)| {
-                let logprior = self.uses(&f.0, expr).0;
-                (expr, logprior, loglikelihood, logprior + loglikelihood)
-            })
-            .sorted_by(|&(_, _, ref xl, ref xpost), &(_, _, ref yl, ref ypost)| {
-                if topk_use_only_likelihood {
-                    yl.partial_cmp(xl).unwrap()
-                } else {
-                    ypost.partial_cmp(xpost).unwrap()
-                }
-            })
-            .into_iter()
-            .take(topk)
-            .map(|(expr, logprior, loglikelihood, _)| (expr.clone(), logprior, loglikelihood))
-            .collect();
+        let xs =
+            f.1.iter()
+                .map(|&(ref expr, _, loglikelihood)| {
+                    let logprior = self.uses(&f.0, expr).0;
+                    (expr, logprior, loglikelihood, logprior + loglikelihood)
+                })
+                .sorted_by(|&(_, _, ref xl, ref xpost), &(_, _, ref yl, ref ypost)| {
+                    if topk_use_only_likelihood {
+                        yl.partial_cmp(xl).unwrap()
+                    } else {
+                        ypost.partial_cmp(xpost).unwrap()
+                    }
+                })
+                .take(topk)
+                .map(|(expr, logprior, loglikelihood, _)| (expr.clone(), logprior, loglikelihood))
+                .collect();
         (f.0, xs)
     }
 
@@ -374,14 +376,13 @@ impl Language {
         let u = frontiers
             .par_iter()
             .flat_map(|f| {
-                let lu = f
-                    .1
-                    .iter()
-                    .map(|&(ref expr, _logprior, loglikelihood)| {
-                        let (logprior, u) = self.uses(&f.0, expr);
-                        (logprior + loglikelihood, u)
-                    })
-                    .collect::<Vec<_>>();
+                let lu =
+                    f.1.iter()
+                        .map(|&(ref expr, _logprior, loglikelihood)| {
+                            let (logprior, u) = self.uses(&f.0, expr);
+                            (logprior + loglikelihood, u)
+                        })
+                        .collect::<Vec<_>>();
                 let largest = lu.iter().fold(f64::NEG_INFINITY, |acc, &(l, _)| acc.max(l));
                 tx.send(largest).expect("send on closed channel");
                 let z = largest
@@ -401,7 +402,7 @@ impl Language {
                     u
                 },
             );
-        let joint_mdl = rx.take(frontiers.len()).sum();
+        let joint_mdl = rx.into_iter().take(frontiers.len()).sum();
         (joint_mdl, u)
     }
 
@@ -495,7 +496,7 @@ impl Language {
                         eprintln!(
                             "WARNING (please report to programinduction devs): xs and arg_tps did not correspond: expr={} (arg_tps={:?}) f={} xs={:?}",
                             self.display(expr),
-                            arg_tps.iter().map(|t| t.to_string()).collect::<Vec<_>>(),
+                            arg_tps.iter().map(std::string::ToString::to_string).collect::<Vec<_>>(),
                             self.display(f),
                             xs.iter().map(|x| self.display(x)).collect::<Vec<_>>(),
                         );
@@ -520,7 +521,7 @@ impl Language {
                     for (free_tp, free_expr) in bindings
                         .iter()
                         .map(|(_, &(ref tp, ref expr))| (tp, expr))
-                        .chain(arg_tps.into_iter().zip(xs.iter().map(|&x| x)))
+                        .chain(arg_tps.into_iter().zip(xs.iter().cloned()))
                     {
                         let mut free_tp = free_tp.clone();
                         loop {
@@ -574,11 +575,10 @@ impl Language {
         i: usize,
         expr: &Expression,
     ) -> bool {
-        let results: Vec<_> = f
-            .1
-            .iter_mut()
-            .map(|x| self.rewrite_expression(&mut x.0, i, expr, 0))
-            .collect();
+        let results: Vec<_> =
+            f.1.iter_mut()
+                .map(|x| self.rewrite_expression(&mut x.0, i, expr, 0))
+                .collect();
         results.iter().any(|&x| x)
     }
     fn rewrite_expression(
@@ -1079,7 +1079,7 @@ mod proposals {
 
     /// main entry point for proposals
     pub fn from_expression(expr: &Expression, arity: u32) -> Vec<Expression> {
-        (0..arity + 1)
+        (0..=arity)
             .flat_map(move |b| from_subexpression(expr, b))
             .flat_map(Fragment::canonicalize)
             .filter(|fragment_expr| {
@@ -1094,7 +1094,7 @@ mod proposals {
         expr: &'a Expression,
         arity: u32,
     ) -> impl Iterator<Item = Fragment> + 'a {
-        let rst: Box<Iterator<Item = Fragment>> = match *expr {
+        let rst: Box<dyn Iterator<Item = Fragment>> = match *expr {
             Expression::Application(ref f, ref x) => {
                 Box::new(from_subexpression(f, arity).chain(from_subexpression(x, arity)))
             }
@@ -1107,12 +1107,12 @@ mod proposals {
         expr: &'a Expression,
         arity: u32,
         toplevel: bool,
-    ) -> Box<Iterator<Item = Fragment> + 'a> {
+    ) -> Box<dyn Iterator<Item = Fragment> + 'a> {
         if arity == 0 {
             return Box::new(iter::once(Fragment::Expression(expr.clone())));
         }
-        let rst: Box<Iterator<Item = Fragment> + 'a> = match *expr {
-            Expression::Application(ref f, ref x) => Box::new((0..arity + 1).flat_map(move |fa| {
+        let rst: Box<dyn Iterator<Item = Fragment> + 'a> = match *expr {
+            Expression::Application(ref f, ref x) => Box::new((0..=arity).flat_map(move |fa| {
                 let xa = (arity as i32 - fa as i32) as u32;
                 from_particular(f, fa, false)
                     .zip(iter::repeat(

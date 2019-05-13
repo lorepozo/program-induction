@@ -460,7 +460,8 @@ impl<V, E> Eq for LiftedFunction<V, E>
 where
     E: Evaluator<Space = V>,
     V: Clone + PartialEq + Send + Sync,
-{}
+{
+}
 
 /// Like [`LiftedFunction`], but for lazy evaluation with a [`LazyEvaluator`].
 ///
@@ -509,7 +510,8 @@ impl<V, E> Eq for LiftedLazyFunction<V, E>
 where
     E: LazyEvaluator<Space = V>,
     V: Clone + PartialEq + Send + Sync,
-{}
+{
+}
 
 use self::ReducedExpression::*;
 #[derive(Clone, PartialEq)]
@@ -627,10 +629,12 @@ where
                                 "tried to apply a primitive that wasn't a function: {}",
                                 name
                             )
-                        } else if xs.len() < arity || !xs.iter().take(arity).all(|x| match *x {
-                            Value(_) | Abstraction(_, _) => true, // evaluatable
-                            _ => false,
-                        }) {
+                        } else if xs.len() < arity
+                            || !xs.iter().take(arity).all(|x| match *x {
+                                Value(_) | Abstraction(_, _) => true, // evaluatable
+                                _ => false,
+                            })
+                        {
                             // not enough args or not all evaluatable.
                             xs.insert(0, f.eval(evaluator, env)?);
                             Ok(Application(xs))
@@ -737,7 +741,7 @@ where
                             // not enough args
                             Ok(Application(exprs.clone()))
                         } else {
-                            let mut args: Vec<_> = xs.into_iter().cloned().collect();
+                            let mut args: Vec<_> = xs.to_vec();
                             let mut xs = args.split_off(arity);
                             let args: Vec<_> = args
                                 .into_iter()
@@ -777,7 +781,7 @@ where
                         } else {
                             let mut env = (**env).clone();
                             let mut depth: usize = *depth;
-                            let mut xs: Vec<_> = xs.into_iter().rev().cloned().collect();
+                            let mut xs: Vec<_> = xs.iter().rev().cloned().collect();
                             while !xs.is_empty() && depth > 0 {
                                 let binding = xs.pop().unwrap();
                                 env.push_front(binding);
@@ -865,13 +869,17 @@ where
     }
     fn substitute_indices(&mut self, env: &Arc<VecDeque<ReducedExpression<V>>>, offset: usize) {
         match *self {
-            Application(ref mut xs) => for x in xs {
-                x.substitute_indices(env, offset)
-            },
+            Application(ref mut xs) => {
+                for x in xs {
+                    x.substitute_indices(env, offset)
+                }
+            }
             Abstraction(depth, ref mut body) => body.substitute_indices(env, offset + depth),
-            Index(i) if i >= offset => if let Some(x) = env.get(i - offset) {
-                *self = x.clone()
-            },
+            Index(i) if i >= offset => {
+                if let Some(x) = env.get(i - offset) {
+                    *self = x.clone()
+                }
+            }
             _ => (),
         }
     }

@@ -83,7 +83,8 @@ fn lambda_expression_parse_invented() {
             Box::new(Expression::Primitive(1)),
         ),
         0f64,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(
         dsl.parse("(#(+ 1) 1)").unwrap(),
         Expression::Application(
@@ -115,7 +116,8 @@ fn lambda_expression_parse_abstraction() {
             Box::new(Expression::Index(0)),
         ))),
         0f64,
-    ).unwrap();
+    )
+    .unwrap();
     let expr = dsl.parse("(λ (+ $0))").unwrap();
     assert_eq!(
         expr,
@@ -171,7 +173,8 @@ fn lambda_expression_infer() {
             Box::new(Expression::Primitive(4)),
         ),
         0f64,
-    ).unwrap();
+    )
+    .unwrap();
     let expr = Expression::Application(
         Box::new(Expression::Primitive(0)),
         Box::new(Expression::Application(
@@ -394,11 +397,13 @@ fn lambda_lazy_eval() {
                     _ => unreachable!(),
                 },
                 "car" => match inps[0].eval(&[])? {
-                    ListSpace::List(xs) => if !xs.is_empty() {
-                        Ok(ListSpace::Num(xs[0].clone()))
-                    } else {
-                        Err(ListError("cannot get car of empty list"))
-                    },
+                    ListSpace::List(xs) => {
+                        if !xs.is_empty() {
+                            Ok(ListSpace::Num(xs[0].clone()))
+                        } else {
+                            Err(ListError("cannot get car of empty list"))
+                        }
+                    }
                     _ => unreachable!(),
                 },
                 _ => unreachable!(),
