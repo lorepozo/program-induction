@@ -2,7 +2,7 @@
 
 use itertools::Itertools;
 use polytype::TypeSchema;
-use rand::{seq::IteratorRandom, Rng};
+use rand::{distributions::Distribution, distributions::WeightedIndex, seq::IteratorRandom, Rng};
 use std::cmp::Ordering;
 use utils::{logsumexp, weighted_sample};
 
@@ -37,6 +37,17 @@ pub enum GPSelection {
     /// individuals, though this is relatively unlikely.
     #[serde(alias = "probabilistic")]
     Probabilistic,
+    /// `Drift(alpha)` implies a noisy survival-of-the-fittest selection
+    /// mechanism, in which individuals are selected probabilistically without
+    /// replacement from the combination of the population and offspring to form
+    /// a new population. Offspring fitness is simply determined by the task,
+    /// while the fitness of members of the pre-existing population is computed
+    /// as a linear combination of their prior fitness and fitness on the
+    /// current task, given as `fitness_{:t} = alpha * fitness_{:t-1} +
+    /// (1-alpha) * fitness_t`. An individual can be removed from a population
+    /// by lower-scoring individuals, though this is relatively unlikely.
+    #[serde(alias = "drift")]
+    Drift(f64),
 }
 
 impl GPSelection {
@@ -44,6 +55,8 @@ impl GPSelection {
         &self,
         population: &mut Vec<(X, f64)>,
         children: Vec<X>,
+        oracle: Box<dyn Fn(&X) -> f64 + Send + Sync + 'a>,
+        rng: &mut R,
     ) {
         let mut scored_children = children
             .into_iter()
@@ -53,6 +66,15 @@ impl GPSelection {
             })
             .collect_vec();
         match self {
+            GPSelection::Drift(alpha) => {
+                for (p, old_fitness) in population.iter_mut() {
+                    let new_fitness = oracle(p);
+                    *old_fitness = *alpha * *old_fitness + (1.0 - alpha) * new_fitness;
+                }
+                let pop_size = population.len();
+                population.extend(scored_children);
+                *population = sample_without_replacement(population, pop_size, rng);
+            }
             GPSelection::Deterministic => {
                 for child in scored_children {
                     sorted_place(child, population);
@@ -306,9 +328,12 @@ pub trait GP: Send + Sync + Sized {
             children.append(&mut offspring);
         }
         children.truncate(gpparams.n_delta);
-        gpparams
-            .selection
-            .update_population(population, scored_children);
+        gpparams.selection.update_population(
+            population,
+            children,
+            Box::new(|child| (task.oracle)(self, child)),
+            rng,
+        );
     }
 }
 
@@ -337,6 +362,47 @@ fn sample_pop<T: Clone>(options: Vec<(T, f64)>, sample_size: usize) -> Vec<(T, f
         .combinations(sample_size)
         .nth(*idx)
         .unwrap()
+}
+
+/// Given a `Vec` of item-score pairs sorted by score, and some `sample_size`,
+/// return a score-sorted subset sampled without replacement from the `Vec`
+/// according to score.
+fn sample_without_replacement<R: Rng, T: Clone>(
+    options: &mut Vec<(T, f64)>,
+    sample_size: usize,
+    rng: &mut R,
+) -> Vec<(T, f64)> {
+    let mut weights = options
+        .iter()
+        .map(|(_, weight)| (-weight).exp())
+        .collect_vec();
+    let mut sample = Vec::with_capacity(sample_size);
+    for _ in 0..sample_size {
+        let dist = WeightedIndex::new(&weights[..]).unwrap();
+        let sampled_idx = dist.sample(rng);
+        sample.push(options[sampled_idx].clone());
+        weights[sampled_idx] = 0.0;
+    }
+    sample.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+    sample
+}
+
+/// Given a `Vec` of item-score pairs sorted by score, and some `sample_size`,
+/// return a score-sorted subset sampled with replacement from the `Vec`
+/// according to score.
+fn sample_with_replacement<R: Rng, T: Clone>(
+    options: &mut Vec<(T, f64)>,
+    sample_size: usize,
+    rng: &mut R,
+) -> Vec<(T, f64)> {
+    let dist = WeightedIndex::new(options.iter().map(|(_, weight)| (-weight).exp())).unwrap();
+    let mut sample = Vec::with_capacity(sample_size);
+    for _ in 0..sample_size {
+        // cloning because we don't know if we'll be using multiple times
+        sample.push(options[dist.sample(rng)].clone());
+    }
+    sample.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+    sample
 }
 
 /// Given a mutable vector, `pop`, of item-score pairs sorted by score, insert
