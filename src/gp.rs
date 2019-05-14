@@ -18,6 +18,17 @@ pub enum GPSelection {
     /// individual arises to take its place.
     #[serde(alias = "deterministic")]
     Deterministic,
+    /// `Drift(alpha)` implies a noisy survival-of-the-fittest selection
+    /// mechanism, in which individuals are selected probabilistically without
+    /// replacement from the combination of the population and offspring to form
+    /// a new population. Offspring fitness is simply determined by the task,
+    /// while the fitness of members of the pre-existing population is computed
+    /// as a linear combination of their prior fitness and fitness on the
+    /// current task, given as `fitness_{:t} = alpha * fitness_{:t-1} +
+    /// (1-alpha) * fitness_t`. An individual can be removed from a population
+    /// by lower-scoring individuals, though this is relatively unlikely.
+    #[serde(alias = "drift")]
+    Drift(f64),
     /// `Hybrid` implies a selection mechanism in which some portion of the
     /// population is selected deterministically such that the best individuals
     /// are always retained. The remainder of the population is sampled without
@@ -37,17 +48,9 @@ pub enum GPSelection {
     /// individuals, though this is relatively unlikely.
     #[serde(alias = "probabilistic")]
     Probabilistic,
-    /// `Drift(alpha)` implies a noisy survival-of-the-fittest selection
-    /// mechanism, in which individuals are selected probabilistically without
-    /// replacement from the combination of the population and offspring to form
-    /// a new population. Offspring fitness is simply determined by the task,
-    /// while the fitness of members of the pre-existing population is computed
-    /// as a linear combination of their prior fitness and fitness on the
-    /// current task, given as `fitness_{:t} = alpha * fitness_{:t-1} +
-    /// (1-alpha) * fitness_t`. An individual can be removed from a population
-    /// by lower-scoring individuals, though this is relatively unlikely.
-    #[serde(alias = "drift")]
-    Drift(f64),
+    /// `Resample` implies that individuals are selected by sampling from the
+    /// offspring *with* replacement, as in a particle filter.
+    Resample,
 }
 
 impl GPSelection {
@@ -74,6 +77,10 @@ impl GPSelection {
                 let pop_size = population.len();
                 population.extend(scored_children);
                 *population = sample_without_replacement(population, pop_size, rng);
+            }
+            GPSelection::Resample => {
+                let pop_size = population.len();
+                *population = sample_with_replacement(&mut scored_children, pop_size, rng);
             }
             GPSelection::Deterministic => {
                 for child in scored_children {
