@@ -1052,7 +1052,7 @@ impl GP for Lexicon {
         params: &Self::Params,
         rng: &mut R,
         trs: &Self::Expression,
-        obs: &Self::Observation,
+        _obs: &Self::Observation,
     ) -> Self::Expression {
         loop {
             if trs.is_empty() | rng.gen_bool(params.p_add) {
