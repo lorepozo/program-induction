@@ -1004,6 +1004,7 @@ impl Lex {
 impl GP for Lexicon {
     type Expression = TRS;
     type Params = GeneticParams;
+    type Observation = Vec<Rule>;
     fn genesis<R: Rng>(
         &self,
         params: &Self::Params,
@@ -1051,17 +1052,18 @@ impl GP for Lexicon {
         params: &Self::Params,
         rng: &mut R,
         trs: &Self::Expression,
-    ) -> Self::Expression {
+        _obs: &Self::Observation,
+    ) -> Vec<Self::Expression> {
         loop {
             if trs.is_empty() | rng.gen_bool(params.p_add) {
                 let templates = self.0.read().expect("poisoned lexicon").templates.clone();
                 if let Ok(new_trs) =
                     trs.add_rule(&templates, params.atom_weights, params.max_sample_size, rng)
                 {
-                    return new_trs;
+                    return vec![new_trs];
                 }
             } else if let Ok(new_trs) = trs.delete_rule(rng) {
-                return new_trs;
+                return vec![new_trs];
             }
         }
     }
@@ -1071,6 +1073,7 @@ impl GP for Lexicon {
         rng: &mut R,
         parent1: &Self::Expression,
         parent2: &Self::Expression,
+        _obs: &Self::Observation,
     ) -> Vec<Self::Expression> {
         let trs = self
             .combine(rng, parent1, parent2)

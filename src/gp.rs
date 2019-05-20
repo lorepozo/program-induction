@@ -2,7 +2,7 @@
 
 use itertools::Itertools;
 use polytype::TypeSchema;
-use rand::{seq::IteratorRandom, Rng};
+use rand::{distributions::Distribution, distributions::WeightedIndex, seq::IteratorRandom, Rng};
 use std::cmp::Ordering;
 use utils::{logsumexp, weighted_sample};
 
@@ -18,6 +18,17 @@ pub enum GPSelection {
     /// individual arises to take its place.
     #[serde(alias = "deterministic")]
     Deterministic,
+    /// `Drift(alpha)` implies a noisy survival-of-the-fittest selection
+    /// mechanism, in which individuals are selected probabilistically without
+    /// replacement from the combination of the population and offspring to form
+    /// a new population. Offspring fitness is simply determined by the task,
+    /// while the fitness of members of the pre-existing population is computed
+    /// as a linear combination of their prior fitness and fitness on the
+    /// current task, given as `fitness_{:t} = alpha * fitness_{:t-1} +
+    /// (1-alpha) * fitness_t`. An individual can be removed from a population
+    /// by lower-scoring individuals, though this is relatively unlikely.
+    #[serde(alias = "drift")]
+    Drift(f64),
     /// `Hybrid` implies a selection mechanism in which some portion of the
     /// population is selected deterministically such that the best individuals
     /// are always retained. The remainder of the population is sampled without
@@ -37,15 +48,40 @@ pub enum GPSelection {
     /// individuals, though this is relatively unlikely.
     #[serde(alias = "probabilistic")]
     Probabilistic,
+    /// `Resample` implies that individuals are selected by sampling from the
+    /// offspring *with* replacement, as in a particle filter.
+    Resample,
 }
 
 impl GPSelection {
-    pub(crate) fn update_population<T: Clone>(
+    pub(crate) fn update_population<'a, R: Rng, X: Clone + Send + Sync>(
         &self,
-        population: &mut Vec<(T, f64)>,
-        mut scored_children: Vec<(T, f64)>,
+        population: &mut Vec<(X, f64)>,
+        children: Vec<X>,
+        oracle: Box<dyn Fn(&X) -> f64 + Send + Sync + 'a>,
+        rng: &mut R,
     ) {
+        let mut scored_children = children
+            .into_iter()
+            .map(|child| {
+                let fitness = oracle(&child);
+                (child, fitness)
+            })
+            .collect_vec();
         match self {
+            GPSelection::Drift(alpha) => {
+                for (p, old_fitness) in population.iter_mut() {
+                    let new_fitness = oracle(p);
+                    *old_fitness = *alpha * *old_fitness + (1.0 - alpha) * new_fitness;
+                }
+                let pop_size = population.len();
+                population.extend(scored_children);
+                *population = sample_without_replacement(population, pop_size, rng);
+            }
+            GPSelection::Resample => {
+                let pop_size = population.len();
+                *population = sample_with_replacement(&mut scored_children, pop_size, rng);
+            }
             GPSelection::Deterministic => {
                 for child in scored_children {
                     sorted_place(child, population);
@@ -78,6 +114,10 @@ pub struct GPParams {
     /// population.
     pub selection: GPSelection,
     pub population_size: usize,
+    // The number of individuals selected uniformly at random to participate in
+    // a tournament. If 1, a single individual is selected uniformly at random,
+    // as if the population were unweighted. This is useful for mimicking
+    // uniform weights after resampling, as in a particle filter.
     pub tournament_size: usize,
     /// Probability for a mutation. If mutation doesn't happen, the crossover will happen.
     pub mutation_prob: f64,
@@ -185,6 +225,8 @@ pub trait GP: Send + Sync + Sized {
     type Expression: Clone + Send + Sync;
     /// Extra parameters for a representation go here.
     type Params;
+    // task-specific information, e.g. an input/output pair, goes here.
+    type Observation: Clone + Send + Sync;
 
     /// Create an initial population for a particular requesting type.
     fn genesis<R: Rng>(
@@ -195,13 +237,14 @@ pub trait GP: Send + Sync + Sized {
         tp: &TypeSchema,
     ) -> Vec<Self::Expression>;
 
-    /// Mutate a single program.
+    /// Mutate a single program, potentially producing multiple offspring
     fn mutate<R: Rng>(
         &self,
         params: &Self::Params,
         rng: &mut R,
         prog: &Self::Expression,
-    ) -> Self::Expression;
+        obs: &Self::Observation,
+    ) -> Vec<Self::Expression>;
 
     /// Perform crossover between two programs. There must be at least one child.
     fn crossover<R: Rng>(
@@ -210,6 +253,7 @@ pub trait GP: Send + Sync + Sized {
         rng: &mut R,
         parent1: &Self::Expression,
         parent2: &Self::Expression,
+        obs: &Self::Observation,
     ) -> Vec<Self::Expression>;
 
     /// A tournament selects an individual from a population.
@@ -219,13 +263,17 @@ pub trait GP: Send + Sync + Sized {
         tournament_size: usize,
         population: &'a [(Self::Expression, f64)],
     ) -> &'a Self::Expression {
-        (0..population.len())
-            .choose_multiple(rng, tournament_size)
-            .into_iter()
-            .map(|i| &population[i])
-            .max_by(|&&(_, ref x), &&(_, ref y)| x.partial_cmp(y).expect("found NaN"))
-            .map(|&(ref expr, _)| expr)
-            .expect("tournament cannot select winner from no contestants")
+        if tournament_size == 1 {
+            &population[rng.gen_range(0, population.len())].0
+        } else {
+            (0..population.len())
+                .choose_multiple(rng, tournament_size)
+                .into_iter()
+                .map(|i| &population[i])
+                .max_by(|&&(_, ref x), &&(_, ref y)| x.partial_cmp(y).expect("found NaN"))
+                .map(|&(ref expr, _)| expr)
+                .expect("tournament cannot select winner from no contestants")
+        }
     }
 
     /// Initializes a population, which is a list of programs and their scores sorted by score.
@@ -269,38 +317,34 @@ pub trait GP: Send + Sync + Sized {
     ///
     /// [`mutation_prob`]: struct.GPParams.html#mutation_prob
     /// [`n_delta`]: struct.GPParams.html#n_delta
-    fn evolve<R: Rng, O: Sync>(
+    fn evolve<R: Rng>(
         &self,
         params: &Self::Params,
         rng: &mut R,
         gpparams: &GPParams,
-        task: &Task<Self, Self::Expression, O>,
+        task: &Task<Self, Self::Expression, Self::Observation>,
         population: &mut Vec<(Self::Expression, f64)>,
     ) {
         let mut children = Vec::with_capacity(gpparams.n_delta);
         while children.len() < gpparams.n_delta {
             let mut offspring = if rng.gen_bool(gpparams.mutation_prob) {
                 let parent = self.tournament(rng, gpparams.tournament_size, population);
-                vec![self.mutate(params, rng, parent)]
+                self.mutate(params, rng, parent, &task.observation)
             } else {
                 let parent1 = self.tournament(rng, gpparams.tournament_size, population);
                 let parent2 = self.tournament(rng, gpparams.tournament_size, population);
-                self.crossover(params, rng, parent1, parent2)
+                self.crossover(params, rng, parent1, parent2, &task.observation)
             };
             self.validate_offspring(params, population, &children, &mut offspring);
             children.append(&mut offspring);
         }
         children.truncate(gpparams.n_delta);
-        let scored_children = children
-            .into_iter()
-            .map(|child| {
-                let fitness = (task.oracle)(self, &child);
-                (child, fitness)
-            })
-            .collect();
-        gpparams
-            .selection
-            .update_population(population, scored_children);
+        gpparams.selection.update_population(
+            population,
+            children,
+            Box::new(|child| (task.oracle)(self, child)),
+            rng,
+        );
     }
 }
 
@@ -329,6 +373,47 @@ fn sample_pop<T: Clone>(options: Vec<(T, f64)>, sample_size: usize) -> Vec<(T, f
         .combinations(sample_size)
         .nth(*idx)
         .unwrap()
+}
+
+/// Given a `Vec` of item-score pairs sorted by score, and some `sample_size`,
+/// return a score-sorted subset sampled without replacement from the `Vec`
+/// according to score.
+fn sample_without_replacement<R: Rng, T: Clone>(
+    options: &mut Vec<(T, f64)>,
+    sample_size: usize,
+    rng: &mut R,
+) -> Vec<(T, f64)> {
+    let mut weights = options
+        .iter()
+        .map(|(_, weight)| (-weight).exp())
+        .collect_vec();
+    let mut sample = Vec::with_capacity(sample_size);
+    for _ in 0..sample_size {
+        let dist = WeightedIndex::new(&weights[..]).unwrap();
+        let sampled_idx = dist.sample(rng);
+        sample.push(options[sampled_idx].clone());
+        weights[sampled_idx] = 0.0;
+    }
+    sample.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+    sample
+}
+
+/// Given a `Vec` of item-score pairs sorted by score, and some `sample_size`,
+/// return a score-sorted subset sampled with replacement from the `Vec`
+/// according to score.
+fn sample_with_replacement<R: Rng, T: Clone>(
+    options: &mut Vec<(T, f64)>,
+    sample_size: usize,
+    rng: &mut R,
+) -> Vec<(T, f64)> {
+    let dist = WeightedIndex::new(options.iter().map(|(_, weight)| (-weight).exp())).unwrap();
+    let mut sample = Vec::with_capacity(sample_size);
+    for _ in 0..sample_size {
+        // cloning because we don't know if we'll be using multiple times
+        sample.push(options[dist.sample(rng)].clone());
+    }
+    sample.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+    sample
 }
 
 /// Given a mutable vector, `pop`, of item-score pairs sorted by score, insert

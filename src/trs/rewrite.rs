@@ -335,7 +335,7 @@ impl TRS {
         let num_rules = self.len();
         let background = &self.lex.0.read().expect("poisoned lexicon").background;
         let num_background = background.len();
-        if num_background <= num_rules - 1 {
+        if num_background < num_rules - 1 {
             let i = rng.gen_range(num_background, num_rules);
             let mut j = rng.gen_range(num_background, num_rules);
             while j == i {
@@ -344,7 +344,7 @@ impl TRS {
             trs.utrs.move_rule(i, j)?;
             Ok(trs)
         } else {
-            return Err(SampleError::OptionsExhausted);
+            Err(SampleError::OptionsExhausted)
         }
     }
     /// Selects a rule from the TRS at random, finds all differences in the LHS and RHS,
