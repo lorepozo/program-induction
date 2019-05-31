@@ -16,7 +16,7 @@ In a new or existing project, add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-programinduction = "0.7"
+programinduction = "0.8"
 # many examples also depend on polytype for the tp! and ptp! macros:
 polytype = "6.1"
 ```
