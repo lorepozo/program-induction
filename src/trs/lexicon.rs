@@ -1,6 +1,7 @@
 use itertools::{repeat_n, Itertools};
 use polytype::{Context as TypeContext, Type, TypeSchema, Variable as TypeVar};
 use rand::Rng;
+use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::f64::NEG_INFINITY;
 use std::fmt;
@@ -43,10 +44,8 @@ impl Lexicon {
     /// See [`polytype::ptp`] for details on constructing [`polytype::TypeSchema`]s.
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
+    /// # use polytype::{ptp, tp, Context as TypeContext};
     /// # use programinduction::trs::Lexicon;
-    /// # use polytype::Context as TypeContext;
     /// # fn main() {
     /// let operators = vec![
     ///     (2, Some("PLUS".to_string()), ptp![@arrow[tp!(int), tp!(int), tp!(int)]]),
@@ -94,12 +93,9 @@ impl Lexicon {
     /// See [`polytype::ptp`] for details on constructing [`polytype::TypeSchema`]s.
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # extern crate term_rewriting;
+    /// # use polytype::{ptp, tp, Context as TypeContext};
     /// # use programinduction::trs::Lexicon;
     /// # use term_rewriting::{Signature, parse_rule, parse_rulecontext};
-    /// # use polytype::Context as TypeContext;
     /// # fn main() {
     /// let mut sig = Signature::default();
     ///
@@ -176,12 +172,9 @@ impl Lexicon {
     /// # Example
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # extern crate term_rewriting;
+    /// # use polytype::{ptp, tp, Context as TypeContext};
     /// # use programinduction::trs::Lexicon;
     /// # use term_rewriting::{Context, Signature, parse_rule};
-    /// # use polytype::Context as TypeContext;
     /// # fn main() {
     /// let mut sig = Signature::default();
     ///
@@ -256,10 +249,8 @@ impl Lexicon {
     /// # Example
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
+    /// # use polytype::{ptp, tp, Context as TypeContext};
     /// # use programinduction::trs::Lexicon;
-    /// # use polytype::Context as TypeContext;
     /// # fn main() {
     /// let operators = vec![
     ///     (2, Some("PLUS".to_string()), ptp![@arrow[tp!(int), tp!(int), tp!(int)]]),

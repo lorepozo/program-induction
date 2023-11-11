@@ -1,9 +1,6 @@
-#[macro_use]
-extern crate polytype;
-extern crate programinduction;
-
 use std::time::Duration;
 
+use polytype::{ptp, tp};
 use programinduction::domains::{circuits, strings};
 use programinduction::lambda;
 use programinduction::pcfg::{self, Grammar, Rule};

@@ -1,10 +1,11 @@
 //! Representations capable of Genetic Programming.
 
+use crate::utils::{logsumexp, weighted_sample};
+use serde::{Serialize, Deserialize};
 use itertools::Itertools;
 use polytype::TypeSchema;
 use rand::{distributions::Distribution, distributions::WeightedIndex, seq::IteratorRandom, Rng};
 use std::cmp::Ordering;
-use crate::utils::{logsumexp, weighted_sample};
 
 use crate::Task;
 
@@ -149,10 +150,7 @@ pub struct GPParams {
 /// We finally pick some parameters and evolve a population for a few hundred generations.
 ///
 /// ```
-/// #[macro_use]
-/// extern crate polytype;
-/// extern crate programinduction;
-/// extern crate rand;
+/// use polytype::{ptp, tp};
 /// use programinduction::pcfg::{self, Grammar, Rule};
 /// use programinduction::{GPParams, Task, GP, GPSelection};
 /// use rand::{rngs::SmallRng, SeedableRng};

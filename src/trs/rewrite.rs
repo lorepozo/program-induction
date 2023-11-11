@@ -32,9 +32,7 @@ impl TRS {
     /// # Example
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # extern crate term_rewriting;
+    /// # use polytype::{ptp, tp};
     /// # use programinduction::trs::{TRS, Lexicon};
     /// # use term_rewriting::{Signature, parse_rule};
     /// # use polytype::Context as TypeContext;
@@ -170,10 +168,7 @@ impl TRS {
     /// # Example
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # extern crate rand;
-    /// # extern crate term_rewriting;
+    /// # use polytype::{ptp, tp};
     /// # use programinduction::trs::{TRS, Lexicon};
     /// # use polytype::Context as TypeContext;
     /// # use rand::{thread_rng};
@@ -275,10 +270,7 @@ impl TRS {
     /// # Example
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # extern crate rand;
-    /// # extern crate term_rewriting;
+    /// # use polytype::{ptp, tp};
     /// # use programinduction::trs::{TRS, Lexicon};
     /// # use rand::{thread_rng};
     /// # use polytype::Context as TypeContext;
@@ -353,10 +345,7 @@ impl TRS {
     /// # Example
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # extern crate rand;
-    /// # extern crate term_rewriting;
+    /// # use polytype::{ptp, tp};
     /// # use programinduction::trs::{TRS, Lexicon};
     /// # use polytype::Context as TypeContext;
     /// # use rand::{thread_rng};
@@ -466,10 +455,7 @@ impl TRS {
     /// # Example
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
-    /// # extern crate rand;
-    /// # extern crate term_rewriting;
+    /// # use polytype::{ptp, tp};
     /// # use programinduction::trs::{TRS, Lexicon};
     /// # use polytype::Context as TypeContext;
     /// # use rand::{thread_rng};

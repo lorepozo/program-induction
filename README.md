@@ -35,10 +35,7 @@ Specify a probabilistic context-free grammar (PCFG; see `pcfg::Grammar`) and
 induce a sentence that matches an example:
 
 ```rust
-#[macro_use]
-extern crate polytype;
-extern crate programinduction;
-
+use polytype::tp;
 use programinduction::{ECParams, EC};
 use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
 
@@ -80,10 +77,7 @@ the EC algorithm with a polymorphically-typed lambda calculus representation
 `lambda::Language` in a Boolean circuit domain:
 
 ```rust
-#[macro_use]
-extern crate polytype;
-extern crate programinduction;
-
+use polytype::{ptp, tp};
 use programinduction::{domains, lambda, ECParams, EC};
 
 fn main() {

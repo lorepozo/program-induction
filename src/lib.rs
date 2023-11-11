@@ -98,22 +98,6 @@
 //! [`pcfg`]: pcfg/index.html
 //! [`unit`]: https://doc.rust-lang.org/std/primitive.unit.html
 
-extern crate crossbeam_channel;
-extern crate itertools;
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate maplit;
-#[macro_use]
-extern crate nom;
-#[macro_use]
-extern crate polytype;
-extern crate rand;
-extern crate rayon;
-#[macro_use]
-extern crate serde;
-extern crate term_rewriting;
-
 pub mod domains;
 mod ec;
 mod gp;

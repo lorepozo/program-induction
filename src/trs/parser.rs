@@ -1,6 +1,6 @@
 use super::lexicon::Lexicon;
 use super::rewrite::TRS;
-use nom;
+use nom::{alt, call, do_parse, expr_res, is_not, many0, map, named, named_args, preceded, tag, take_until_and_consume, terminated, ws};
 use nom::types::CompleteStr;
 use nom::{Context as Nomtext, Err};
 use polytype::{Context as TypeContext, TypeSchema};

@@ -1,7 +1,4 @@
-#[macro_use]
-extern crate polytype;
-extern crate programinduction;
-
+use polytype::{ptp, tp};
 use programinduction::lambda::*;
 
 #[test]

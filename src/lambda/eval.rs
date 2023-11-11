@@ -62,8 +62,7 @@ where
 /// An evaluator for a domain that doesn't have first-class functions:
 ///
 /// ```
-/// # #[macro_use] extern crate polytype;
-/// # extern crate programinduction;
+/// use polytype::{ptp, tp};
 /// use programinduction::lambda::{Language, SimpleEvaluator};
 ///
 /// # fn early_let() {
@@ -92,8 +91,7 @@ where
 /// A slightly more complicated domain, but still without first-class functions:
 ///
 /// ```
-/// # #[macro_use] extern crate polytype;
-/// # extern crate programinduction;
+/// use polytype::{ptp, tp};
 /// use programinduction::lambda::{Language, SimpleEvaluator};
 ///
 /// # fn early_let() {
@@ -142,8 +140,7 @@ where
 /// For a domain with first-class functions, things get more complicated:
 ///
 /// ```
-/// # #[macro_use] extern crate polytype;
-/// # extern crate programinduction;
+/// use polytype::{ptp, tp};
 /// use programinduction::lambda::{Evaluator, Language, LiftedFunction};
 ///
 /// # fn early_let() {
@@ -267,8 +264,7 @@ pub trait Evaluator: Sized + Sync {
 /// # Examples
 ///
 /// ```
-/// # #[macro_use] extern crate polytype;
-/// # extern crate programinduction;
+/// use polytype::{ptp, tp};
 /// use programinduction::lambda::{Language, LazyEvaluator, LiftedLazyFunction};
 ///
 /// # fn early_let() {

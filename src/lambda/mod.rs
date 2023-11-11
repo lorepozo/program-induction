@@ -3,8 +3,7 @@
 //! # Examples
 //!
 //! ```
-//! # #[macro_use] extern crate polytype;
-//! # extern crate programinduction;
+//! use polytype::{ptp, tp};
 //! use programinduction::lambda::{task_by_evaluation, Language, SimpleEvaluator};
 //!
 //! fn evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
@@ -97,9 +96,8 @@ impl Language {
     /// # Examples
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
     /// # fn main() {
+    /// # use polytype::{tp, ptp};
     /// # use programinduction::lambda::{Expression, Language};
     /// let mut dsl = Language::uniform(vec![
     ///     ("singleton", ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))])),
@@ -140,9 +138,8 @@ impl Language {
     /// [`add_symmetry_violation`].
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
     /// # fn main() {
+    /// use polytype::{ptp, tp};
     /// use programinduction::lambda::{Expression, Language};
     ///
     /// let dsl = Language::uniform(vec![
@@ -235,9 +232,7 @@ impl Language {
     /// # Examples
     ///
     /// ```
-    /// # #[macro_use]
-    /// # extern crate polytype;
-    /// # extern crate programinduction;
+    /// use polytype::{ptp, tp};
     /// use programinduction::lambda::{Language, SimpleEvaluator};
     ///
     /// fn evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
@@ -326,9 +321,7 @@ impl Language {
     /// # Examples
     ///
     /// ```
-    /// # #[macro_use]
-    /// # extern crate polytype;
-    /// # extern crate programinduction;
+    /// # use polytype::{ptp, tp};
     /// # use programinduction::lambda::Language;
     /// # fn main() {
     /// let dsl = Language::uniform(vec![
@@ -354,9 +347,8 @@ impl Language {
     /// # Examples
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
     /// # fn main() {
+    /// # use polytype::{ptp, tp};
     /// # use programinduction::lambda::{Expression, Language};
     /// let mut dsl = Language::uniform(vec![
     ///     ("0", ptp!(int)),
@@ -386,8 +378,7 @@ impl Language {
     /// # Examples
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
+    /// # use polytype::{ptp, tp};
     /// # use programinduction::lambda::{Expression, Language};
     /// # fn main() {
     /// let mut dsl = Language::uniform(vec![
@@ -431,8 +422,7 @@ impl Language {
     /// # Examples
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
+    /// # use polytype::{ptp, tp};
     /// # use programinduction::lambda::{Expression, Language};
     /// # fn main() {
     /// let mut dsl = Language::uniform(vec![
@@ -702,9 +692,8 @@ impl Expression {
     /// # Examples
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
     /// # fn main() {
+    /// # use polytype::{ptp, tp};
     /// # use programinduction::lambda::{Expression, Language};
     /// let mut dsl = Language::uniform(vec![
     ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
@@ -931,9 +920,7 @@ impl Expression {
 /// # Examples
 ///
 /// ```
-/// # #[macro_use]
-/// # extern crate polytype;
-/// # extern crate programinduction;
+/// use polytype::{ptp, tp};
 /// use programinduction::lambda::{task_by_evaluation, Language, SimpleEvaluator};
 ///
 /// fn evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {

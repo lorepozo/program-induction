@@ -3,9 +3,7 @@
 //! # Examples
 //!
 //! ```
-//! # #[macro_use]
-//! # extern crate polytype;
-//! # extern crate programinduction;
+//! use polytype::tp;
 //! use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
 //!
 //! fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
@@ -92,9 +90,7 @@ impl Grammar {
     /// # Examples
     ///
     /// ```
-    /// # #[macro_use]
-    /// # extern crate polytype;
-    /// # extern crate programinduction;
+    /// use polytype::tp;
     /// use programinduction::pcfg::{AppliedRule, Grammar, Rule};
     ///
     /// # fn main() {
@@ -171,9 +167,7 @@ impl Grammar {
     /// # Examples
     ///
     /// ```
-    /// # #[macro_use]
-    /// # extern crate polytype;
-    /// # extern crate programinduction;
+    /// use polytype::tp;
     /// use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
     ///
     /// fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
@@ -212,11 +206,8 @@ impl Grammar {
     /// Sample a statement of the PCFG.
     ///
     /// ```
-    /// #[macro_use] extern crate polytype;
-    /// extern crate programinduction;
-    /// extern crate rand;
     /// # fn main() {
-    ///
+    /// use polytype::tp;
     /// use programinduction::pcfg::{Grammar, Rule};
     ///
     /// let g = Grammar::new(
@@ -240,9 +231,8 @@ impl Grammar {
     /// # Examples
     ///
     /// ```
-    /// # #[macro_use] extern crate polytype;
-    /// # extern crate programinduction;
     /// # fn main() {
+    /// use polytype::tp;
     /// use programinduction::pcfg::{Grammar, Rule};
     ///
     /// let g = Grammar::new(
@@ -553,9 +543,7 @@ fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicU
 /// # Examples
 ///
 /// ```
-/// # #[macro_use]
-/// # extern crate polytype;
-/// # extern crate programinduction;
+/// use polytype::tp;
 /// use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
 ///
 /// fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {

@@ -1,13 +1,7 @@
-extern crate polytype;
-extern crate programinduction;
-extern crate rayon;
-#[macro_use]
-extern crate serde;
-extern crate serde_json;
-
 use polytype::TypeSchema;
 use programinduction::{lambda, ECFrontier, Task};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::f64;
 
 #[derive(Deserialize)]

@@ -11,11 +11,8 @@
 //! # Example
 //!
 //! ```
-//! # #[macro_use] extern crate polytype;
-//! # extern crate programinduction;
-//! # extern crate term_rewriting;
+//! # use polytype::{ptp, tp, Context as TypeContext};
 //! # use programinduction::trs::{TRS, Lexicon};
-//! # use polytype::Context as TypeContext;
 //! # use term_rewriting::{Signature, parse_rule};
 //! # fn main() {
 //! let mut sig = Signature::default();
@@ -56,6 +53,7 @@ pub use self::rewrite::TRS;
 use crate::Task;
 
 use polytype;
+use serde::{Serialize, Deserialize};
 use std::fmt;
 use term_rewriting::{Rule, TRSError};
 

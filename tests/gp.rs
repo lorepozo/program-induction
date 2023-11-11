@@ -1,7 +1,4 @@
-#[macro_use]
-extern crate polytype;
-extern crate programinduction;
-extern crate rand;
+use polytype::{ptp, tp};
 use programinduction::pcfg::{self, Grammar, Rule};
 use programinduction::{GPParams, GPSelection, Task, GP};
 use rand::{rngs::SmallRng, SeedableRng};

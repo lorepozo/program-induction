@@ -19,6 +19,9 @@
 //! assert!(50 < hits && hits < 80, "hits = {}", hits);
 //! ```
 
+use lazy_static::lazy_static;
+use maplit::hashmap;
+use polytype::{ptp, tp};
 use itertools::Itertools;
 use std::f64;
 use std::fmt;
@@ -152,9 +155,7 @@ impl PartialEq for Space {
 /// # Examples
 ///
 /// ```
-/// #[macro_use]
-/// extern crate polytype;
-/// extern crate programinduction;
+/// use polytype::{ptp, tp};
 /// use programinduction::domains::strings;
 /// use programinduction::{lambda, ECParams, EC};
 ///
@@ -391,7 +392,7 @@ lazy_static! {
 use self::gen::make_examples;
 mod gen {
     use itertools::Itertools;
-    use polytype::TypeSchema;
+    use polytype::{ptp, tp, TypeSchema};
     use rand::distributions::{Distribution, Uniform};
     use rand::{self, Rng};
     use std::iter;

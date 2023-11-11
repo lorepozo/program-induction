@@ -42,7 +42,6 @@ pub struct ECParams {
 /// Using an existing domain in the lambda calculus representation [`lambda::Language`]:
 ///
 /// ```ignore
-/// extern crate programinduction;
 /// use programinduction::domains::circuits;
 /// use programinduction::{lambda, ECParams, EC};
 ///
@@ -121,7 +120,6 @@ pub trait EC: Send + Sync + Sized {
     /// # Examples
     ///
     /// ```ignore
-    /// # extern crate programinduction;
     /// use programinduction::domains::circuits;
     /// use programinduction::{lambda, ECParams, EC};
     ///
@@ -205,9 +203,7 @@ pub trait EC: Send + Sync + Sized {
     /// # Examples
     ///
     /// ```
-    /// # #[macro_use]
-    /// # extern crate polytype;
-    /// # extern crate programinduction;
+    /// use polytype::tp;
     /// use programinduction::pcfg::{Grammar, Rule, task_by_evaluation};
     /// use programinduction::{EC, ECParams};
     ///

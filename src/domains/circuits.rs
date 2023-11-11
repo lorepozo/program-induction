@@ -22,7 +22,7 @@
 //! ```
 
 use itertools::Itertools;
-use polytype::{Type, TypeSchema};
+use polytype::{ptp, tp, Type, TypeSchema};
 use rand::distributions::{Distribution, WeightedIndex};
 use std::f64;
 use std::iter;
@@ -52,8 +52,7 @@ pub type Space = bool;
 /// # Examples
 ///
 /// ```
-/// # #[macro_use] extern crate polytype;
-/// # extern crate programinduction;
+/// use polytype::{ptp, tp};
 /// use programinduction::domains::circuits;
 /// use programinduction::{lambda, ECParams, EC};
 ///
