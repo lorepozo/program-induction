@@ -134,6 +134,7 @@ impl TRS {
                 &self.utrs,
                 &datum.lhs,
                 params.p_observe,
+                1f64,
                 params.max_size,
                 RewriteStrategy::All,
             );
@@ -328,10 +329,10 @@ impl TRS {
         let background = &self.lex.0.read().expect("poisoned lexicon").background;
         let num_background = background.len();
         if num_background < num_rules - 1 {
-            let i = rng.gen_range(num_background, num_rules);
-            let mut j = rng.gen_range(num_background, num_rules);
+            let i = rng.gen_range(num_background..num_rules);
+            let mut j = rng.gen_range(num_background..num_rules);
             while j == i {
-                j = rng.gen_range(num_background, num_rules);
+                j = rng.gen_range(num_background..num_rules);
             }
             trs.utrs.move_rule(i, j)?;
             Ok(trs)
@@ -402,7 +403,7 @@ impl TRS {
         let background = &self.lex.0.read().expect("poisoned lexicon").background;
         let num_background = background.len();
         if num_rules > num_background {
-            let idx = rng.gen_range(num_background, num_rules);
+            let idx = rng.gen_range(num_background..num_rules);
             let new_rules = TRS::local_difference_helper(&trs.utrs.rules[idx]);
             if !new_rules.is_empty() {
                 trs.utrs.remove_idx(idx)?;
@@ -544,7 +545,7 @@ impl TRS {
             .background
             .len();
         if num_background <= num_rules {
-            let idx = rng.gen_range(num_background, num_rules);
+            let idx = rng.gen_range(num_background..num_rules);
             let mut trs = self.clone();
             let new_rules = TRS::swap_rule_helper(&trs.utrs.rules[idx])?;
             trs.utrs.remove_idx(idx)?;

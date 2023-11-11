@@ -195,7 +195,7 @@ pub struct GPParams {
 ///     };
 ///     let params = pcfg::GeneticParams::default();
 ///     let generations = 1000;
-///     let rng = &mut SmallRng::from_seed([1u8; 16]);
+///     let rng = &mut SmallRng::from_seed([1u8; 32]);
 ///
 ///     let mut pop = g.init(&params, rng, &gpparams, &task);
 ///     for _ in 0..generations {
@@ -262,7 +262,7 @@ pub trait GP: Send + Sync + Sized {
         population: &'a [(Self::Expression, f64)],
     ) -> &'a Self::Expression {
         if tournament_size == 1 {
-            &population[rng.gen_range(0, population.len())].0
+            &population[rng.gen_range(0..population.len())].0
         } else {
             (0..population.len())
                 .choose_multiple(rng, tournament_size)

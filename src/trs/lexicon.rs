@@ -375,7 +375,7 @@ impl Lexicon {
         let mut trs = TRS::new(&trs1.lex, rules1, ctx)?;
         trs.utrs.pushes(rules2).unwrap(); // hack?
         if self.0.read().expect("poisoned lexicon").deterministic {
-            trs.utrs.make_deterministic(rng);
+            make_deterministic(&mut trs.utrs, rng);
         }
         Ok(trs)
     }
@@ -1011,7 +1011,7 @@ impl GP for Lexicon {
         match trs {
             Ok(mut trs) => {
                 if self.0.read().expect("poisoned lexicon").deterministic {
-                    trs.utrs.make_deterministic(rng);
+                    make_deterministic(&mut trs.utrs, rng);
                 }
                 let templates = self.0.read().expect("poisoned lexicon").templates.clone();
                 repeat_n(trs, pop_size)
@@ -1107,4 +1107,26 @@ impl GP for Lexicon {
             acc
         });
     }
+}
+
+
+// because term_rewriting dependency uses old `rand` version
+fn make_deterministic<R: Rng>(utrs: &mut UntypedTRS, rng: &mut R) -> bool {
+    struct CompatRng<'a, R: Rng>(&'a mut R);
+    impl<'a, R: Rng> rand_core::RngCore for CompatRng<'a, R> {
+        fn next_u32(&mut self) -> u32 {
+            self.0.next_u32()
+        }
+        fn next_u64(&mut self) -> u64 {
+            self.0.next_u64()
+        }
+        fn fill_bytes(&mut self, dest: &mut [u8]) {
+            self.0.fill_bytes(dest)
+        }
+        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+            self.0.try_fill_bytes(dest).map_err(|_| rand_core::Error::new(rand_core::ErrorKind::Unexpected, "error behind rand compat"))
+        }
+    }
+
+    utrs.make_deterministic(&mut CompatRng(rng))
 }

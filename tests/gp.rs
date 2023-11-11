@@ -43,7 +43,7 @@ fn gp_sum_arith() {
     };
     let params = pcfg::GeneticParams::default();
     let generations = 1000;
-    let rng = &mut SmallRng::from_seed([1u8; 16]);
+    let rng = &mut SmallRng::from_seed([1u8; 32]);
 
     let mut pop = g.init(&params, rng, &gpparams, &task);
     for _ in 0..generations {

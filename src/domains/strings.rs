@@ -19,10 +19,10 @@
 //! assert!(50 < hits && hits < 80, "hits = {}", hits);
 //! ```
 
-use lazy_static::lazy_static;
-use maplit::hashmap;
+use once_cell::sync::Lazy;
 use polytype::{ptp, tp};
 use itertools::Itertools;
+use std::collections::HashMap;
 use std::f64;
 use std::fmt;
 
@@ -360,34 +360,34 @@ enum Op {
     CharPipe,
 }
 
-lazy_static! {
-    static ref OPERATIONS: ::std::collections::HashMap<&'static str, Op> = hashmap! {
-        "0" => Op::Zero,
-        "+1" => Op::Incr,
-        "-1" => Op::Decr,
-        "len" => Op::Len,
-        "empty_str" => Op::Empty,
-        "lower" => Op::Lower,
-        "upper" => Op::Upper,
-        "concat" => Op::Concat,
-        "slice" => Op::Slice,
-        "nth" => Op::Nth,
-        "map" => Op::Map,
-        "strip" => Op::Strip,
-        "split" => Op::Split,
-        "join" => Op::Join,
-        "char->str" => Op::CharToStr,
-        "space" => Op::CharSpace,
-        "." => Op::CharDot,
-        "," => Op::CharComma,
-        "<" => Op::CharLess,
-        ">" => Op::CharGreater,
-        "/" => Op::CharSlash,
-        "@" => Op::CharAt,
-        "-" => Op::CharDash,
-        "|" => Op::CharPipe,
-    };
-}
+static OPERATIONS: Lazy<HashMap<&'static str, Op>> = Lazy::new(|| {
+    HashMap::from([
+        ("0", Op::Zero),
+        ("+1", Op::Incr),
+        ("-1", Op::Decr),
+        ("len", Op::Len),
+        ("empty_str", Op::Empty),
+        ("lower", Op::Lower),
+        ("upper", Op::Upper),
+        ("concat", Op::Concat),
+        ("slice", Op::Slice),
+        ("nth", Op::Nth),
+        ("map", Op::Map),
+        ("strip", Op::Strip),
+        ("split", Op::Split),
+        ("join", Op::Join),
+        ("char->str", Op::CharToStr),
+        ("space", Op::CharSpace),
+        (".", Op::CharDot),
+        (",", Op::CharComma),
+        ("<", Op::CharLess),
+        (">", Op::CharGreater),
+        ("/", Op::CharSlash),
+        ("@", Op::CharAt),
+        ("-", Op::CharDash),
+        ("|", Op::CharPipe),
+    ])
+});
 
 use self::gen::make_examples;
 mod gen {
