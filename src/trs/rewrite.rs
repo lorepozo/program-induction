@@ -1,8 +1,8 @@
 //! Polymorphically typed (Hindley-Milner) First-Order Term Rewriting Systems (no abstraction)
 //!
 //! Much thanks to:
-//! - https://github.com/rob-smallshire/hindley-milner-python
-//! - https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system
+//! - <https://github.com/rob-smallshire/hindley-milner-python>
+//! - <https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system>
 //! - (TAPL; Pierce, 2002, ch. 22)
 
 use itertools::Itertools;

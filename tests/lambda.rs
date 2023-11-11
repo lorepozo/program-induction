@@ -64,7 +64,7 @@ fn lambda_expression_parse_index() {
         )
     );
 
-    /// an index never makes sense outside of an application or lambda body.
+    // an index never makes sense outside of an application or lambda body.
     assert!(dsl.parse("$0").is_err());
 }
 
