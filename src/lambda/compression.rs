@@ -203,7 +203,7 @@ where
                             None
                         }
                     })
-                    .max_by(|&(_, _, ref x), &(_, _, ref y)| x.partial_cmp(y).unwrap());
+                    .max_by(|(_, _, x), (_, _, y)| x.partial_cmp(y).unwrap());
                 if best_proposal.is_none() {
                     if cfg!(feature = "verbose") {
                         eprintln!("COMPRESSION: no sufficient proposals")
@@ -239,7 +239,7 @@ where
                 fragment_expr,
                 &dsl,
                 &mut frontiers,
-                &params,
+                params,
             )
         }
     }
@@ -273,7 +273,7 @@ pub fn inside_outside(
     frontiers: &[RescoredFrontier],
     pseudocounts: u64,
 ) -> f64 {
-    dsl.inside_outside_internal(&frontiers, pseudocounts)
+    dsl.inside_outside_internal(frontiers, pseudocounts)
 }
 
 pub fn induce_fragment_grammar<O: Sync>(
@@ -301,8 +301,8 @@ pub fn induce_fragment_grammar<O: Sync>(
         proposals::defragment,
         |_, fragment_expr, _, dsl, frontiers, _| {
             let i = dsl.invented.len() - 1;
-            for mut f in frontiers {
-                dsl.rewrite_frontier_with_fragment_expression(&mut f, i, &fragment_expr);
+            for f in frontiers {
+                dsl.rewrite_frontier_with_fragment_expression(f, i, &fragment_expr);
             }
         },
     )
@@ -322,7 +322,7 @@ impl Language {
                     let logprior = self.uses(&f.0, expr).0;
                     (expr, logprior, loglikelihood, logprior + loglikelihood)
                 })
-                .sorted_by(|&(_, _, ref xl, ref xpost), &(_, _, ref yl, ref ypost)| {
+                .sorted_by(|(_, _, xl, xpost), (_, _, yl, ypost)| {
                     if topk_use_only_likelihood {
                         yl.partial_cmp(xl).unwrap()
                     } else {
@@ -417,11 +417,11 @@ impl Language {
 
     /// This is similar to `enumerator::likelihood_internal` but it does a lot more work to
     /// determine _outside_ counts.
-    fn likelihood_uses<'a>(
+    fn likelihood_uses(
         &self,
         request: &Type,
         expr: &Expression,
-        ctx: &'a Context,
+        ctx: &Context,
         env: &Rc<LinkedList<Type>>,
     ) -> (f64, Uses) {
         if let Some((arg, ret)) = request.as_arrow() {
@@ -436,7 +436,7 @@ impl Language {
             let mut possible_vars = 0f64;
             let mut possible_prims = vec![0f64; self.primitives.len()];
             let mut possible_invented = vec![0f64; self.invented.len()];
-            for &(_, ref expr, _, _) in &candidates {
+            for (_, expr, _, _) in &candidates {
                 match *expr {
                     Expression::Primitive(num) => possible_prims[num] = 1f64,
                     Expression::Invented(num) => possible_invented[num] = 1f64,
@@ -491,7 +491,7 @@ impl Language {
                         continue;
                     }
 
-                    let arg_tps: VecDeque<&Type> = tp.args().unwrap_or_else(VecDeque::new);
+                    let arg_tps: VecDeque<&Type> = tp.args().unwrap_or_default();
                     if xs.len() != arg_tps.len() {
                         eprintln!(
                             "WARNING (please report to programinduction devs): xs and arg_tps did not correspond: expr={} (arg_tps={:?}) f={} xs={:?}",
@@ -520,7 +520,7 @@ impl Language {
 
                     for (free_tp, free_expr) in bindings
                         .iter()
-                        .map(|(_, &(ref tp, ref expr))| (tp, expr))
+                        .map(|(_, (tp, expr))| (tp, expr))
                         .chain(arg_tps.into_iter().zip(xs.iter().cloned()))
                     {
                         let mut free_tp = free_tp.clone();
@@ -554,7 +554,7 @@ impl Language {
 
                 if let Expression::Application(ref ff, ref x) = *f {
                     f = ff;
-                    xs.push_front(&*x);
+                    xs.push_front(x);
                 } else {
                     break;
                 }
@@ -609,7 +609,7 @@ impl Language {
             if matches {
                 let mut new_expr = Expression::Invented(inv_n);
                 for j in (0..bindings.len()).rev() {
-                    let &(_, ref b) = &bindings[&j];
+                    let (_, b) = &bindings[&j];
                     let inner = Box::new(new_expr);
                     new_expr = Expression::Application(inner, Box::new(b.clone()));
                 }
@@ -634,13 +634,10 @@ impl Language {
                 frontiers
                     .par_iter()
                     .flat_map(|f| &f.1)
-                    .flat_map(|&(ref expr, _, _)| proposals::from_expression(expr, arity))
+                    .flat_map(|(expr, _, _)| proposals::from_expression(expr, arity))
                     .filter(|fragment_expr| {
                         let expr = proposals::defragment(fragment_expr.clone());
-                        self.invented
-                            .iter()
-                            .find(|&&(ref x, _, _)| x == &expr)
-                            .is_none()
+                        !self.invented.iter().any(|(x, _, _)| x == &expr)
                     })
                     .for_each(|fragment_expr| {
                         let res = {
@@ -741,10 +738,7 @@ impl<'a> TreeMatcher<'a> {
         n_args: usize,
     ) -> Option<Type> {
         match (fragment, concrete) {
-            (
-                &Expression::Application(ref f_f, ref f_x),
-                &Expression::Application(ref c_f, ref c_x),
-            ) => {
+            (Expression::Application(f_f, f_x), Expression::Application(c_f, c_x)) => {
                 let ft = self.execute(f_f, c_f, env, n_args)?;
                 let xt = self.execute(f_x, c_x, env, n_args)?;
                 let ret = self.ctx.new_variable();
@@ -770,7 +764,7 @@ impl<'a> TreeMatcher<'a> {
                 let inv = &self.dsl.invented[f_num].0;
                 self.execute(inv, concrete, env, n_args)
             }
-            (&Expression::Abstraction(ref f_body), &Expression::Abstraction(ref c_body)) => {
+            (Expression::Abstraction(f_body), Expression::Abstraction(c_body)) => {
                 let arg = self.ctx.new_variable();
                 let env = LinkedList::prepend(env, arg.clone());
                 let ret = self.execute(f_body, c_body, &env, 0)?;
@@ -806,7 +800,7 @@ impl<'a> TreeMatcher<'a> {
                         }
                     }
                     // update bindings
-                    if let Some(&(ref tp, ref binding)) = self.bindings.get(&i) {
+                    if let Some((tp, binding)) = self.bindings.get(&i) {
                         return if binding == &concrete {
                             Some(tp.clone())
                         } else {
@@ -883,16 +877,16 @@ impl Uses {
         }
         self.actual_vars = weighted_uses
             .iter()
-            .map(|&(_, ref u)| u.actual_vars)
+            .map(|(_, u)| u.actual_vars)
             .sum::<f64>();
         self.possible_vars = weighted_uses
             .iter()
-            .map(|&(_, ref u)| u.possible_vars)
+            .map(|(_, u)| u.possible_vars)
             .sum::<f64>();
         self.actual_prims.iter_mut().enumerate().for_each(|(i, c)| {
             *c = weighted_uses
                 .iter()
-                .map(|&(_, ref u)| u.actual_prims[i])
+                .map(|(_, u)| u.actual_prims[i])
                 .sum::<f64>()
         });
         self.possible_prims
@@ -901,7 +895,7 @@ impl Uses {
             .for_each(|(i, c)| {
                 *c = weighted_uses
                     .iter()
-                    .map(|&(_, ref u)| u.possible_prims[i])
+                    .map(|(_, u)| u.possible_prims[i])
                     .sum::<f64>()
             });
         self.actual_invented
@@ -910,7 +904,7 @@ impl Uses {
             .for_each(|(i, c)| {
                 *c = weighted_uses
                     .iter()
-                    .map(|&(_, ref u)| u.actual_invented[i])
+                    .map(|(_, u)| u.actual_invented[i])
                     .sum::<f64>()
             });
         self.possible_invented
@@ -919,7 +913,7 @@ impl Uses {
             .for_each(|(i, c)| {
                 *c = weighted_uses
                     .iter()
-                    .map(|&(_, ref u)| u.possible_invented[i])
+                    .map(|(_, u)| u.possible_invented[i])
                     .sum::<f64>()
             });
     }
@@ -1090,10 +1084,7 @@ mod proposals {
             .flat_map(to_inventions)
             .collect()
     }
-    fn from_subexpression<'a>(
-        expr: &'a Expression,
-        arity: u32,
-    ) -> impl Iterator<Item = Fragment> + 'a {
+    fn from_subexpression(expr: &Expression, arity: u32) -> impl Iterator<Item = Fragment> + '_ {
         let rst: Box<dyn Iterator<Item = Fragment>> = match *expr {
             Expression::Application(ref f, ref x) => {
                 Box::new(from_subexpression(f, arity).chain(from_subexpression(x, arity)))
@@ -1140,7 +1131,7 @@ mod proposals {
         let rst = counts
             .into_iter()
             .filter(|&(_, count)| count >= 2)
-            .filter(|&(ref expr, _)| is_closed(expr))
+            .filter(|(expr, _)| is_closed(expr))
             .map(move |(subtree, _)| {
                 let mut expr = expr.clone();
                 substitute(&mut expr, &subtree, &Expression::Index(reach));

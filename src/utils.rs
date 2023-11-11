@@ -16,7 +16,7 @@ pub fn weighted_permutation<T: Clone>(xs: &[T], ws: &[f64], n: Option<usize>) ->
     let mut ws = ws.to_vec();
     let mut idxs: Vec<_> = (0..(ws.len())).collect();
     let mut permutation = vec![];
-    let length = cmp::min(n.unwrap_or_else(|| xs.len()), xs.len());
+    let length = cmp::min(n.unwrap_or(xs.len()), xs.len());
     while permutation.len() < length {
         let jidxs: Vec<_> = idxs.iter().cloned().enumerate().collect();
         let &(jdx, idx): &(usize, usize) = weighted_sample(&jidxs, &ws);

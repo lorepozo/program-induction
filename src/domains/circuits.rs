@@ -149,10 +149,10 @@ pub fn make_tasks_advanced(
     gate_mux4: u32,
 ) -> Vec<Task<'static, Language, Expression, Vec<bool>>> {
     let n_input_distribution =
-        WeightedIndex::new(&n_input_weights).expect("invalid weights for number of circuit inputs");
+        WeightedIndex::new(n_input_weights).expect("invalid weights for number of circuit inputs");
     let n_gate_distribution =
-        WeightedIndex::new(&n_gate_weights).expect("invalid weights for number of circuit gates");
-    let gate_weights = WeightedIndex::new(&[gate_not, gate_and, gate_or, gate_mux2, gate_mux4])
+        WeightedIndex::new(n_gate_weights).expect("invalid weights for number of circuit gates");
+    let gate_weights = WeightedIndex::new([gate_not, gate_and, gate_or, gate_mux2, gate_mux4])
         .expect("invalid weights for circuit gates");
 
     let mut rng = rand::thread_rng();
@@ -283,7 +283,7 @@ mod gates {
         /// other gate.
         fn is_connected(&self) -> bool {
             let mut is_used = vec![false; self.n_inputs as usize + self.operations.len()];
-            for &(_, ref args) in &self.operations {
+            for (_, args) in &self.operations {
                 for i in args {
                     is_used[*i as usize] = true;
                 }
@@ -293,7 +293,7 @@ mod gates {
         }
         pub fn eval(&self, inp: &[bool]) -> bool {
             let mut outputs = vec![];
-            for &(ref gate, ref args) in &self.operations {
+            for (gate, args) in &self.operations {
                 let gate_inp: Vec<bool> = args
                     .iter()
                     .map(|a| *inp.iter().chain(&outputs).nth(*a as usize).unwrap())

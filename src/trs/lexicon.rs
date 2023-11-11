@@ -155,9 +155,7 @@ impl Lexicon {
         let sig = &self.0.read().expect("poisoned lexicon").signature;
         sig.operators()
             .into_iter()
-            .find(|op| {
-                op.arity() == arity && op.name().as_ref().map(std::string::String::as_str) == name
-            })
+            .find(|op| op.arity() == arity && op.name().as_deref() == name)
             .ok_or(())
     }
     /// All the free type variables in the lexicon.
@@ -242,7 +240,7 @@ impl Lexicon {
     }
     /// Infer the `TypeSchema` associated with a `Rule`.
     pub fn infer_op(&self, op: &Operator) -> Result<TypeSchema, TypeError> {
-        self.0.write().expect("poisoned lexicon").op_tp(&op)
+        self.0.write().expect("poisoned lexicon").op_tp(op)
     }
     /// Sample a [`term_rewriting::Term`].
     ///
@@ -454,7 +452,7 @@ impl Lex {
         ctx: &mut TypeContext,
     ) -> Result<Vec<Type>, SampleError> {
         let atom_tp = self.instantiate_atom(atom, ctx)?;
-        ctx.unify(atom_tp.returns().or_else(|| Some(&atom_tp)).unwrap(), tp)?;
+        ctx.unify(atom_tp.returns().unwrap_or(&atom_tp), tp)?;
         Ok(atom_tp
             .args()
             .map(|o| o.into_iter().cloned().collect())
@@ -617,14 +615,14 @@ impl Lex {
         let mut rhs_types = Vec::with_capacity(r.rhs.len());
         let mut rhs_schemas = Vec::with_capacity(r.rhs.len());
         for rhs in &r.rhs {
-            let rhs_schema = self.infer_term(&rhs, ctx)?;
+            let rhs_schema = self.infer_term(rhs, ctx)?;
             rhs_types.push(rhs_schema.instantiate(ctx));
             rhs_schemas.push(rhs_schema);
         }
         for rhs_type in rhs_types {
             ctx.unify(&lhs_type, &rhs_type)?;
         }
-        let lex_vars = self.free_vars_applied(&ctx);
+        let lex_vars = self.free_vars_applied(ctx);
         let rule_schema = lhs_type.apply(ctx).generalize(&lex_vars);
         Ok((rule_schema, lhs_schema, rhs_schemas))
     }
@@ -651,7 +649,7 @@ impl Lex {
         ctx: &mut TypeContext,
     ) -> Result<TypeSchema, TypeError> {
         let tp = self.infer_rulecontext_internal(context, ctx, &mut HashMap::new())?;
-        let lex_vars = self.free_vars_applied(&ctx);
+        let lex_vars = self.free_vars_applied(ctx);
         Ok(tp.apply(ctx).generalize(&lex_vars))
     }
     fn infer_rulecontext_internal(
@@ -665,7 +663,7 @@ impl Lex {
             .rhs
             .iter()
             .enumerate()
-            .map(|(i, rhs)| self.infer_context_internal(&rhs, ctx, vec![i + 1], tps))
+            .map(|(i, rhs)| self.infer_context_internal(rhs, ctx, vec![i + 1], tps))
             .collect::<Result<Vec<Type>, _>>()?;
         // unify to introduce rule-level constraints
         for rhs_type in rhs_types {
@@ -766,7 +764,7 @@ impl Lex {
                 vars.push(new_var.clone());
                 Atom::Variable(new_var)
             });
-            match self.fit_atom(&atom, &tp, ctx) {
+            match self.fit_atom(&atom, tp, ctx) {
                 Ok(arg_types) => return Ok((atom, arg_types)),
                 _ => continue,
             }
@@ -788,12 +786,12 @@ impl Lex {
         let context = context.clone();
         let hole_places = context.holes();
         self.infer_context_internal(&context, ctx, vec![], &mut map)?;
-        let lex_vars = self.free_vars_applied(&ctx);
+        let lex_vars = self.free_vars_applied(ctx);
         let mut context_vars = context.variables();
         for p in &hole_places {
             let schema = &map[p].apply(ctx).generalize(&lex_vars);
             let subterm = self.sample_term_internal(
-                &schema,
+                schema,
                 ctx,
                 atom_weights,
                 invent,
@@ -802,7 +800,7 @@ impl Lex {
                 size,
                 &mut context_vars,
             )?;
-            context.replace(&p, Context::from(subterm));
+            context.replace(p, Context::from(subterm));
         }
         context.to_term().or(Err(SampleError::Subterm))
     }
@@ -875,7 +873,7 @@ impl Lex {
                 &mut context_vars,
             )?;
             context = context
-                .replace(&p, Context::from(subterm))
+                .replace(p, Context::from(subterm))
                 .ok_or(SampleError::Subterm)?;
         }
         context.to_rule().or(Err(SampleError::Subterm))
@@ -926,7 +924,7 @@ impl Lex {
         options.append(&mut os);
         match options
             .into_iter()
-            .find(|&(ref o, _)| o == &Some(term.head()))
+            .find(|(o, _)| o == &Some(term.head()))
             .map(|(o, arg_types)| (o.unwrap(), arg_types))
         {
             Some((Atom::Variable(_), _)) => Ok(vlp),
@@ -958,7 +956,7 @@ impl Lex {
         let mut lp = 0.0;
         let lp_lhs = self.logprior_term(&rule.lhs, schema, ctx, atom_weights, invent)?;
         for rhs in &rule.rhs {
-            let tmp_lp = self.logprior_term(&rhs, schema, ctx, atom_weights, false)?;
+            let tmp_lp = self.logprior_term(rhs, schema, ctx, atom_weights, false)?;
             lp += tmp_lp + lp_lhs;
         }
         Ok(lp)
@@ -984,7 +982,7 @@ impl Lex {
             }
             let mut rule_ps = vec![];
             for schema in schemas {
-                let tmp_lp = self.logprior_rule(&rule, schema, ctx, atom_weights, invent)?;
+                let tmp_lp = self.logprior_rule(rule, schema, ctx, atom_weights, invent)?;
                 rule_ps.push(tmp_lp);
             }
             p_rules += logsumexp(&rule_ps);
@@ -1077,7 +1075,7 @@ impl GP for Lexicon {
                         .read()
                         .expect("poisoned lexicon")
                         .background
-                        .contains(&r)
+                        .contains(r)
                         || rng.gen_bool(params.p_keep)
                 })
             })
@@ -1092,7 +1090,7 @@ impl GP for Lexicon {
         offspring: &mut Vec<Self::Expression>,
     ) {
         // select alpha-unique individuals that are not yet in the population
-        offspring.retain(|ref x| {
+        offspring.retain(|x| {
             !population
                 .iter()
                 .any(|p| UntypedTRS::alphas(&p.0.utrs, &x.utrs))
@@ -1100,9 +1098,9 @@ impl GP for Lexicon {
                     .iter()
                     .any(|c| UntypedTRS::alphas(&c.utrs, &x.utrs))
         });
-        *offspring = offspring.iter().fold(vec![], |mut acc, ref x| {
+        *offspring = offspring.iter().fold(vec![], |mut acc, x| {
             if !acc.iter().any(|a| UntypedTRS::alphas(&a.utrs, &x.utrs)) {
-                acc.push((*x).clone());
+                acc.push(x.clone());
             }
             acc
         });

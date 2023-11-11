@@ -73,7 +73,7 @@ fn streaming_parse(
                 // check if complete
                 inp[di..]
                     .chars()
-                    .nth(0)
+                    .next()
                     .and_then(|c| if c == ')' { Some(di + 1) } else { None })
                     .ok_or_else(|| ParseError::new(offset + di, "incomplete application"))
                     .map(|di| (di, Expression::Abstraction(Box::new(body))))
@@ -98,7 +98,7 @@ fn streaming_parse(
                     // skip spaces
                     di += inp[di..].chars().take_while(|c| c.is_whitespace()).count();
                     // check if complete
-                    match inp[di..].chars().nth(0) {
+                    match inp[di..].chars().next() {
                         None => break Err(ParseError::new(offset + di, "incomplete application")),
                         Some(')') => {
                             di += 1;
@@ -117,7 +117,7 @@ fn streaming_parse(
             })
     };
     let index = || {
-        if inp.chars().nth(0) == Some('$') && inp.len() > 1 {
+        if inp.starts_with('$') && inp.len() > 1 {
             inp[1..]
                 .find(|c: char| c.is_whitespace() || c == ')')
                 .and_then(|i| inp[1..=i].parse::<usize>().ok().map(|num| (1 + i, num)))
@@ -135,7 +135,7 @@ fn streaming_parse(
         .map(|mut di| {
             let (ndi, expr) = streaming_parse(dsl, &inp[di..], offset + di)?;
             di += ndi;
-            if let Some(num) = dsl.invented.iter().position(|&(ref x, _, _)| x == &expr) {
+            if let Some(num) = dsl.invented.iter().position(|(x, _, _)| x == &expr) {
                 Ok((di, Expression::Invented(num)))
             } else {
                 Err(ParseError::new(
@@ -155,7 +155,7 @@ fn streaming_parse(
             if let Some(num) = dsl
                 .primitives
                 .iter()
-                .position(|&(ref name, _, _)| name == &inp[..di])
+                .position(|(name, _, _)| name == &inp[..di])
             {
                 Ok((di, Expression::Primitive(num)))
             } else {

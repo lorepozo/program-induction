@@ -144,8 +144,8 @@ impl PartialEq for Space {
         match (self, other) {
             (&Num(x), &Num(y)) => x == y,
             (&Char(x), &Char(y)) => x == y,
-            (&Str(ref x), &Str(ref y)) => x == y,
-            (&List(ref xs), &List(ref ys)) => xs == ys,
+            (Str(x), Str(y)) => x == y,
+            (List(xs), List(ys)) => xs == ys,
             _ => false,
         }
     }
@@ -219,7 +219,7 @@ impl EvaluatorT for Evaluator {
                 _ => unreachable!(),
             },
             Op::Concat => match (&inps[0], &inps[1]) {
-                (&Str(ref x), &Str(ref y)) => {
+                (Str(x), Str(y)) => {
                     let mut s = x.to_string();
                     s.push_str(y);
                     Ok(Str(s))
@@ -227,7 +227,7 @@ impl EvaluatorT for Evaluator {
                 _ => unreachable!(),
             },
             Op::Slice => match (&inps[0], &inps[1], &inps[2]) {
-                (&Num(x), &Num(y), &Str(ref s)) => {
+                (&Num(x), &Num(y), Str(s)) => {
                     if x as usize > s.len() || y < x {
                         Err(())
                     } else {
@@ -241,11 +241,11 @@ impl EvaluatorT for Evaluator {
                 _ => unreachable!(),
             },
             Op::Nth => match (&inps[0], &inps[1]) {
-                (&Num(x), &List(ref ss)) => ss.get(x as usize).cloned().ok_or(()),
+                (&Num(x), List(ss)) => ss.get(x as usize).cloned().ok_or(()),
                 _ => unreachable!(),
             },
             Op::Map => match (&inps[0], &inps[1]) {
-                (&Func(ref f), &List(ref xs)) => Ok(List(
+                (Func(f), List(xs)) => Ok(List(
                     xs.iter()
                         .map(|x| f.eval(&[x.clone()]).map_err(|_| ()))
                         .collect::<Result<_, _>>()?,
@@ -257,13 +257,11 @@ impl EvaluatorT for Evaluator {
                 _ => unreachable!(),
             },
             Op::Split => match (&inps[0], &inps[1]) {
-                (&Char(c), &Str(ref s)) => {
-                    Ok(List(s.split(c).map(|s| Str(s.to_owned())).collect()))
-                }
+                (&Char(c), Str(s)) => Ok(List(s.split(c).map(|s| Str(s.to_owned())).collect())),
                 _ => unreachable!(),
             },
             Op::Join => match (&inps[0], &inps[1]) {
-                (&Str(ref delim), &List(ref ss)) => Ok(Str(ss
+                (Str(delim), List(ss)) => Ok(Str(ss
                     .iter()
                     .map(|s| match *s {
                         Str(ref s) => s,
@@ -310,7 +308,7 @@ pub fn make_tasks(
             let evaluator = ::std::sync::Arc::new(Evaluator);
             let oracle_examples = examples.clone();
             let oracle = Box::new(move |dsl: &Language, expr: &Expression| -> f64 {
-                let success = oracle_examples.iter().all(|&(ref inps, ref out)| {
+                let success = oracle_examples.iter().all(|(inps, out)| {
                     if let Ok(o) = dsl.eval_arc(expr, &evaluator, inps) {
                         o == *out
                     } else {
@@ -395,7 +393,6 @@ mod gen {
     use polytype::{ptp, tp, TypeSchema};
     use rand::distributions::{Distribution, Uniform};
     use rand::{self, Rng};
-    use std::iter;
 
     use super::Space::{self, *};
 
@@ -431,9 +428,9 @@ mod gen {
             starting = between.sample(rng);
             ending = between.sample(rng);
         }
-        s.insert_str(0, &iter::repeat(' ').take(starting).collect::<String>());
+        s.insert_str(0, &" ".repeat(starting));
         let len = s.len();
-        s.insert_str(len, &iter::repeat(' ').take(ending).collect::<String>());
+        s.insert_str(len, &" ".repeat(ending));
         s
     }
     fn white_words<R: Rng>(delim: char, rng: &mut R) -> String {
@@ -441,7 +438,7 @@ mod gen {
         (0..size).map(|_| white_word(rng)).join(&delim.to_string())
     }
 
-    #[allow(clippy::cyclomatic_complexity)]
+    #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::redundant_closure_call)]
     #[allow(clippy::type_complexity)]
     pub fn make_examples(

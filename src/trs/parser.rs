@@ -215,7 +215,7 @@ fn make_atom(
 ) -> Atom {
     match name {
         AtomName::Variable(s) => {
-            let v = sig.new_var(Some(s.to_string()));
+            let v = sig.new_var(Some(s));
             vars.push(schema);
             Atom::Variable(v)
         }
@@ -224,7 +224,7 @@ fn make_atom(
                 .instantiate(&mut TypeContext::default())
                 .args()
                 .map_or(0, |args| args.len());
-            let o = sig.new_op(arity as u32, Some(s.to_string()));
+            let o = sig.new_op(arity as u32, Some(s));
             ops.push(schema);
             Atom::Operator(o)
         }
@@ -250,7 +250,7 @@ named!(schema<CompleteStr, TypeSchema>,
        call!(schema_wrapper));
 named!(comment<CompleteStr, CompleteStr>,
        map!(preceded!(tag!("#"), take_until_and_consume!("\n")),
-            |s| CompleteStr(&s.trim())));
+            |s| CompleteStr(s.trim())));
 named_args!(declaration<'a>
                 (sig: &mut Signature, vars: &mut Vec<TypeSchema>, ops: &mut Vec<TypeSchema>)
                 <CompleteStr<'a>, (Atom, TypeSchema)>,
@@ -261,14 +261,14 @@ named_args!(declaration<'a>
                      |(n, s)| {
                          (make_atom(n, sig, s.clone(), vars, ops), s)}
 ));
-fn simple_lexicon<'a>(
-    input: CompleteStr<'a>,
+fn simple_lexicon(
+    input: CompleteStr<'_>,
     mut sig: Signature,
     mut vars: Vec<TypeSchema>,
     mut ops: Vec<TypeSchema>,
     deterministic: bool,
     ctx: TypeContext,
-) -> nom::IResult<CompleteStr<'a>, Lexicon> {
+) -> nom::IResult<CompleteStr<'_>, Lexicon> {
     map!(
         input,
         ws!(many0!(do_parse!(

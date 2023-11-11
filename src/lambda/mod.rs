@@ -448,8 +448,8 @@ impl Language {
                 let x = (f, index, x);
                 self.symmetry_violations.binary_search(&x).is_ok()
             }
-            (&Expression::Primitive(f), &Expression::Application(ref x, _)) => {
-                let mut z: &Expression = &**x;
+            (&Expression::Primitive(f), Expression::Application(x, _)) => {
+                let mut z: &Expression = x;
                 while let Expression::Application(ref x, _) = *z {
                     z = x
                 }
@@ -479,7 +479,7 @@ impl Language {
             + self
                 .invented
                 .iter()
-                .map(|&(ref expr, _, _)| {
+                .map(|(expr, _, _)| {
                     let (leaves, free, bound) = compression::expression_count_kinds(expr, 0);
                     (leaves as f64)
                         + BOUND_VAR_COST * (bound as f64)
@@ -565,7 +565,7 @@ impl Language {
             let ret = if let Some(ret) = tp.returns() {
                 ret
             } else {
-                &tp
+                tp
             };
             if ctx.unify_fast(ret.clone(), request.clone()).is_ok() {
                 let mut tp = tp.clone();
@@ -635,21 +635,21 @@ impl Expression {
     fn infer(
         &self,
         dsl: &Language,
-        mut ctx: &mut Context,
+        ctx: &mut Context,
         env: &VecDeque<Type>,
         indices: &mut HashMap<usize, Type>,
     ) -> Result<Type, InferenceError> {
         match *self {
             Expression::Primitive(num) => {
-                if let Some(prim) = dsl.primitives.get(num as usize) {
+                if let Some(prim) = dsl.primitives.get(num) {
                     Ok(prim.1.clone().instantiate_owned(ctx))
                 } else {
                     Err(InferenceError::InvalidPrimitive(num))
                 }
             }
             Expression::Application(ref f, ref x) => {
-                let f_tp = f.infer(dsl, &mut ctx, env, indices)?;
-                let x_tp = x.infer(dsl, &mut ctx, env, indices)?;
+                let f_tp = f.infer(dsl, ctx, env, indices)?;
+                let x_tp = x.infer(dsl, ctx, env, indices)?;
                 let ret_tp = ctx.new_variable();
                 ctx.unify(&f_tp, &Type::arrow(x_tp, ret_tp.clone()))?;
                 Ok(ret_tp.apply(ctx))
@@ -658,14 +658,14 @@ impl Expression {
                 let arg_tp = ctx.new_variable();
                 let mut env = env.clone();
                 env.push_front(arg_tp.clone());
-                let ret_tp = body.infer(dsl, &mut ctx, &env, indices)?;
+                let ret_tp = body.infer(dsl, ctx, &env, indices)?;
                 let mut tp = Type::arrow(arg_tp, ret_tp);
                 tp.apply_mut(ctx);
                 Ok(tp)
             }
             Expression::Index(i) => {
-                if (i as usize) < env.len() {
-                    let mut tp = env[i as usize].clone();
+                if i < env.len() {
+                    let mut tp = env[i].clone();
                     tp.apply_mut(ctx);
                     Ok(tp)
                 } else {
@@ -678,7 +678,7 @@ impl Expression {
                 }
             }
             Expression::Invented(num) => {
-                if let Some(inv) = dsl.invented.get(num as usize) {
+                if let Some(inv) = dsl.invented.get(num) {
                     Ok(inv.1.clone().instantiate_owned(ctx))
                 } else {
                     Err(InferenceError::InvalidInvention(num))
@@ -854,7 +854,7 @@ impl Expression {
     ) -> String {
         match *self {
             Expression::Primitive(num) => {
-                let name = &dsl.primitives[num as usize].0;
+                let name = &dsl.primitives[num].0;
                 conversions.get(name).unwrap_or(name).to_string()
             }
             Expression::Application(ref f, ref x) => {
@@ -879,15 +879,13 @@ impl Expression {
                 format!("{}", var)
             }
             Expression::Invented(num) => {
-                dsl.invented[num as usize]
-                    .0
-                    .as_lisp(dsl, false, conversions, depth)
+                dsl.invented[num].0.as_lisp(dsl, false, conversions, depth)
             }
         }
     }
     fn show(&self, dsl: &Language, is_function: bool) -> String {
         match *self {
-            Expression::Primitive(num) => dsl.primitives[num as usize].0.clone(),
+            Expression::Primitive(num) => dsl.primitives[num].0.clone(),
             Expression::Application(ref f, ref x) => {
                 if is_function {
                     format!("{} {}", f.show(dsl, true), x.show(dsl, false))
@@ -898,7 +896,7 @@ impl Expression {
             Expression::Abstraction(ref body) => format!("(λ {})", body.show(dsl, false)),
             Expression::Index(i) => format!("${}", i),
             Expression::Invented(num) => {
-                format!("#{}", dsl.invented[num as usize].0.show(dsl, false))
+                format!("#{}", dsl.invented[num].0.show(dsl, false))
             }
         }
     }
@@ -957,7 +955,7 @@ where
 {
     let evaluator = Arc::new(evaluator);
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
-        let success = examples.iter().all(|&(ref inps, ref out)| {
+        let success = examples.iter().all(|(inps, out)| {
             if let Ok(o) = dsl.eval_arc(expr, &evaluator, inps) {
                 o == *out
             } else {
@@ -992,7 +990,7 @@ where
 {
     let evaluator = Arc::new(evaluator);
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
-        let success = examples.iter().all(|&(ref inps, ref out)| {
+        let success = examples.iter().all(|(inps, out)| {
             if let Ok(o) = dsl.lazy_eval_arc(expr, &evaluator, inps) {
                 o == *out
             } else {

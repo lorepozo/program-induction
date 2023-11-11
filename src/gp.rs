@@ -268,8 +268,8 @@ pub trait GP: Send + Sync + Sized {
                 .choose_multiple(rng, tournament_size)
                 .into_iter()
                 .map(|i| &population[i])
-                .max_by(|&&(_, ref x), &&(_, ref y)| x.partial_cmp(y).expect("found NaN"))
-                .map(|&(ref expr, _)| expr)
+                .max_by(|&(_, x), &(_, y)| x.partial_cmp(y).expect("found NaN"))
+                .map(|(expr, _)| expr)
                 .expect("tournament cannot select winner from no contestants")
         }
     }
@@ -290,7 +290,7 @@ pub trait GP: Send + Sync + Sized {
                 let l = (task.oracle)(self, &expr);
                 (expr, l)
             })
-            .sorted_by(|&(_, ref x), &(_, ref y)| x.partial_cmp(y).expect("found NaN"))
+            .sorted_by(|(_, x), (_, y)| x.partial_cmp(y).expect("found NaN"))
             .collect()
     }
 

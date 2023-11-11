@@ -190,7 +190,7 @@ fn main() {
     let ci = CompressionInput::from(eci);
     let (dsl, _) = ci.dsl.compress(&ci.params, &ci.tasks, ci.frontiers);
     for i in ci.dsl.invented.len()..dsl.invented.len() {
-        let &(ref expr, _, _) = &dsl.invented[i];
+        let (expr, _, _) = &dsl.invented[i];
         eprintln!("invented {}", dsl.display(expr));
     }
 }

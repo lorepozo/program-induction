@@ -648,7 +648,7 @@ where
                                             .lift(LiftedFunction(
                                                 Arc::new(x),
                                                 evaluator.clone(),
-                                                env.clone(),
+                                                env,
                                             ))
                                             .expect("evaluator could not lift an abstraction")
                                     }

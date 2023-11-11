@@ -337,7 +337,7 @@ where
                 .expect("enumeration frontiers poisoned")
                 .iter()
                 .enumerate()
-                .filter_map(|(i, &(_, ref ot, _))| ot.as_ref().map(|t| (i, t))) // only check incomplete tasks
+                .filter_map(|(i, (_, ot, _))| ot.as_ref().map(|t| (i, t))) // only check incomplete tasks
                 .filter_map(|(i, t)| {
                     let l = (t.oracle)(repr, &expr);
                     if l.is_finite() {

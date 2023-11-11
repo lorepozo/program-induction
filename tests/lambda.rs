@@ -286,16 +286,16 @@ fn lambda_eval_firstclass() {
                     _ => unreachable!(),
                 },
                 "chain" => match (&inps[0], &inps[1]) {
-                    (&ListSpace::List(ref xs), &ListSpace::List(ref ys)) => {
-                        Ok(ListSpace::List(xs.into_iter().chain(ys).cloned().collect()))
+                    (ListSpace::List(xs), ListSpace::List(ys)) => {
+                        Ok(ListSpace::List(xs.iter().chain(ys).cloned().collect()))
                     }
                     _ => unreachable!(),
                 },
                 "map" => match (&inps[0], &inps[1]) {
-                    (&ListSpace::Func(ref f), &ListSpace::List(ref xs)) => Ok(ListSpace::List(
-                        xs.into_iter()
+                    (ListSpace::Func(f), ListSpace::List(xs)) => Ok(ListSpace::List(
+                        xs.iter()
                             .map(|x| {
-                                f.eval(&[ListSpace::Num(x.clone())])
+                                f.eval(&[ListSpace::Num(*x)])
                                     .map(|v| match v {
                                         ListSpace::Num(y) => y,
                                         _ => panic!("map given invalid function"),
@@ -390,7 +390,7 @@ fn lambda_lazy_eval() {
                 "car" => match inps[0].eval(&[])? {
                     ListSpace::List(xs) => {
                         if !xs.is_empty() {
-                            Ok(ListSpace::Num(xs[0].clone()))
+                            Ok(ListSpace::Num(xs[0]))
                         } else {
                             Err(ListError("cannot get car of empty list"))
                         }

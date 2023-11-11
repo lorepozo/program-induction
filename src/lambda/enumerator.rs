@@ -61,14 +61,14 @@ where
     }
 }
 
-pub fn likelihood<'a>(dsl: &'a Language, request: &TypeSchema, expr: &Expression) -> f64 {
+pub fn likelihood(dsl: &Language, request: &TypeSchema, expr: &Expression) -> f64 {
     let mut ctx = Context::default();
     let env = Rc::new(LinkedList::default());
     let t = request.clone().instantiate_owned(&mut ctx);
     likelihood_internal(dsl, &t, &ctx, &env, expr).0
 }
-fn likelihood_internal<'a>(
-    dsl: &'a Language,
+fn likelihood_internal(
+    dsl: &Language,
     request: &Type,
     ctx: &Context,
     env: &Rc<LinkedList<Type>>,
@@ -91,7 +91,7 @@ fn likelihood_internal<'a>(
         match dsl
             .candidates(request, ctx, &env.as_vecdeque())
             .into_iter()
-            .find(|&(_, ref c_expr, _, _)| expr == c_expr)
+            .find(|(_, c_expr, _, _)| expr == c_expr)
         {
             Some((f_l, _, f_tp, ctx)) => {
                 if let Some(arg_tps) = f_tp.args() {
@@ -216,7 +216,7 @@ mod par {
             .all(|(expr, ll, ctx)| cb(expr, ll, ctx))
         {
             bfss.into_par_iter()
-                .map(|bfs| bfs.enumerate_dfs(&dsl, budget, &cb))
+                .map(|bfs| bfs.enumerate_dfs(dsl, budget, &cb))
                 .all(|b| b)
         } else {
             false
@@ -413,11 +413,9 @@ mod bfs {
             } else {
                 let t = &path[0];
                 match (t, self) {
-                    (&Turn::Abs(_), &HoleExpression::Abstraction(ref body)) => {
-                        body.index(&path[1..])
-                    }
-                    (&Turn::Left, &HoleExpression::Application(ref f, _)) => f.index(&path[1..]),
-                    (&Turn::Right, &HoleExpression::Application(_, ref x)) => x.index(&path[1..]),
+                    (&Turn::Abs(_), HoleExpression::Abstraction(body)) => body.index(&path[1..]),
+                    (&Turn::Left, HoleExpression::Application(f, _)) => f.index(&path[1..]),
+                    (&Turn::Right, HoleExpression::Application(_, x)) => x.index(&path[1..]),
                     _ => panic!("invalid path for expression: {:?} against {:?}", t, self),
                 }
             }
@@ -489,15 +487,15 @@ mod bfs {
                 let env = self.path.environment();
                 dsl.candidates(req, &self.ctx, &env)
                     .into_iter()
-                    .filter(|&(_, ref expr, _, _)| match self.expr {
+                    .filter(|(_, expr, _, _)| match self.expr {
                         // FIXME: this only checks for symmetry violations starting from the root
                         HoleExpression::Application(ref f, _) => {
                             let mut i = 0;
-                            let mut f: &HoleExpression = &*f;
+                            let mut f: &HoleExpression = f;
                             let applied = loop {
                                 match *f {
                                     HoleExpression::Application(ref ff, _) => {
-                                        f = &*ff;
+                                        f = ff;
                                         i += 1;
                                     }
                                     _ => break f.as_expression().map(|f| (i, f)),

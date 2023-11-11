@@ -361,7 +361,7 @@ impl EC for Grammar {
         frontiers
             .par_iter()
             .flat_map(|f| &f.0)
-            .for_each(|&(ref ar, _, _)| update_counts(ar, &counts));
+            .for_each(|(ar, _, _)| update_counts(ar, &counts));
         let mut g = self.clone();
         // assign raw logprobabilities from counts
         for (nt, cs) in Arc::try_unwrap(counts).unwrap() {
@@ -523,7 +523,7 @@ impl PartialEq for Rule {
 }
 impl Eq for Rule {}
 
-fn update_counts<'a>(ar: &'a AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicUsize>>>) {
+fn update_counts(ar: &AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicUsize>>>) {
     counts[&ar.0][ar.1].fetch_add(1, Ordering::Relaxed);
     ar.2.iter().for_each(move |ar| update_counts(ar, counts));
 }
