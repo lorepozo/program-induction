@@ -285,8 +285,8 @@ impl EvaluatorT for Evaluator {
             Op::CharPipe => Ok(Char('|')),
         }
     }
-    fn lift(&self, f: LiftedFunction<Self::Space, Self>) -> Result<Self::Space, ()> {
-        Ok(Func(f))
+    fn lift(&self, f: LiftedFunction<Self::Space, Self>) -> Option<Self::Space> {
+        Some(Func(f))
     }
 }
 

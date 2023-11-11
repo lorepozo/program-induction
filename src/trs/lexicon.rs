@@ -151,12 +151,11 @@ impl Lexicon {
         })))
     }
     /// Return the specified operator if possible.
-    pub fn has_op(&self, name: Option<&str>, arity: u32) -> Result<Operator, ()> {
+    pub fn has_op(&self, name: Option<&str>, arity: u32) -> Option<Operator> {
         let sig = &self.0.read().expect("poisoned lexicon").signature;
         sig.operators()
             .into_iter()
             .find(|op| op.arity() == arity && op.name().as_deref() == name)
-            .ok_or(())
     }
     /// All the free type variables in the lexicon.
     pub fn free_vars(&self) -> Vec<TypeVar> {
@@ -743,7 +742,7 @@ impl Lex {
         let ops = self.signature.operators();
         let mut options: Vec<_> = ops.into_iter().map(|o| Some(Atom::Operator(o))).collect();
         if variable {
-            options.extend(vars.to_vec().into_iter().map(|v| Some(Atom::Variable(v))));
+            options.extend(vars.iter().cloned().map(|v| Some(Atom::Variable(v))));
             if invent {
                 options.push(None);
             }

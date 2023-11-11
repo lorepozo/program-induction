@@ -377,7 +377,7 @@ fn sample_pop<T: Clone>(options: Vec<(T, f64)>, sample_size: usize) -> Vec<(T, f
 /// return a score-sorted subset sampled without replacement from the `Vec`
 /// according to score.
 fn sample_without_replacement<R: Rng, T: Clone>(
-    options: &mut Vec<(T, f64)>,
+    options: &mut [(T, f64)],
     sample_size: usize,
     rng: &mut R,
 ) -> Vec<(T, f64)> {
@@ -400,7 +400,7 @@ fn sample_without_replacement<R: Rng, T: Clone>(
 /// return a score-sorted subset sampled with replacement from the `Vec`
 /// according to score.
 fn sample_with_replacement<R: Rng, T: Clone>(
-    options: &mut Vec<(T, f64)>,
+    options: &mut [(T, f64)],
     sample_size: usize,
     rng: &mut R,
 ) -> Vec<(T, f64)> {

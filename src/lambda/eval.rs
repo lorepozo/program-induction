@@ -211,8 +211,8 @@ where
 ///             _ => unreachable!(),
 ///         }
 ///     }
-///     fn lift(&self, f: LiftedFunction<Self::Space, Self>) -> Result<Self::Space, ()> {
-///         Ok(Func(f))
+///     fn lift(&self, f: LiftedFunction<Self::Space, Self>) -> Option<Self::Space> {
+///         Some(Func(f))
 ///     }
 /// }
 ///
@@ -239,8 +239,8 @@ pub trait Evaluator: Sized + Sync {
     /// If evaluation should fail, this would hold an appropriate error.
     type Error: Clone + Sync;
     fn evaluate(&self, primitive: &str, inps: &[Self::Space]) -> Result<Self::Space, Self::Error>;
-    fn lift(&self, _f: LiftedFunction<Self::Space, Self>) -> Result<Self::Space, ()> {
-        Err(())
+    fn lift(&self, _f: LiftedFunction<Self::Space, Self>) -> Option<Self::Space> {
+        None
     }
 }
 
@@ -358,8 +358,8 @@ pub trait LazyEvaluator: Sized + Sync {
         primitive: &str,
         inps: &[LiftedLazyFunction<Self::Space, Self>],
     ) -> Result<Self::Space, Self::Error>;
-    fn lift(&self, _f: LiftedLazyFunction<Self::Space, Self>) -> Result<Self::Space, ()> {
-        Err(())
+    fn lift(&self, _f: LiftedLazyFunction<Self::Space, Self>) -> Option<Self::Space> {
+        None
     }
 }
 

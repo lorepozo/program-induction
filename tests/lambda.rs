@@ -309,8 +309,8 @@ fn lambda_eval_firstclass() {
                 _ => unreachable!(),
             }
         }
-        fn lift(&self, f: LiftedFunction<Self::Space, Self>) -> Result<Self::Space, ()> {
-            Ok(ListSpace::Func(f))
+        fn lift(&self, f: LiftedFunction<Self::Space, Self>) -> Option<Self::Space> {
+            Some(ListSpace::Func(f))
         }
     }
 
@@ -477,8 +477,8 @@ fn lambda_lazy_eval_firstclass() {
                 _ => unreachable!(),
             }
         }
-        fn lift(&self, f: LiftedLazyFunction<Self::Space, Self>) -> Result<Self::Space, ()> {
-            Ok(ListSpace::Func(f))
+        fn lift(&self, f: LiftedLazyFunction<Self::Space, Self>) -> Option<Self::Space> {
+            Some(ListSpace::Func(f))
         }
     }
 

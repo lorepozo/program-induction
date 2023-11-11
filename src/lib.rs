@@ -31,7 +31,7 @@
 //! \\(\\mathcal{D}\^\*\\) and \\(\\theta\^\*\\) solving:
 //! \\[
 //! \\begin{aligned}
-//! 	J(\\mathcal{D},\\theta) &\\triangleq
+//!     J(\\mathcal{D},\\theta) &\\triangleq
 //!         \\mathbb{P}[\\mathcal{D},\\theta]
 //!         \\prod\_{x\\in X} \\sum\_p \\mathbb{P}[x|p]\\mathbb{P}[p|\\mathcal{D},\\theta] \\\\
 //!     \\mathcal{D}\^\* &= \\underset{\\mathcal{D}}{\\text{arg}\\,\\text{max}}
@@ -121,6 +121,7 @@ use std::f64;
 pub struct Task<'a, R: Send + Sync + Sized, X: Clone + Send + Sync, O: Sync> {
     /// Assess an expression. For [`EC`] this should return a log-likelihood. For [`GP`] this
     /// should return the fitness, where smaller values correspond to better expressions.
+    #[allow(clippy::type_complexity)]
     pub oracle: Box<dyn Fn(&R, &X) -> f64 + Send + Sync + 'a>,
     /// An expression that is considered valid for the `oracle` is one of this type.
     pub tp: TypeSchema,

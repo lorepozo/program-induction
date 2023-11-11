@@ -27,7 +27,7 @@ impl From<()> for ParseError {
         ParseError
     }
 }
-impl<'a> From<io::Error> for ParseError {
+impl From<io::Error> for ParseError {
     fn from(_: io::Error) -> ParseError {
         ParseError
     }

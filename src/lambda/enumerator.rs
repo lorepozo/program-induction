@@ -258,10 +258,7 @@ mod bfs {
             self.0
                 .iter()
                 .rev()
-                .position(|t| match *t {
-                    Turn::Left => true,
-                    _ => false,
-                })
+                .position(|t| matches!(t, Turn::Left))
                 .map(|last_left| {
                     let len = self.0.len() - last_left;
                     let mut turns = self.0[..len].to_vec();
