@@ -1,7 +1,7 @@
 use itertools::{repeat_n, Itertools};
 use polytype::{Context as TypeContext, Type, TypeSchema, Variable as TypeVar};
 use rand::Rng;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::f64::NEG_INFINITY;
 use std::fmt;
@@ -1109,7 +1109,6 @@ impl GP for Lexicon {
     }
 }
 
-
 // because term_rewriting dependency uses old `rand` version
 fn make_deterministic<R: Rng>(utrs: &mut UntypedTRS, rng: &mut R) -> bool {
     struct CompatRng<'a, R: Rng>(&'a mut R);
@@ -1124,7 +1123,9 @@ fn make_deterministic<R: Rng>(utrs: &mut UntypedTRS, rng: &mut R) -> bool {
             self.0.fill_bytes(dest)
         }
         fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
-            self.0.try_fill_bytes(dest).map_err(|_| rand_core::Error::new(rand_core::ErrorKind::Unexpected, "error behind rand compat"))
+            self.0.try_fill_bytes(dest).map_err(|_| {
+                rand_core::Error::new(rand_core::ErrorKind::Unexpected, "error behind rand compat")
+            })
         }
     }
 

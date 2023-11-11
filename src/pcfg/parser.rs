@@ -1,5 +1,5 @@
-use nom::{alt, delimited, do_parse, named, separated_list, tag, take_while, ws};
 use nom::types::CompleteStr;
+use nom::{alt, delimited, do_parse, named, separated_list, tag, take_while, ws};
 use polytype::Type;
 use std::{error, fmt};
 
@@ -67,16 +67,16 @@ fn alphanumeric_ext(c: char) -> bool {
 }
 
 named!(var<CompleteStr, Item>,
-        do_parse!(
-            name: ws!( take_while!(alphanumeric_ext) ) >>
-            (Item(name.to_string(), vec![]))
-        ));
+do_parse!(
+    name: ws!( take_while!(alphanumeric_ext) ) >>
+    (Item(name.to_string(), vec![]))
+));
 named!(func<CompleteStr, Item>,
-        do_parse!(
-            name: ws!( take_while!(alphanumeric_ext) ) >>
-            args: delimited!(tag!("("), separated_list!(tag!(","), expr), tag!(")")) >>
-            (Item(name.to_string(), args))
-        ));
+do_parse!(
+    name: ws!( take_while!(alphanumeric_ext) ) >>
+    args: delimited!(tag!("("), separated_list!(tag!(","), expr), tag!(")")) >>
+    (Item(name.to_string(), args))
+));
 named!(expr<CompleteStr, Item>, alt!(func | var));
 
 pub fn parse(grammar: &Grammar, input: &str, nt: Type) -> Result<AppliedRule, ParseError> {

@@ -1,10 +1,10 @@
 //! Representations capable of Genetic Programming.
 
 use crate::utils::{logsumexp, weighted_sample};
-use serde::{Serialize, Deserialize};
 use itertools::Itertools;
 use polytype::TypeSchema;
 use rand::{distributions::Distribution, distributions::WeightedIndex, seq::IteratorRandom, Rng};
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
 use crate::Task;

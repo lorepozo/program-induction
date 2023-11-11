@@ -19,9 +19,9 @@
 //! assert!(50 < hits && hits < 80, "hits = {}", hits);
 //! ```
 
+use itertools::Itertools;
 use once_cell::sync::Lazy;
 use polytype::{ptp, tp};
-use itertools::Itertools;
 use std::collections::HashMap;
 use std::f64;
 use std::fmt;

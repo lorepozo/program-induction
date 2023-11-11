@@ -53,7 +53,7 @@ pub use self::rewrite::TRS;
 use crate::Task;
 
 use polytype;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use term_rewriting::{Rule, TRSError};
 

@@ -1,7 +1,10 @@
 use super::lexicon::Lexicon;
 use super::rewrite::TRS;
-use nom::{alt, call, do_parse, expr_res, is_not, many0, map, named, named_args, preceded, tag, take_until_and_consume, terminated, ws};
 use nom::types::CompleteStr;
+use nom::{
+    alt, call, do_parse, expr_res, is_not, many0, map, named, named_args, preceded, tag,
+    take_until_and_consume, terminated, ws,
+};
 use nom::{Context as Nomtext, Err};
 use polytype::{Context as TypeContext, TypeSchema};
 use std::fmt;
@@ -248,14 +251,16 @@ named!(schema<CompleteStr, TypeSchema>,
 named!(comment<CompleteStr, CompleteStr>,
        map!(preceded!(tag!("#"), take_until_and_consume!("\n")),
             |s| CompleteStr(&s.trim())));
-named_args!(declaration<'a>(sig: &mut Signature, vars: &mut Vec<TypeSchema>, ops: &mut Vec<TypeSchema>) <CompleteStr<'a>, (Atom, TypeSchema)>,
-       map!(ws!(do_parse!(name: atom_name >>
-                      colon >>
-                      schema: schema >>
-                      (name, schema))),
-            |(n, s)| {
-                (make_atom(n, sig, s.clone(), vars, ops), s)}
-       ));
+named_args!(declaration<'a>
+                (sig: &mut Signature, vars: &mut Vec<TypeSchema>, ops: &mut Vec<TypeSchema>)
+                <CompleteStr<'a>, (Atom, TypeSchema)>,
+                map!(ws!(do_parse!(name: atom_name >>
+                               colon >>
+                               schema: schema >>
+                               (name, schema))),
+                     |(n, s)| {
+                         (make_atom(n, sig, s.clone(), vars, ops), s)}
+));
 fn simple_lexicon<'a>(
     input: CompleteStr<'a>,
     mut sig: Signature,

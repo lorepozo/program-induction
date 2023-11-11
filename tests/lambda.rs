@@ -143,10 +143,7 @@ fn lambda_expression_parse_abstraction() {
             )),
         ),
     );
-    assert_eq!(
-        dsl.display(&expr),
-        "(#(λ (+ (+ 1 1) $0)) ((λ (+ $0 1)) 1))"
-    );
+    assert_eq!(dsl.display(&expr), "(#(λ (+ (+ 1 1) $0)) ((λ (+ $0 1)) 1))");
     let expr = dsl.parse("(lambda $0)").unwrap();
     assert_eq!(
         expr,
@@ -189,10 +186,7 @@ fn lambda_expression_infer() {
         )),
     );
     assert_eq!(dsl.infer(&expr).unwrap(), ptp!(list(tp!(bool))));
-    assert_eq!(
-        dsl.display(&expr),
-        "(singleton ((λ (>= $0 1)) (#(+ 1) 0)))"
-    );
+    assert_eq!(dsl.display(&expr), "(singleton ((λ (>= $0 1)) (#(+ 1) 0)))");
 }
 
 #[test]
