@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 
 use super::{Expression, Language, LinkedList};
-use {ECFrontier, Task};
+use crate::{ECFrontier, Task};
 
 /// Parameters for grammar induction.
 ///

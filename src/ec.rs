@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use Task;
+use crate::Task;
 
 /// Parameters for the EC algorithm.
 ///

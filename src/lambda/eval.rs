@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::sync::Arc;
 
-use lambda::{Expression, Language};
+use crate::lambda::{Expression, Language};
 
 pub fn eval<V, E>(
     dsl: &Language,

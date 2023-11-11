@@ -1,6 +1,7 @@
 [package]
 name = "programinduction"
 version = "0.8.0"
+edition = "2021"
 authors = ["Lore Anaya Pozo <lore.a.pozo@outlook.com>"]
 license = "MIT"
 readme = "README.md"

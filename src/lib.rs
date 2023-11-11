@@ -121,8 +121,8 @@ pub mod lambda;
 pub mod pcfg;
 pub mod trs;
 mod utils;
-pub use ec::*;
-pub use gp::*;
+pub use crate::ec::*;
+pub use crate::gp::*;
 
 use polytype::TypeSchema;
 use std::f64;

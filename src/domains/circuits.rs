@@ -27,8 +27,8 @@ use rand::distributions::{Distribution, WeightedIndex};
 use std::f64;
 use std::iter;
 
-use lambda::{Evaluator as EvaluatorT, Expression, Language};
-use Task;
+use crate::lambda::{Evaluator as EvaluatorT, Expression, Language};
+use crate::Task;
 
 /// The circuit representation, a [`lambda::Language`], only defines the binary `nand` operation.
 ///

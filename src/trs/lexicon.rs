@@ -11,8 +11,8 @@ use term_rewriting::{
 };
 
 use super::{SampleError, TypeError, TRS};
-use utils::{logsumexp, weighted_permutation};
-use GP;
+use crate::utils::{logsumexp, weighted_permutation};
+use crate::GP;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Parameters for [`Lexicon`] genetic programming ([`GP`]).

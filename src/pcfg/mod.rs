@@ -55,7 +55,7 @@ use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use {ECFrontier, Task, EC, GP};
+use crate::{ECFrontier, Task, EC, GP};
 
 /// (representation) Probabilistic context-free grammar. Currently cannot handle bound variables or
 /// polymorphism.

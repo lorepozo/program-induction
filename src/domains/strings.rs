@@ -23,8 +23,8 @@ use itertools::Itertools;
 use std::f64;
 use std::fmt;
 
-use lambda::{Evaluator as EvaluatorT, Expression, Language, LiftedFunction};
-use Task;
+use crate::lambda::{Evaluator as EvaluatorT, Expression, Language, LiftedFunction};
+use crate::Task;
 
 /// The string editing [`lambda::Language`] defines the following operations:
 ///

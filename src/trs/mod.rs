@@ -53,7 +53,7 @@ pub use self::parser::{
     parse_context, parse_lexicon, parse_rule, parse_rulecontext, parse_templates, parse_trs,
 };
 pub use self::rewrite::TRS;
-use Task;
+use crate::Task;
 
 use polytype;
 use std::fmt;

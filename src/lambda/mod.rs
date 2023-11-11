@@ -55,7 +55,7 @@ use std::ops::Index;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use {ECFrontier, Task, EC};
+use crate::{ECFrontier, Task, EC};
 
 const BOUND_VAR_COST: f64 = 0.1;
 const FREE_VAR_COST: f64 = 0.01;

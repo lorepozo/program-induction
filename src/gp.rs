@@ -4,9 +4,9 @@ use itertools::Itertools;
 use polytype::TypeSchema;
 use rand::{distributions::Distribution, distributions::WeightedIndex, seq::IteratorRandom, Rng};
 use std::cmp::Ordering;
-use utils::{logsumexp, weighted_sample};
+use crate::utils::{logsumexp, weighted_sample};
 
-use Task;
+use crate::Task;
 
 /// The mechanism by which individuals are selected for inclusion in the
 /// population.
