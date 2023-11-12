@@ -1,6 +1,5 @@
 //! Representations capable of Genetic Programming.
 
-use crate::utils::{logsumexp, weighted_sample};
 use itertools::Itertools;
 use polytype::TypeSchema;
 use rand::{distributions::Distribution, distributions::WeightedIndex, seq::SliceRandom, Rng};
@@ -30,16 +29,15 @@ pub enum GPSelection {
     /// by lower-scoring individuals, though this is relatively unlikely.
     #[serde(alias = "drift")]
     Drift(f64),
-    /// `Hybrid` implies a selection mechanism in which some portion of the
-    /// population is selected deterministically such that the best individuals
-    /// are always retained. The remainder of the population is sampled without
-    /// replacement from the remaining individuals. An individual can be removed
-    /// from a population by lower-scoring individuals, though this is
-    /// relatively unlikely, and impossible if the individual is considered one
+    /// `Hybrid(deterministic_proportion)` implies a selection mechanism in which
+    /// some portion of the population is selected deterministically such that the
+    /// best individuals are always retained. The remainder of the population is
+    /// sampled without replacement from the remaining individuals. An individual
+    /// can be removed from a population by lower-scoring individuals, though this
+    /// is relatively unlikely, and impossible if the individual is considered one
     /// of the "best" in the population. The number of "best" individuals is
-    /// `floor(population.len() * deterministic_proportion)`, where
-    /// `deterministic_proportion` is `GPSelection::Hybrid.0`. It should vary
-    /// from 0 to 1.
+    /// `floor(population.len() * deterministic_proportion)`.
+    /// The `deterministic_proportion` should be between 0 and 1.
     #[serde(alias = "hybrid")]
     Hybrid(f64),
     /// `Probabilistic` implies a noisy survival-of-the-fittest selection
@@ -346,34 +344,19 @@ pub trait GP: Send + Sync + Sized {
 }
 
 /// Given a `Vec` of item-score pairs sorted by score, and some `sample_size`,
-/// return a score-sorted sample selected in inverse proportion to its overall
-/// score.
+/// return a score-sorted sample selected in proportion to its overall score.
 fn sample_pop<T: Clone, R: Rng>(
     rng: &mut R,
     options: Vec<(T, f64)>,
     sample_size: usize,
 ) -> Vec<(T, f64)> {
-    // TODO: Is this necessary. Could we just sample a weighted permutation
-    // rather than do all the combinatorics?
-    // https://softwareengineering.stackexchange.com/questions/233541
-    let (idxs, scores): (Vec<usize>, Vec<f64>) = options
-        .iter()
-        .map(|&(_, score)| score)
-        .combinations(sample_size)
-        .map(|combo| (-combo.iter().sum::<f64>()))
-        .enumerate()
-        .unzip();
-    let sum_scores = logsumexp(&scores);
-    let scores = scores
-        .iter()
-        .map(|x| (x - sum_scores).exp())
+    let mut sample = options
+        .choose_multiple_weighted(rng, sample_size, |(_, score)| (-score).exp())
+        .expect("bad weight")
+        .cloned()
         .collect::<Vec<_>>();
-    let idx = weighted_sample(rng, &idxs, &scores);
-    options
-        .into_iter()
-        .combinations(sample_size)
-        .nth(*idx)
-        .unwrap()
+    sample.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+    sample
 }
 
 /// Given a `Vec` of item-score pairs sorted by score, and some `sample_size`,
