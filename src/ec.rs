@@ -309,8 +309,8 @@ where
 
     // termination conditions
     let mut timeout_complete: Box<dyn Fn() -> bool + Send + Sync> = Box::new(|| false);
-    let (tx, rx) = bounded(1);
     if let Some(duration) = params.search_limit_timeout {
+        let (tx, rx) = bounded(1);
         thread::spawn(move || {
             thread::sleep(duration);
             tx.send(()).unwrap_or(())
@@ -327,10 +327,8 @@ where
     let termination_condition = {
         let frontiers = Arc::clone(&frontiers);
         move |expr: X, logprior: f64| {
-            {
-                if *is_terminated.read().unwrap() {
-                    return true;
-                }
+            if *is_terminated.read().unwrap() {
+                return true;
             }
             let hits: Vec<_> = frontiers
                 .read()
@@ -374,8 +372,8 @@ where
     };
 
     repr.enumerate(tp, termination_condition);
-    if let Ok(l) = Arc::try_unwrap(frontiers) {
-        let frontiers = l.into_inner().expect("enumeration frontiers poisoned");
+    if let Ok(lock) = Arc::try_unwrap(frontiers) {
+        let frontiers = lock.into_inner().expect("enumeration frontiers poisoned");
         frontiers.into_iter().map(|(j, _, f)| (j, f)).collect()
     } else {
         panic!("enumeration lifetime exceeded its scope")

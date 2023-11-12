@@ -3,7 +3,7 @@
 use crate::utils::{logsumexp, weighted_sample};
 use itertools::Itertools;
 use polytype::TypeSchema;
-use rand::{distributions::Distribution, distributions::WeightedIndex, seq::IteratorRandom, Rng};
+use rand::{distributions::Distribution, distributions::WeightedIndex, seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
@@ -55,11 +55,11 @@ pub enum GPSelection {
 }
 
 impl GPSelection {
-    pub(crate) fn update_population<'a, R: Rng, X: Clone + Send + Sync>(
+    pub(crate) fn update_population<R: Rng, X: Clone + Send + Sync>(
         &self,
         population: &mut Vec<(X, f64)>,
         children: Vec<X>,
-        oracle: Box<dyn Fn(&X) -> f64 + Send + Sync + 'a>,
+        oracle: impl Fn(&X) -> f64 + Send + Sync,
         rng: &mut R,
     ) {
         let mut scored_children = children
@@ -88,7 +88,7 @@ impl GPSelection {
                     sorted_place(child, population);
                 }
             }
-            _ => {
+            GPSelection::Hybrid(_) | GPSelection::Probabilistic => {
                 let pop_size = population.len();
                 let mut options = Vec::with_capacity(pop_size + scored_children.len());
                 options.append(population);
@@ -261,17 +261,14 @@ pub trait GP: Send + Sync + Sized {
         tournament_size: usize,
         population: &'a [(Self::Expression, f64)],
     ) -> &'a Self::Expression {
-        if tournament_size == 1 {
-            &population[rng.gen_range(0..population.len())].0
+        let tribute = if tournament_size == 1 {
+            population.choose(rng)
         } else {
-            (0..population.len())
+            population
                 .choose_multiple(rng, tournament_size)
-                .into_iter()
-                .map(|i| &population[i])
                 .max_by(|&(_, x), &(_, y)| x.partial_cmp(y).expect("found NaN"))
-                .map(|(expr, _)| expr)
-                .expect("tournament cannot select winner from no contestants")
-        }
+        };
+        tribute.map(|(expr, _)| expr).expect("tournament cannot select winner from no contestants")
     }
 
     /// Initializes a population, which is a list of programs and their scores sorted by score.
@@ -340,7 +337,7 @@ pub trait GP: Send + Sync + Sized {
         gpparams.selection.update_population(
             population,
             children,
-            Box::new(|child| (task.oracle)(self, child)),
+            |child| (task.oracle)(self, child),
             rng,
         );
     }
