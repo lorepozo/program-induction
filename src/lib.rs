@@ -120,7 +120,7 @@ use std::f64;
 /// [`pcfg::task_by_evaluation`]: pcfg/fn.task_by_simple_evaluation.html
 pub struct Task<'a, R: Send + Sync + Sized, X: Clone + Send + Sync, O: Sync> {
     /// Assess an expression. For [`EC`] this should return a log-likelihood. For [`GP`] this
-    /// should return the fitness, where smaller values correspond to better expressions.
+    /// should return non-negative fitness, where smaller values correspond to better expressions.
     #[allow(clippy::type_complexity)]
     pub oracle: Box<dyn Fn(&R, &X) -> f64 + Send + Sync + 'a>,
     /// An expression that is considered valid for the `oracle` is one of this type.

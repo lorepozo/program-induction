@@ -351,7 +351,7 @@ fn sample_pop<T: Clone, R: Rng>(
     sample_size: usize,
 ) -> Vec<(T, f64)> {
     let mut sample = options
-        .choose_multiple_weighted(rng, sample_size, |(_, score)| (-score).exp())
+        .choose_multiple_weighted(rng, sample_size, |(_, score)| *score)
         .expect("bad weight")
         .cloned()
         .collect::<Vec<_>>();
@@ -367,10 +367,7 @@ fn sample_without_replacement<R: Rng, T: Clone>(
     sample_size: usize,
     rng: &mut R,
 ) -> Vec<(T, f64)> {
-    let mut weights = options
-        .iter()
-        .map(|(_, weight)| (-weight).exp())
-        .collect_vec();
+    let mut weights = options.iter().map(|(_, weight)| *weight).collect_vec();
     let mut sample = Vec::with_capacity(sample_size);
     for _ in 0..sample_size {
         let dist = WeightedIndex::new(&weights[..]).unwrap();
@@ -390,7 +387,7 @@ fn sample_with_replacement<R: Rng, T: Clone>(
     sample_size: usize,
     rng: &mut R,
 ) -> Vec<(T, f64)> {
-    let dist = WeightedIndex::new(options.iter().map(|(_, weight)| (-weight).exp())).unwrap();
+    let dist = WeightedIndex::new(options.iter().map(|(_, weight)| *weight)).unwrap();
     let mut sample = Vec::with_capacity(sample_size);
     for _ in 0..sample_size {
         // cloning because we don't know if we'll be using multiple times
