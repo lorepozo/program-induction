@@ -264,13 +264,16 @@ impl Lexicon {
     /// let atom_weights = (0.5, 0.25, 0.25);
     /// let max_size = 50;
     ///
-    /// let term = lexicon.sample_term(&schema, &mut ctx, atom_weights, invent, variable, max_size).unwrap();
+    /// let rng = &mut rand::thread_rng();
+    /// let term = lexicon.sample_term(rng, &schema, &mut ctx, atom_weights, invent, variable, max_size).unwrap();
     /// # }
     /// ```
     ///
     /// [`term_rewriting::Term`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/enum.Term.html
-    pub fn sample_term(
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
+    pub fn sample_term<R: Rng>(
         &mut self,
+        rng: &mut R,
         schema: &TypeSchema,
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
@@ -279,11 +282,22 @@ impl Lexicon {
         max_size: usize,
     ) -> Result<Term, SampleError> {
         let mut lex = self.0.write().expect("poisoned lexicon");
-        lex.sample_term(schema, ctx, atom_weights, invent, variable, max_size, 0)
+        lex.sample_term(
+            rng,
+            schema,
+            ctx,
+            atom_weights,
+            invent,
+            variable,
+            max_size,
+            0,
+        )
     }
     /// Sample a `Term` conditioned on a `Context` rather than a `TypeSchema`.
-    pub fn sample_term_from_context(
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
+    pub fn sample_term_from_context<R: Rng>(
         &mut self,
+        rng: &mut R,
         context: &Context,
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
@@ -292,11 +306,21 @@ impl Lexicon {
         max_size: usize,
     ) -> Result<Term, SampleError> {
         let mut lex = self.0.write().expect("poisoned lexicon");
-        lex.sample_term_from_context(context, ctx, atom_weights, invent, variable, max_size, 0)
+        lex.sample_term_from_context(
+            rng,
+            context,
+            ctx,
+            atom_weights,
+            invent,
+            variable,
+            max_size,
+            0,
+        )
     }
     /// Sample a `Rule`.
-    pub fn sample_rule(
+    pub fn sample_rule<R: Rng>(
         &mut self,
+        rng: &mut R,
         schema: &TypeSchema,
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
@@ -304,11 +328,12 @@ impl Lexicon {
         max_size: usize,
     ) -> Result<Rule, SampleError> {
         let mut lex = self.0.write().expect("poisoned lexicon");
-        lex.sample_rule(schema, ctx, atom_weights, invent, max_size, 0)
+        lex.sample_rule(rng, schema, ctx, atom_weights, invent, max_size, 0)
     }
     /// Sample a `Rule` conditioned on a `Context` rather than a `TypeSchema`.
-    pub fn sample_rule_from_context(
+    pub fn sample_rule_from_context<R: Rng>(
         &mut self,
+        rng: &mut R,
         context: RuleContext,
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
@@ -316,7 +341,7 @@ impl Lexicon {
         max_size: usize,
     ) -> Result<Rule, SampleError> {
         let mut lex = self.0.write().expect("posioned lexicon");
-        lex.sample_rule_from_context(context, ctx, atom_weights, invent, max_size, 0)
+        lex.sample_rule_from_context(rng, context, ctx, atom_weights, invent, max_size, 0)
     }
     /// Give the log probability of sampling a Term.
     pub fn logprior_term(
@@ -458,8 +483,9 @@ impl Lex {
             .unwrap_or_else(Vec::new))
     }
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
-    fn place_atom(
+    fn place_atom<R: Rng>(
         &mut self,
+        rng: &mut R,
         atom: &Atom,
         arg_types: Vec<Type>,
         ctx: &mut TypeContext,
@@ -484,6 +510,7 @@ impl Lex {
                     let arg_schema = TypeSchema::Monotype(arg_tp);
                     let result = self
                         .sample_term_internal(
+                            rng,
                             &arg_schema,
                             ctx,
                             atom_weights,
@@ -679,8 +706,9 @@ impl Lex {
     }
 
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
-    pub fn sample_term(
+    pub fn sample_term<R: Rng>(
         &mut self,
+        rng: &mut R,
         schema: &TypeSchema,
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
@@ -690,6 +718,7 @@ impl Lex {
         size: usize,
     ) -> Result<Term, SampleError> {
         self.sample_term_internal(
+            rng,
             schema,
             ctx,
             atom_weights,
@@ -701,8 +730,9 @@ impl Lex {
         )
     }
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
-    pub fn sample_term_internal(
+    pub fn sample_term_internal<R: Rng>(
         &mut self,
+        rng: &mut R,
         schema: &TypeSchema,
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
@@ -717,8 +747,9 @@ impl Lex {
         }
         let tp = schema.instantiate(ctx);
         let (atom, arg_types) =
-            self.prepare_option(vars, atom_weights, invent, variable, &tp, ctx)?;
+            self.prepare_option(rng, vars, atom_weights, invent, variable, &tp, ctx)?;
         self.place_atom(
+            rng,
             &atom,
             arg_types,
             ctx,
@@ -729,8 +760,10 @@ impl Lex {
             vars,
         )
     }
-    fn prepare_option(
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
+    fn prepare_option<R: Rng>(
         &mut self,
+        rng: &mut R,
         vars: &mut Vec<Variable>,
         (vw, cw, ow): (f64, f64, f64),
         invent: bool,
@@ -757,7 +790,7 @@ impl Lex {
             })
             .collect();
         // iterate through a weighted permutation to find an option that typechecks
-        for option in weighted_permutation(&options, &weights, None) {
+        for option in weighted_permutation(rng, &options, &weights, None) {
             let atom = option.unwrap_or_else(|| {
                 let new_var = self.invent_variable(tp);
                 vars.push(new_var.clone());
@@ -771,8 +804,9 @@ impl Lex {
         Err(SampleError::OptionsExhausted)
     }
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
-    pub fn sample_term_from_context(
+    pub fn sample_term_from_context<R: Rng>(
         &mut self,
+        rng: &mut R,
         context: &Context,
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
@@ -790,6 +824,7 @@ impl Lex {
         for p in &hole_places {
             let schema = &map[p].apply(ctx).generalize(&lex_vars);
             let subterm = self.sample_term_internal(
+                rng,
                 schema,
                 ctx,
                 atom_weights,
@@ -803,8 +838,10 @@ impl Lex {
         }
         context.to_term().or(Err(SampleError::Subterm))
     }
-    pub fn sample_rule(
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
+    pub fn sample_rule<R: Rng>(
         &mut self,
+        rng: &mut R,
         schema: &TypeSchema,
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
@@ -817,6 +854,7 @@ impl Lex {
         loop {
             let mut vars = vec![];
             let lhs = self.sample_term_internal(
+                rng,
                 schema,
                 ctx,
                 atom_weights,
@@ -827,6 +865,7 @@ impl Lex {
                 &mut vars,
             )?;
             let rhs = self.sample_term_internal(
+                rng,
                 schema,
                 ctx,
                 atom_weights,
@@ -844,8 +883,10 @@ impl Lex {
             }
         }
     }
-    pub fn sample_rule_from_context(
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
+    pub fn sample_rule_from_context<R: Rng>(
         &mut self,
+        rng: &mut R,
         mut context: RuleContext,
         ctx: &mut TypeContext,
         atom_weights: (f64, f64, f64),
@@ -862,6 +903,7 @@ impl Lex {
             let can_invent = p[0] == 0 && invent;
             let can_be_variable = p == &vec![0];
             let subterm = self.sample_term_internal(
+                rng,
                 &schema,
                 ctx,
                 atom_weights,

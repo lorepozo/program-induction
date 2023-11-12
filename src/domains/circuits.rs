@@ -9,7 +9,8 @@
 //! use programinduction::{ECParams, EC};
 //!
 //! let dsl = circuits::dsl();
-//! let tasks = circuits::make_tasks(250);
+//! let rng = &mut rand::thread_rng();
+//! let tasks = circuits::make_tasks(rng, 250);
 //! let ec_params = ECParams {
 //!     frontier_limit: 100,
 //!     search_limit_timeout: None,
@@ -23,7 +24,10 @@
 
 use itertools::Itertools;
 use polytype::{ptp, tp, Type, TypeSchema};
-use rand::distributions::{Distribution, WeightedIndex};
+use rand::{
+    distributions::{Distribution, WeightedIndex},
+    Rng,
+};
 use std::f64;
 use std::iter;
 
@@ -117,8 +121,12 @@ impl EvaluatorT for Evaluator {
 /// ```
 ///
 /// [`Task`]: ../../struct.Task.html
-pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Expression, Vec<bool>>> {
+pub fn make_tasks<R: Rng>(
+    rng: &mut R,
+    count: u32,
+) -> Vec<Task<'static, Language, Expression, Vec<bool>>> {
     make_tasks_advanced(
+        rng,
         count,
         [1, 2, 3, 4, 4, 4, 0, 0],
         [1, 2, 2, 0, 0, 0, 0, 0],
@@ -138,7 +146,8 @@ pub fn make_tasks(count: u32) -> Vec<Task<'static, Language, Expression, Vec<boo
 ///
 /// [`make_tasks`]: fn.make_tasks.html
 #[allow(clippy::too_many_arguments)]
-pub fn make_tasks_advanced(
+pub fn make_tasks_advanced<R: Rng>(
+    rng: &mut R,
     count: u32,
     n_input_weights: [u32; 8],
     n_gate_weights: [u32; 8],
@@ -155,17 +164,16 @@ pub fn make_tasks_advanced(
     let gate_weights = WeightedIndex::new([gate_not, gate_and, gate_or, gate_mux2, gate_mux4])
         .expect("invalid weights for circuit gates");
 
-    let mut rng = rand::thread_rng();
     (0..count)
         .map(move |_| {
-            let mut n_inputs = 1 + n_input_distribution.sample(&mut rng);
-            let mut n_gates = 1 + n_gate_distribution.sample(&mut rng);
+            let mut n_inputs = 1 + n_input_distribution.sample(rng);
+            let mut n_gates = 1 + n_gate_distribution.sample(rng);
             while n_inputs / n_gates >= 3 {
-                n_inputs = 1 + n_input_distribution.sample(&mut rng);
-                n_gates = 1 + n_gate_distribution.sample(&mut rng);
+                n_inputs = 1 + n_input_distribution.sample(rng);
+                n_gates = 1 + n_gate_distribution.sample(rng);
             }
             let tp = TypeSchema::Monotype(Type::from(vec![tp!(bool); n_inputs + 1]));
-            let circuit = Circuit::new(&mut rng, &gate_weights, n_inputs as u32, n_gates);
+            let circuit = Circuit::new(rng, &gate_weights, n_inputs as u32, n_gates);
             let outputs: Vec<_> = iter::repeat(vec![false, true])
                 .take(n_inputs)
                 .multi_cartesian_product()

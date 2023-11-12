@@ -102,7 +102,7 @@ impl GPSelection {
                     *population = options;
                     options = rest;
                 }
-                population.append(&mut sample_pop(options, sample_size));
+                population.append(&mut sample_pop(rng, options, sample_size));
             }
         }
     }
@@ -268,7 +268,9 @@ pub trait GP: Send + Sync + Sized {
                 .choose_multiple(rng, tournament_size)
                 .max_by(|&(_, x), &(_, y)| x.partial_cmp(y).expect("found NaN"))
         };
-        tribute.map(|(expr, _)| expr).expect("tournament cannot select winner from no contestants")
+        tribute
+            .map(|(expr, _)| expr)
+            .expect("tournament cannot select winner from no contestants")
     }
 
     /// Initializes a population, which is a list of programs and their scores sorted by score.
@@ -346,7 +348,11 @@ pub trait GP: Send + Sync + Sized {
 /// Given a `Vec` of item-score pairs sorted by score, and some `sample_size`,
 /// return a score-sorted sample selected in inverse proportion to its overall
 /// score.
-fn sample_pop<T: Clone>(options: Vec<(T, f64)>, sample_size: usize) -> Vec<(T, f64)> {
+fn sample_pop<T: Clone, R: Rng>(
+    rng: &mut R,
+    options: Vec<(T, f64)>,
+    sample_size: usize,
+) -> Vec<(T, f64)> {
     // TODO: Is this necessary. Could we just sample a weighted permutation
     // rather than do all the combinatorics?
     // https://softwareengineering.stackexchange.com/questions/233541
@@ -362,7 +368,7 @@ fn sample_pop<T: Clone>(options: Vec<(T, f64)>, sample_size: usize) -> Vec<(T, f
         .iter()
         .map(|x| (x - sum_scores).exp())
         .collect::<Vec<_>>();
-    let idx = weighted_sample(&idxs, &scores);
+    let idx = weighted_sample(rng, &idxs, &scores);
     options
         .into_iter()
         .combinations(sample_size)

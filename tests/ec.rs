@@ -19,7 +19,8 @@ fn arith_evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
 #[ignore]
 fn ec_circuits_dl() {
     let dsl = circuits::dsl();
-    let tasks = circuits::make_tasks(100);
+    let rng = &mut rand::thread_rng();
+    let tasks = circuits::make_tasks(rng, 100);
     let ec_params = ECParams {
         frontier_limit: 10,
         search_limit_timeout: None,
@@ -34,7 +35,8 @@ fn ec_circuits_dl() {
 #[test]
 fn explore_circuits_timeout() {
     let dsl = circuits::dsl();
-    let tasks = circuits::make_tasks(100);
+    let rng = &mut rand::thread_rng();
+    let tasks = circuits::make_tasks(rng, 100);
     let ec_params = ECParams {
         frontier_limit: 10,
         search_limit_timeout: Some(Duration::new(1, 0)),

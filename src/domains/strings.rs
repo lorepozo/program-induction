@@ -22,6 +22,7 @@
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 use polytype::{ptp, tp};
+use rand::Rng;
 use std::collections::HashMap;
 use std::f64;
 use std::fmt;
@@ -297,12 +298,13 @@ impl EvaluatorT for Evaluator {
 ///
 /// [`Task`]: ../../struct.Task.html
 #[allow(clippy::type_complexity)]
-pub fn make_tasks(
+pub fn make_tasks<R: Rng>(
+    rng: &mut R,
     count: usize,
     n_examples: usize,
 ) -> Vec<Task<'static, Language, Expression, Vec<(Vec<Space>, Space)>>> {
     (0..=count / 1467) // make_examples yields 1467 tasks
-        .flat_map(|_| make_examples(n_examples))
+        .flat_map(|_| gen::make_examples(rng, n_examples))
         .take(count)
         .map(|(_name, tp, examples)| {
             let evaluator = ::std::sync::Arc::new(Evaluator);
@@ -387,7 +389,6 @@ static OPERATIONS: Lazy<HashMap<&'static str, Op>> = Lazy::new(|| {
     ])
 });
 
-use self::gen::make_examples;
 mod gen {
     use itertools::Itertools;
     use polytype::{ptp, tp, TypeSchema};
@@ -441,10 +442,10 @@ mod gen {
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::redundant_closure_call)]
     #[allow(clippy::type_complexity)]
-    pub fn make_examples(
+    pub fn make_examples<R: Rng>(
+        rng: &mut R,
         n_examples: usize,
     ) -> Vec<(&'static str, TypeSchema, Vec<(Vec<Space>, Space)>)> {
-        let rng = &mut rand::thread_rng();
         let mut tasks = Vec::new();
 
         macro_rules! t {

@@ -237,6 +237,7 @@ impl TRS {
         let mut trs = self.clone();
         let context = contexts.choose(rng).ok_or(SampleError::OptionsExhausted)?;
         let rule = trs.lex.sample_rule_from_context(
+            rng,
             context.clone(),
             &mut trs.ctx,
             atom_weights,
