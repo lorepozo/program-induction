@@ -6,6 +6,7 @@ use rand::{distributions::Distribution, distributions::WeightedIndex, seq::Slice
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
+use crate::utils::weighted_permutation;
 use crate::Task;
 
 /// The mechanism by which individuals are selected for inclusion in the
@@ -79,7 +80,7 @@ impl GPSelection {
             }
             GPSelection::Resample => {
                 let pop_size = population.len();
-                *population = sample_with_replacement(&mut scored_children, pop_size, rng);
+                *population = sample_with_replacement(&scored_children, pop_size, rng);
             }
             GPSelection::Deterministic => {
                 for child in scored_children {
@@ -177,7 +178,7 @@ pub struct GPParams {
 ///             if let Ok(n) = g.eval(expr, &evaluator) {
 ///                 (n - target).abs() as f64 // numbers close to target
 ///             } else {
-///                 std::f64::INFINITY
+///                 f64::INFINITY
 ///             }
 ///         }),
 ///         tp: ptp!(EXPR),
@@ -363,18 +364,12 @@ fn sample_pop<T: Clone, R: Rng>(
 /// return a score-sorted subset sampled without replacement from the `Vec`
 /// according to score.
 fn sample_without_replacement<R: Rng, T: Clone>(
-    options: &mut [(T, f64)],
+    options: &[(T, f64)],
     sample_size: usize,
     rng: &mut R,
 ) -> Vec<(T, f64)> {
-    let mut weights = options.iter().map(|(_, weight)| *weight).collect_vec();
-    let mut sample = Vec::with_capacity(sample_size);
-    for _ in 0..sample_size {
-        let dist = WeightedIndex::new(&weights[..]).unwrap();
-        let sampled_idx = dist.sample(rng);
-        sample.push(options[sampled_idx].clone());
-        weights[sampled_idx] = 0.0;
-    }
+    let weights = options.iter().map(|(_, weight)| *weight).collect_vec();
+    let mut sample = weighted_permutation(rng, options, &weights, Some(sample_size));
     sample.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
     sample
 }
@@ -383,7 +378,7 @@ fn sample_without_replacement<R: Rng, T: Clone>(
 /// return a score-sorted subset sampled with replacement from the `Vec`
 /// according to score.
 fn sample_with_replacement<R: Rng, T: Clone>(
-    options: &mut [(T, f64)],
+    options: &[(T, f64)],
     sample_size: usize,
     rng: &mut R,
 ) -> Vec<(T, f64)> {

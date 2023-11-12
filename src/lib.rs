@@ -1,5 +1,3 @@
-#![deny(bare_trait_objects)]
-
 //! A library for program induction and learning representations.
 //!
 //! # Bayesian program learning with the EC algorithm
@@ -109,7 +107,6 @@ pub use crate::ec::*;
 pub use crate::gp::*;
 
 use polytype::TypeSchema;
-use std::f64;
 
 /// A task which is solved by an expression under some representation.
 ///
