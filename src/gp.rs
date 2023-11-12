@@ -401,35 +401,16 @@ fn sample_with_replacement<R: Rng, T: Clone>(
 /// an item, `child`, into `pop` while maintaining score-sorted order.
 ///
 /// The length of the list does *not* change, so if the item would be inserted
-/// at the end of the list, no insertion occurs. Also, if existing items have
-/// the same score as `child`, `child` is inserted *after* these items.
-///
-/// This function calls `unsafe` methods but in ways that should not fail.
+/// at the end of the list, no insertion occurs. If existing items have
+/// the same score as `child`, `child` is inserted somewhere deterministically
+/// among those items.
 fn sorted_place<T>(child: (T, f64), pop: &mut Vec<(T, f64)>) {
-    let orig_size = pop.len();
-    let mut size = orig_size;
-    if size == 0 {
-        return;
-    }
-    let idx = {
-        let mut base = 0usize;
-        while size > 1 {
-            let half = size / 2;
-            let mid = base + half;
-            // mid is always in [0, size), that means mid is >= 0 and < size.
-            // mid >= 0: by definition
-            // mid < size: mid = size / 2 + size / 4 + size / 8 ...
-            let other = unsafe { pop.get_unchecked(mid) };
-            let cmp = other.1.partial_cmp(&child.1).expect("found NaN");
-            base = if cmp == Ordering::Greater { base } else { mid };
-            size -= half;
-        }
-        // base is always in [0, size) because base <= mid.
-        let other = unsafe { pop.get_unchecked(base) };
-        let cmp = other.1.partial_cmp(&child.1).expect("found NaN");
-        base + (cmp != Ordering::Greater) as usize
+    let r = pop.binary_search_by(|probe| probe.1.partial_cmp(&child.1).expect("found NaN"));
+    let idx = match r {
+        Ok(found) => found,
+        Err(insertion_point) => insertion_point,
     };
-    if idx < orig_size {
+    if idx < pop.len() {
         pop.pop();
         pop.insert(idx, child);
     }
