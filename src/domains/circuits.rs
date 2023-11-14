@@ -28,7 +28,6 @@ use rand::{
     distributions::{Distribution, WeightedIndex},
     Rng,
 };
-use std::f64;
 use std::iter;
 
 use crate::lambda::{Evaluator as EvaluatorT, Expression, Language};
@@ -36,7 +35,7 @@ use crate::Task;
 
 /// The circuit representation, a [`lambda::Language`], only defines the binary `nand` operation.
 ///
-/// ```compile_fails
+/// ```ignore
 /// "nand": ptp!(@arrow[tp!(bool), tp!(bool), tp!(bool)])
 /// ```
 ///
@@ -60,7 +59,6 @@ pub type Space = bool;
 /// use programinduction::domains::circuits;
 /// use programinduction::{lambda, ECParams, EC};
 ///
-/// # fn main() {
 /// let dsl = circuits::dsl();
 ///
 /// let examples = vec![ // NOT
@@ -79,9 +77,8 @@ pub type Space = bool;
 /// };
 ///
 /// let frontiers = dsl.explore(&ec_params, &[task]);
-/// let &(ref expr, _logprior, _loglikelihood) = frontiers[0].best_solution().unwrap();
+/// let (expr, _logprior, _loglikelihood) = frontiers[0].best_solution().unwrap();
 /// assert_eq!(dsl.display(expr), "(λ (nand $0 $0))");
-/// # }
 /// ```
 ///
 /// [`Evaluator`]: ../../lambda/trait.Evaluator.html
@@ -140,9 +137,15 @@ pub fn make_tasks<R: Rng>(
 
 /// Like [`make_tasks`], but with a configurable circuit distribution.
 ///
+/// This works by randomly constructing Boolean circuits, consisting of some number of inputs and
+/// some number of gates transforming those inputs into final output. The resulting truth table
+/// serves the task's oracle, providing a log-likelihood of `0.0` for success
+/// and `f64::NEG_INFINITY` for failure.
+///
 /// The `n_input_weights` and `n_gate_weights` arguments specify the relative distributions for the
-/// number of inputs and the number of gates from 1 to 8. The `gate_` arguments are relative
-/// weights for sampling the respective gate.
+/// number of inputs/gates respectively from 1 to 8. The `gate_` arguments are relative
+/// weights for sampling the respective logic gate.
+/// Sample circuits which are invalid (i.e. not connected) are rejected.
 ///
 /// [`make_tasks`]: fn.make_tasks.html
 #[allow(clippy::too_many_arguments)]
@@ -173,14 +176,14 @@ pub fn make_tasks_advanced<R: Rng>(
                 n_gates = 1 + n_gate_distribution.sample(rng);
             }
             let tp = TypeSchema::Monotype(Type::from(vec![tp!(bool); n_inputs + 1]));
-            let circuit = Circuit::new(rng, &gate_weights, n_inputs as u32, n_gates);
+            let circuit = gates::Circuit::new(rng, &gate_weights, n_inputs as u32, n_gates);
             let outputs: Vec<_> = iter::repeat(vec![false, true])
                 .take(n_inputs)
                 .multi_cartesian_product()
                 .map(|ins| circuit.eval(&ins))
                 .collect();
             let oracle_outputs = outputs.clone();
-            let evaluator = ::std::sync::Arc::new(Evaluator);
+            let evaluator = std::sync::Arc::new(Evaluator);
             let oracle = Box::new(move |dsl: &Language, expr: &Expression| -> f64 {
                 let success = iter::repeat(vec![false, true])
                     .take(n_inputs)
@@ -208,11 +211,10 @@ pub fn make_tasks_advanced<R: Rng>(
         .collect()
 }
 
-use self::gates::Circuit;
 mod gates {
     use rand::{
         distributions::{Distribution, WeightedIndex},
-        seq::SliceRandom,
+        seq::index::sample,
         Rng,
     };
 
@@ -260,37 +262,34 @@ mod gates {
             n_inputs: u32,
             n_gates: usize,
         ) -> Self {
-            let mut circuit = Circuit {
-                n_inputs,
-                operations: Vec::new(),
-            };
             loop {
-                while circuit.operations.len() < n_gates {
+                let mut operations = Vec::with_capacity(n_gates);
+                while operations.len() < n_gates {
                     let gate = GATE_CHOICES[gate_distribution.sample(rng)];
-                    match gate {
-                        Gate::Mux2 | Gate::Mux4 if n_inputs < gate.n_inputs() => continue,
-                        _ => (),
-                    }
-                    if gate.n_inputs() > n_inputs + (circuit.operations.len() as u32) {
+                    let n_lanes = n_inputs + (operations.len() as u32);
+                    if gate.n_inputs() > n_lanes {
                         continue;
                     }
-                    let mut valid_inputs: Vec<u32> =
-                        (0..n_inputs + (circuit.operations.len() as u32)).collect();
-                    valid_inputs.shuffle(rng);
-                    let args = valid_inputs[..(gate.n_inputs() as usize)].to_vec();
-                    circuit.operations.push((gate, args));
+                    let args = sample(rng, n_lanes as usize, gate.n_inputs() as usize)
+                        .into_iter()
+                        .map(|x| x as u32)
+                        .collect();
+                    operations.push((gate, args));
                 }
+                let circuit = Circuit {
+                    n_inputs,
+                    operations,
+                };
                 if circuit.is_connected() {
-                    break;
+                    break circuit;
                 }
-                circuit.operations = Vec::new();
             }
-            circuit
         }
         /// A circuit is connected if every output except for the last one is an input for some
         /// other gate.
         fn is_connected(&self) -> bool {
-            let mut is_used = vec![false; self.n_inputs as usize + self.operations.len()];
+            let n_lanes = self.n_inputs as usize + self.operations.len();
+            let mut is_used = vec![false; n_lanes];
             for (_, args) in &self.operations {
                 for i in args {
                     is_used[*i as usize] = true;
@@ -300,15 +299,12 @@ mod gates {
             is_used.into_iter().all(|x| x)
         }
         pub fn eval(&self, inp: &[bool]) -> bool {
-            let mut outputs = vec![];
+            let mut lanes = inp.to_vec();
             for (gate, args) in &self.operations {
-                let gate_inp: Vec<bool> = args
-                    .iter()
-                    .map(|a| *inp.iter().chain(&outputs).nth(*a as usize).unwrap())
-                    .collect();
-                outputs.push(gate.eval(&gate_inp));
+                let gate_inp: Vec<bool> = args.iter().map(|a| lanes[*a as usize]).collect();
+                lanes.push(gate.eval(&gate_inp));
             }
-            outputs.pop().unwrap()
+            lanes.pop().unwrap()
         }
     }
 }

@@ -2,12 +2,13 @@
 //!
 //! # Examples
 //!
-//! ```ignore
+//! ```no_run
 //! use programinduction::domains::strings;
 //! use programinduction::{ECParams, EC};
 //!
 //! let dsl = strings::dsl();
-//! let tasks = strings::make_tasks(250, 4);
+//! let rng = &mut rand::thread_rng();
+//! let tasks = strings::make_tasks(rng, 250, 4);
 //! let ec_params = ECParams {
 //!     frontier_limit: 10,
 //!     search_limit_timeout: None,
@@ -24,15 +25,15 @@ use once_cell::sync::Lazy;
 use polytype::{ptp, tp};
 use rand::Rng;
 use std::collections::HashMap;
-use std::f64;
-use std::fmt;
 
-use crate::lambda::{Evaluator as EvaluatorT, Expression, Language, LiftedFunction};
+use crate::lambda::{
+    task_by_evaluation_owned, Evaluator as EvaluatorT, Expression, Language, LiftedFunction,
+};
 use crate::Task;
 
 /// The string editing [`lambda::Language`] defines the following operations:
 ///
-/// ```compile_fails
+/// ```ignore
 /// "0":         ptp!(int)
 /// "+1":        ptp!(@arrow[tp!(int), tp!(int)])
 /// "-1":        ptp!(@arrow[tp!(int), tp!(int)])
@@ -129,13 +130,13 @@ pub enum Space {
     List(Vec<Space>),
     Func(LiftedFunction<Space, Evaluator>),
 }
-impl fmt::Debug for Space {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
+impl std::fmt::Debug for Space {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match self {
             Num(x) => write!(f, "Num({:?})", x),
             Char(x) => write!(f, "Char({:?})", x),
-            Str(ref x) => write!(f, "Str({:?})", x),
-            List(ref x) => write!(f, "List({:?})", x),
+            Str(x) => write!(f, "Str({:?})", x),
+            List(x) => write!(f, "List({:?})", x),
             Func(_) => write!(f, "<function>"),
         }
     }
@@ -143,14 +144,15 @@ impl fmt::Debug for Space {
 impl PartialEq for Space {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (&Num(x), &Num(y)) => x == y,
-            (&Char(x), &Char(y)) => x == y,
+            (Num(x), Num(y)) => x == y,
+            (Char(x), Char(y)) => x == y,
             (Str(x), Str(y)) => x == y,
             (List(xs), List(ys)) => xs == ys,
             _ => false,
         }
     }
 }
+
 /// An [`Evaluator`] for the strings domain.
 ///
 /// # Examples
@@ -160,7 +162,6 @@ impl PartialEq for Space {
 /// use programinduction::domains::strings;
 /// use programinduction::{lambda, ECParams, EC};
 ///
-/// # fn main() {
 /// let dsl = strings::dsl();
 /// let examples = vec![
 ///     // Replace delimiter '>' with '/'
@@ -186,7 +187,6 @@ impl PartialEq for Space {
 ///     "(λ (join (char->str /) (split > $0)))",
 ///     dsl.display(solution)
 /// );
-/// # }
 /// ```
 ///
 /// [`Evaluator`]: ../../lambda/trait.Evaluator.html
@@ -196,83 +196,83 @@ impl EvaluatorT for Evaluator {
     type Space = Space;
     type Error = ();
     fn evaluate(&self, name: &str, inps: &[Self::Space]) -> Result<Self::Space, Self::Error> {
-        match OPERATIONS[name] {
+        match &OPERATIONS[name] {
             Op::Zero => Ok(Num(0)),
-            Op::Incr => match inps[0] {
-                Num(x) => Ok(Num(x + 1)),
+            Op::Incr => match inps {
+                [Num(x)] => Ok(Num(x + 1)),
                 _ => unreachable!(),
             },
-            Op::Decr => match inps[0] {
-                Num(x) => Ok(Num(x - 1)),
+            Op::Decr => match inps {
+                [Num(x)] => Ok(Num(x - 1)),
                 _ => unreachable!(),
             },
-            Op::Len => match inps[0] {
-                Str(ref s) => Ok(Num(s.len() as i32)),
+            Op::Len => match inps {
+                [Str(s)] => Ok(Num(s.len() as i32)),
                 _ => unreachable!(),
             },
             Op::Empty => Ok(Str(String::new())),
-            Op::Lower => match inps[0] {
-                Str(ref s) => Ok(Str(s.to_lowercase())),
+            Op::Lower => match inps {
+                [Str(s)] => Ok(Str(s.to_lowercase())),
                 _ => unreachable!(),
             },
-            Op::Upper => match inps[0] {
-                Str(ref s) => Ok(Str(s.to_uppercase())),
+            Op::Upper => match inps {
+                [Str(s)] => Ok(Str(s.to_uppercase())),
                 _ => unreachable!(),
             },
-            Op::Concat => match (&inps[0], &inps[1]) {
-                (Str(x), Str(y)) => {
+            Op::Concat => match inps {
+                [Str(x), Str(y)] => {
                     let mut s = x.to_string();
                     s.push_str(y);
                     Ok(Str(s))
                 }
                 _ => unreachable!(),
             },
-            Op::Slice => match (&inps[0], &inps[1], &inps[2]) {
-                (&Num(x), &Num(y), Str(s)) => {
-                    if x as usize > s.len() || y < x {
+            Op::Slice => match inps {
+                [Num(x), Num(y), Str(s)] => {
+                    if *x as usize > s.len() || y < x {
                         Err(())
                     } else {
                         Ok(Str(s
                             .chars()
-                            .skip(x as usize)
+                            .skip(*x as usize)
                             .take((y - x) as usize)
                             .collect()))
                     }
                 }
                 _ => unreachable!(),
             },
-            Op::Nth => match (&inps[0], &inps[1]) {
-                (&Num(x), List(ss)) => ss.get(x as usize).cloned().ok_or(()),
+            Op::Nth => match inps {
+                [Num(x), List(ss)] => ss.get(*x as usize).cloned().ok_or(()),
                 _ => unreachable!(),
             },
-            Op::Map => match (&inps[0], &inps[1]) {
-                (Func(f), List(xs)) => Ok(List(
+            Op::Map => match inps {
+                [Func(f), List(xs)] => Ok(List(
                     xs.iter()
                         .map(|x| f.eval(&[x.clone()]).map_err(|_| ()))
                         .collect::<Result<_, _>>()?,
                 )),
                 _ => unreachable!(),
             },
-            Op::Strip => match inps[0] {
-                Str(ref s) => Ok(Str(s.trim().to_owned())),
+            Op::Strip => match inps {
+                [Str(s)] => Ok(Str(s.trim().to_owned())),
                 _ => unreachable!(),
             },
-            Op::Split => match (&inps[0], &inps[1]) {
-                (&Char(c), Str(s)) => Ok(List(s.split(c).map(|s| Str(s.to_owned())).collect())),
+            Op::Split => match inps {
+                [Char(c), Str(s)] => Ok(List(s.split(*c).map(|s| Str(s.to_owned())).collect())),
                 _ => unreachable!(),
             },
-            Op::Join => match (&inps[0], &inps[1]) {
-                (Str(delim), List(ss)) => Ok(Str(ss
+            Op::Join => match inps {
+                [Str(delim), List(ss)] => Ok(Str(ss
                     .iter()
-                    .map(|s| match *s {
-                        Str(ref s) => s,
+                    .map(|s| match s {
+                        Str(s) => s,
                         _ => unreachable!(),
                     })
                     .join(delim))),
                 _ => unreachable!(),
             },
-            Op::CharToStr => match inps[0] {
-                Char(c) => Ok(Str(c.to_string())),
+            Op::CharToStr => match inps {
+                [Char(c)] => Ok(Str(c.to_string())),
                 _ => unreachable!(),
             },
             Op::CharSpace => Ok(Char(' ')),
@@ -306,29 +306,7 @@ pub fn make_tasks<R: Rng>(
     (0..=count / 1467) // make_examples yields 1467 tasks
         .flat_map(|_| gen::make_examples(rng, n_examples))
         .take(count)
-        .map(|(_name, tp, examples)| {
-            let evaluator = ::std::sync::Arc::new(Evaluator);
-            let oracle_examples = examples.clone();
-            let oracle = Box::new(move |dsl: &Language, expr: &Expression| -> f64 {
-                let success = oracle_examples.iter().all(|(inps, out)| {
-                    if let Ok(o) = dsl.eval_arc(expr, &evaluator, inps) {
-                        o == *out
-                    } else {
-                        false
-                    }
-                });
-                if success {
-                    0f64
-                } else {
-                    f64::NEG_INFINITY
-                }
-            });
-            Task {
-                oracle,
-                observation: examples,
-                tp,
-            }
-        })
+        .map(|(_name, tp, examples)| task_by_evaluation_owned(Evaluator, tp, examples))
         .collect()
 }
 

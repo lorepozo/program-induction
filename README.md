@@ -36,8 +36,8 @@ induce a sentence that matches an example:
 
 ```rust
 use polytype::tp;
-use programinduction::{ECParams, EC};
 use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
+use programinduction::{ECParams, EC};
 
 fn evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
     match name {
@@ -94,12 +94,13 @@ fn main() {
         search_limit_description_length: None,
     };
     // randomly sample 250 circuit tasks
-    let tasks = domains::circuits::make_tasks(250);
+    let rng = &mut rand::thread_rng();
+    let tasks = domains::circuits::make_tasks(rng, 250);
 
     // one iteration of EC:
     let (new_dsl, _solutions) = dsl.ec(&ec_params, &lambda_params, &tasks);
     // print the new concepts it invented, based on common structure:
-    for &(ref expr, _, _) in &new_dsl.invented {
+    for (expr, _, _) in &new_dsl.invented {
         println!("invented {}", new_dsl.display(expr))
         // one of the inventions was "(λ (nand $0 $0))",
         // which is the common and useful NOT operation!

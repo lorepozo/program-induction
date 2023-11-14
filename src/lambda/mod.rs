@@ -193,12 +193,13 @@ impl Language {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```rust,no_run
     /// use programinduction::domains::circuits;
     /// use programinduction::{lambda, ECParams, EC};
     ///
     /// let dsl = circuits::dsl();
-    /// let tasks = circuits::make_tasks(100);
+    /// let rng = &mut rand::thread_rng();
+    /// let tasks = circuits::make_tasks(rng, 100);
     /// let ec_params = ECParams {
     ///     frontier_limit: 10,
     ///     search_limit_timeout: None,
@@ -956,6 +957,38 @@ where
     let evaluator = Arc::new(evaluator);
     let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
         let success = examples.iter().all(|(inps, out)| {
+            if let Ok(o) = dsl.eval_arc(expr, &evaluator, inps) {
+                o == *out
+            } else {
+                false
+            }
+        });
+        if success {
+            0f64
+        } else {
+            f64::NEG_INFINITY
+        }
+    });
+    Task {
+        oracle,
+        observation: examples,
+        tp,
+    }
+}
+
+pub fn task_by_evaluation_owned<E, V>(
+    evaluator: E,
+    tp: TypeSchema,
+    examples: Vec<(Vec<V>, V)>,
+) -> Task<'static, Language, Expression, Vec<(Vec<V>, V)>>
+where
+    E: Evaluator<Space = V> + Send + 'static,
+    V: PartialEq + Clone + Send + Sync + 'static,
+{
+    let evaluator = Arc::new(evaluator);
+    let oracle_examples = examples.clone();
+    let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
+        let success = oracle_examples.iter().all(|(inps, out)| {
             if let Ok(o) = dsl.eval_arc(expr, &evaluator, inps) {
                 o == *out
             } else {

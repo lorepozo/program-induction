@@ -41,35 +41,35 @@ pub struct ECParams {
 ///
 /// Using an existing domain in the lambda calculus representation [`lambda::Language`]:
 ///
-/// ```ignore
+/// ```no_run
 /// use programinduction::domains::circuits;
 /// use programinduction::{lambda, ECParams, EC};
 ///
-/// fn main() {
-///     let mut dsl = circuits::dsl();
-///     let tasks = circuits::make_tasks(250);
-///     let ec_params = ECParams {
-///         frontier_limit: 10,
-///         search_limit_timeout: None,
-///         search_limit_description_length: Some(9.0),
-///     };
-///     let params = lambda::CompressionParams::default();
+/// let mut dsl = circuits::dsl();
 ///
-///     let mut frontiers = Vec::new();
-///     for _ in 0..5 {
-///         let (new_dsl, new_frontiers) = dsl.ec(&ec_params, &params, &tasks);
-///         dsl = new_dsl;
-///         frontiers = new_frontiers;
-///     }
-///     let n_invented = dsl.invented.len();
-///     let n_hit = frontiers.iter().filter(|f| !f.is_empty()).count();
-///     println!(
-///         "hit {} of {} using {} invented primitives",
-///         n_hit,
-///         tasks.len(),
-///         n_invented,
-///     );
+/// let rng = &mut rand::thread_rng();
+/// let tasks = circuits::make_tasks(rng, 250);
+/// let ec_params = ECParams {
+///     frontier_limit: 10,
+///     search_limit_timeout: None,
+///     search_limit_description_length: Some(9.0),
+/// };
+/// let params = lambda::CompressionParams::default();
+///
+/// let mut frontiers = Vec::new();
+/// for _ in 0..5 {
+///     let (new_dsl, new_frontiers) = dsl.ec(&ec_params, &params, &tasks);
+///     dsl = new_dsl;
+///     frontiers = new_frontiers;
 /// }
+/// let n_invented = dsl.invented.len();
+/// let n_hit = frontiers.iter().filter(|f| !f.is_empty()).count();
+/// println!(
+///     "hit {} of {} using {} invented primitives",
+///     n_hit,
+///     tasks.len(),
+///     n_invented,
+/// );
 /// ```
 ///
 /// [here]: index.html#bayesian-program-learning-with-the-ec-algorithm
@@ -119,13 +119,14 @@ pub trait EC: Send + Sync + Sized {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```no_run
     /// use programinduction::domains::circuits;
     /// use programinduction::{lambda, ECParams, EC};
     ///
-    /// # fn main() {
     /// let mut dsl = circuits::dsl();
-    /// let tasks = circuits::make_tasks(250);
+    ///
+    /// let rng = &mut rand::thread_rng();
+    /// let tasks = circuits::make_tasks(rng, 250);
     /// let ec_params = ECParams {
     ///     frontier_limit: 10,
     ///     search_limit_timeout: None,
@@ -145,10 +146,9 @@ pub trait EC: Send + Sync + Sized {
     ///     println!("hit {} of {}", n_hit, tasks.len());
     /// }
     /// assert!(!dsl.invented.is_empty());
-    /// for &(ref expr, _, _) in &dsl.invented {
+    /// for (expr, _, _) in &dsl.invented {
     ///     println!("invented {}", dsl.display(expr))
     /// }
-    /// # }
     /// ```
     ///
     fn ec<O: Sync>(
@@ -216,7 +216,6 @@ pub trait EC: Send + Sync + Sized {
     ///     }
     /// }
     ///
-    /// # fn main() {
     /// let g = Grammar::new(
     ///     tp!(EXPR),
     ///     vec![
@@ -235,7 +234,6 @@ pub trait EC: Send + Sync + Sized {
     ///
     /// let frontiers = g.explore(&ec_params, &[task]);
     /// assert!(frontiers[0].best_solution().is_some());
-    /// # }
     /// ```
     fn explore<O: Sync>(
         &self,
