@@ -11,10 +11,10 @@
 //! # Example
 //!
 //! ```
-//! # use polytype::{ptp, tp, Context as TypeContext};
-//! # use programinduction::trs::{TRS, Lexicon};
-//! # use term_rewriting::{Signature, parse_rule};
-//! # fn main() {
+//! use polytype::{ptp, tp, Context as TypeContext};
+//! use programinduction::trs::{TRS, Lexicon};
+//! use term_rewriting::{Signature, parse_rule};
+//!
 //! let mut sig = Signature::default();
 //!
 //! let mut ops = vec![];
@@ -39,7 +39,6 @@
 //! let lexicon = Lexicon::from_signature(sig, ops, vars, vec![], vec![], false, TypeContext::default());
 //!
 //! let trs = TRS::new(&lexicon, rules, &lexicon.context());
-//! # }
 //! ```
 
 mod lexicon;

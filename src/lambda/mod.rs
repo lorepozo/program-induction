@@ -15,7 +15,6 @@
 //!     }
 //! }
 //!
-//! # fn main() {
 //! let dsl = Language::uniform(vec![
 //!     ("0", ptp!(int)),
 //!     ("1", ptp!(int)),
@@ -30,7 +29,6 @@
 //! // solution:
 //! let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
 //! assert!((task.oracle)(&dsl, &expr).is_finite())
-//! # }
 //! ```
 
 mod compression;
@@ -48,8 +46,6 @@ use polytype::{Context, Type, TypeSchema, UnificationError};
 use rayon::spawn;
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
-use std::f64;
-use std::fmt;
 use std::ops::Index;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -66,9 +62,9 @@ pub struct Language {
     pub primitives: Vec<(String, TypeSchema, f64)>,
     pub invented: Vec<(Expression, TypeSchema, f64)>,
     pub variable_logprob: f64,
-    /// Symmetry breaking prevents certain productions from being made. Specifically, an item `(f,
-    /// i, a)` means that enumeration will not yield an application of `f` where the `i`th argument
-    /// is `a`. This vec must be kept sorted — use via [`add_symmetry_violation`] and
+    /// Symmetry breaking prevents certain productions from being made. Specifically, an item
+    /// `(f, i, a)` means that enumeration will not yield an application of `f` where the `i`th
+    /// argument is `a`. This vec must be kept sorted; use via [`add_symmetry_violation`] and
     /// [`violates_symmetry`].
     ///
     /// [`add_symmetry_violation`]: #method.add_symmetry_violation
@@ -96,7 +92,6 @@ impl Language {
     /// # Examples
     ///
     /// ```
-    /// # fn main() {
     /// # use polytype::{tp, ptp};
     /// # use programinduction::lambda::{Expression, Language};
     /// let mut dsl = Language::uniform(vec![
@@ -117,7 +112,6 @@ impl Language {
     /// let expr = dsl.parse("(singleton ((λ (>= $0 1)) (#(+ 1) 0)))")
     ///     .unwrap();
     /// assert_eq!(dsl.infer(&expr).unwrap(), ptp!(list(tp!(bool))));
-    /// # }
     /// ```
     ///
     /// [`Expression`]: enum.Expression.html
@@ -138,7 +132,6 @@ impl Language {
     /// [`add_symmetry_violation`].
     ///
     /// ```
-    /// # fn main() {
     /// use polytype::{ptp, tp};
     /// use programinduction::lambda::{Expression, Language};
     ///
@@ -165,7 +158,6 @@ impl Language {
     ///         dsl.parse("(+ 0 (+ 0 1))").unwrap(),
     ///     ]
     /// );
-    /// # }
     /// ```
     ///
     /// [`add_symmetry_violation`]: #method.add_symmetry_violation
@@ -193,7 +185,7 @@ impl Language {
     ///
     /// # Examples
     ///
-    /// ```rust,no_run
+    /// ```no_run
     /// use programinduction::domains::circuits;
     /// use programinduction::{lambda, ECParams, EC};
     ///
@@ -245,7 +237,6 @@ impl Language {
     ///     }
     /// }
     ///
-    /// # fn main() {
     /// let dsl = Language::uniform(vec![
     ///     ("0", ptp!(int)),
     ///     ("1", ptp!(int)),
@@ -256,7 +247,6 @@ impl Language {
     /// let inps = vec![2, 5];
     /// let evaluated = dsl.eval(&expr, eval, &inps).unwrap();
     /// assert_eq!(evaluated, 8);
-    /// # }
     /// ```
     pub fn eval<V, E>(&self, expr: &Expression, evaluator: E, inps: &[V]) -> Result<V, E::Error>
     where
@@ -324,7 +314,6 @@ impl Language {
     /// ```
     /// # use polytype::{ptp, tp};
     /// # use programinduction::lambda::Language;
-    /// # fn main() {
     /// let dsl = Language::uniform(vec![
     ///     ("0", ptp!(int)),
     ///     ("1", ptp!(int)),
@@ -337,7 +326,6 @@ impl Language {
     ///
     /// let expr = dsl.parse("(λ (λ (+ (+ $0 1) $1)))").unwrap();
     /// assert_eq!(dsl.likelihood(&req, &expr), -8.317766166719343);
-    /// # }
     /// ```
     pub fn likelihood(&self, request: &TypeSchema, expr: &Expression) -> f64 {
         enumerator::likelihood(self, request, expr)
@@ -348,7 +336,6 @@ impl Language {
     /// # Examples
     ///
     /// ```
-    /// # fn main() {
     /// # use polytype::{ptp, tp};
     /// # use programinduction::lambda::{Expression, Language};
     /// let mut dsl = Language::uniform(vec![
@@ -362,7 +349,6 @@ impl Language {
     ///     dsl.invented.get(0),
     ///     Some(&(expr, ptp!(@arrow[tp!(int), tp!(int)]), -0.5))
     /// );
-    /// # }
     /// ```
     pub fn invent(
         &mut self,
@@ -381,7 +367,6 @@ impl Language {
     /// ```
     /// # use polytype::{ptp, tp};
     /// # use programinduction::lambda::{Expression, Language};
-    /// # fn main() {
     /// let mut dsl = Language::uniform(vec![
     ///     ("0", ptp!(int)),
     ///     ("1", ptp!(int)),
@@ -410,7 +395,6 @@ impl Language {
     ///         dsl.parse("(+ 1 (+ 1 (+ 1 (+ 1 1))))").unwrap(),
     ///     ]
     /// );
-    /// # }
     /// ```
     pub fn add_symmetry_violation(&mut self, primitive: usize, arg_index: usize, arg: usize) {
         let x = (primitive, arg_index, arg);
@@ -425,7 +409,6 @@ impl Language {
     /// ```
     /// # use polytype::{ptp, tp};
     /// # use programinduction::lambda::{Expression, Language};
-    /// # fn main() {
     /// let mut dsl = Language::uniform(vec![
     ///     ("0", ptp!(int)),
     ///     ("1", ptp!(int)),
@@ -441,21 +424,20 @@ impl Language {
     /// let x = &dsl.parse("(+ 1 1)").unwrap();
     /// assert!(dsl.violates_symmetry(f, 0, x));
     /// assert!(!dsl.violates_symmetry(f, 1, x));
-    /// # }
     /// ```
     pub fn violates_symmetry(&self, f: &Expression, index: usize, x: &Expression) -> bool {
         match (f, x) {
-            (&Expression::Primitive(f), &Expression::Primitive(x)) => {
-                let x = (f, index, x);
+            (Expression::Primitive(f), Expression::Primitive(x)) => {
+                let x = (*f, index, *x);
                 self.symmetry_violations.binary_search(&x).is_ok()
             }
-            (&Expression::Primitive(f), Expression::Application(x, _)) => {
+            (Expression::Primitive(f), Expression::Application(x, _)) => {
                 let mut z: &Expression = x;
-                while let Expression::Application(ref x, _) = *z {
+                while let Expression::Application(x, _) = z {
                     z = x
                 }
-                if let Expression::Primitive(x) = *z {
-                    let x = (f, index, x);
+                if let Expression::Primitive(x) = z {
+                    let x = (*f, index, *x);
                     self.symmetry_violations.binary_search(&x).is_ok()
                 } else {
                     false
@@ -693,7 +675,6 @@ impl Expression {
     /// # Examples
     ///
     /// ```
-    /// # fn main() {
     /// # use polytype::{ptp, tp};
     /// # use programinduction::lambda::{Expression, Language};
     /// let mut dsl = Language::uniform(vec![
@@ -702,7 +683,6 @@ impl Expression {
     /// let mut expr = dsl.parse("+").unwrap();
     /// expr.etalong(&dsl);
     /// assert_eq!(dsl.display(&expr), "(λ (λ (+ $1 $0)))");
-    /// # }
     /// ```
     pub fn etalong(&mut self, dsl: &Language) -> bool {
         if let Ok(tps) = dsl.infer(self) {
@@ -931,7 +911,6 @@ impl Expression {
 ///     }
 /// }
 ///
-/// # fn main() {
 /// let examples = vec![(vec![2, 5], 8), (vec![1, 2], 4)];
 /// let tp = ptp!(@arrow[tp!(int), tp!(int), tp!(int)]);
 /// let task = task_by_evaluation(SimpleEvaluator::of(evaluate), tp, &examples);
@@ -943,7 +922,6 @@ impl Expression {
 /// ]);
 /// let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
 /// assert!((task.oracle)(&dsl, &expr).is_finite())
-/// # }
 /// ```
 pub fn task_by_evaluation<'a, E, V>(
     evaluator: E,
@@ -1115,12 +1093,12 @@ impl From<UnificationError> for InferenceError {
         InferenceError::Unify(err)
     }
 }
-impl fmt::Display for InferenceError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
+impl std::fmt::Display for InferenceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match self {
             InferenceError::InvalidPrimitive(n) => write!(f, "primitive {} not in Language", n),
             InferenceError::InvalidInvention(n) => write!(f, "invention {} not in Language", n),
-            InferenceError::Unify(ref err) => write!(f, "could not unify to infer type: {}", err),
+            InferenceError::Unify(err) => write!(f, "could not unify to infer type: {}", err),
         }
     }
 }

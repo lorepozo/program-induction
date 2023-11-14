@@ -1,7 +1,6 @@
 //! Evaluation happens by calling primitives provided by an evaluator.
 use polytype::TypeSchema;
 use std::collections::VecDeque;
-use std::fmt;
 use std::sync::Arc;
 
 use crate::lambda::{Expression, Language};
@@ -65,13 +64,11 @@ where
 /// use polytype::{ptp, tp};
 /// use programinduction::lambda::{Language, SimpleEvaluator};
 ///
-/// # fn early_let() {
 /// let dsl = Language::uniform(vec![
 ///     ("0", ptp!(int)),
 ///     ("1", ptp!(int)),
 ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
 /// ]);
-/// # }
 ///
 /// fn evaluate(primitive: &str, inps: &[i32]) -> Result<i32, ()> {
 ///     match primitive {
@@ -82,10 +79,8 @@ where
 ///     }
 /// }
 ///
-/// # fn main() {
 /// // Evaluator<Space = i32>
 /// let eval = SimpleEvaluator::of(evaluate);
-/// # }
 /// ```
 ///
 /// A slightly more complicated domain, but still without first-class functions:
@@ -94,7 +89,6 @@ where
 /// use polytype::{ptp, tp};
 /// use programinduction::lambda::{Language, SimpleEvaluator};
 ///
-/// # fn early_let() {
 /// let dsl = Language::uniform(vec![
 ///     ("0", ptp!(int)),
 ///     ("1", ptp!(int)),
@@ -102,7 +96,6 @@ where
 ///     ("eq", ptp!(@arrow[tp!(int), tp!(int), tp!(bool)])),
 ///     ("not", ptp!(@arrow[tp!(bool), tp!(bool)])),
 /// ]);
-/// # }
 ///
 /// #[derive(Clone, PartialEq)]
 /// enum ArithSpace {
@@ -131,10 +124,8 @@ where
 ///     }
 /// }
 ///
-/// # fn main() {
 /// // Evaluator<Space = ArithSpace>
 /// let eval = SimpleEvaluator::of(evaluate);
-/// # }
 /// ```
 ///
 /// For a domain with first-class functions, things get more complicated:
@@ -143,7 +134,6 @@ where
 /// use polytype::{ptp, tp};
 /// use programinduction::lambda::{Evaluator, Language, LiftedFunction};
 ///
-/// # fn early_let() {
 /// let dsl = Language::uniform(vec![
 ///     ("0", ptp!(int)),
 ///     ("1", ptp!(int)),
@@ -161,7 +151,6 @@ where
 ///     ])),
 /// ]);
 /// // note: the only constructable lists in this dsl are of ints.
-/// # }
 ///
 /// #[derive(Clone)]
 /// struct ListError(&'static str);
@@ -216,10 +205,8 @@ where
 ///     }
 /// }
 ///
-/// # fn main() {
 /// // Evaluator<Space = ListSpace, Error = ListError>
 /// let eval = ListsEvaluator;
-/// # }
 /// ```
 ///
 /// [`SimpleEvaluator::of`]: struct.SimpleEvaluator.html#method.of
@@ -267,7 +254,6 @@ pub trait Evaluator: Sized + Sync {
 /// use polytype::{ptp, tp};
 /// use programinduction::lambda::{Language, LazyEvaluator, LiftedLazyFunction};
 ///
-/// # fn early_let() {
 /// let dsl = Language::uniform(vec![
 ///     ("if", ptp!(0; @arrow[tp!(bool), tp!(0), tp!(0), tp!(0)])),
 ///     ("empty?", ptp!(0; @arrow[tp!(list(tp!(0))), tp!(bool)])),
@@ -275,7 +261,6 @@ pub trait Evaluator: Sized + Sync {
 ///     ("-1", ptp!(int)),
 /// ]);
 /// // note: we will only have lists of ints in the example.
-/// # }
 ///
 /// #[derive(Clone, Debug, PartialEq)]
 /// struct ListError(&'static str);
@@ -322,14 +307,6 @@ pub trait Evaluator: Sized + Sync {
 ///     }
 /// }
 ///
-/// # fn main() {
-/// # let dsl = Language::uniform(vec![
-/// #     ("if", ptp!(0; @arrow[tp!(bool), tp!(0), tp!(0), tp!(0)])),
-/// #     ("empty?", ptp!(0; @arrow[tp!(list(tp!(0))), tp!(bool)])),
-/// #     ("car", ptp!(0; @arrow[tp!(list(tp!(0))), tp!(0)])),
-/// #     ("-1", ptp!(int)),
-/// # ]);
-/// #
 /// // LazyEvaluator<Space = ListSpace, Error = ListError>
 /// let eval = ListsEvaluator;
 ///
@@ -338,7 +315,6 @@ pub trait Evaluator: Sized + Sync {
 /// // without lazy evaluation, this would be an Err because of evaluation of (car $0)
 /// let evaluated = dsl.lazy_eval(&expr, eval, &inps);
 /// assert_eq!(evaluated, Ok(Num(-1)));
-/// # }
 /// ```
 ///
 /// [`Evaluator`]: trait.Evaluator.html
@@ -519,11 +495,11 @@ pub enum ReducedExpression<V: Clone + PartialEq + Send + Sync> {
     Abstraction(usize, Box<ReducedExpression<V>>),
     Index(usize),
 }
-impl<V> fmt::Debug for ReducedExpression<V>
+impl<V> std::fmt::Debug for ReducedExpression<V>
 where
     V: Clone + PartialEq + Send + Sync,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match *self {
             Value(_) => write!(f, "Value"),
             Primitive(ref s, _) => write!(f, "Primitive({})", s),

@@ -5,7 +5,6 @@ use itertools::Itertools;
 use polytype::Type;
 use rand::Rng;
 use std::collections::VecDeque;
-use std::f64;
 
 use super::{AppliedRule, Grammar};
 

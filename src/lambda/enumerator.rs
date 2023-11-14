@@ -1,6 +1,5 @@
 use polytype::{Context, Type, TypeSchema};
 use std::collections::VecDeque;
-use std::f64;
 use std::rc::Rc;
 
 use super::{Expression, Language, LinkedList};

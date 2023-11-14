@@ -3,7 +3,6 @@ use polytype::{Context as TypeContext, Type, TypeSchema, Variable as TypeVar};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::f64::NEG_INFINITY;
 use std::fmt;
 use std::iter;
 use std::sync::{Arc, RwLock};
@@ -44,9 +43,9 @@ impl Lexicon {
     /// See [`polytype::ptp`] for details on constructing [`polytype::TypeSchema`]s.
     ///
     /// ```
-    /// # use polytype::{ptp, tp, Context as TypeContext};
-    /// # use programinduction::trs::Lexicon;
-    /// # fn main() {
+    /// use polytype::{ptp, tp, Context as TypeContext};
+    /// use programinduction::trs::Lexicon;
+    ///
     /// let operators = vec![
     ///     (2, Some("PLUS".to_string()), ptp![@arrow[tp!(int), tp!(int), tp!(int)]]),
     ///     (1, Some("SUCC".to_string()), ptp![@arrow[tp!(int), tp!(int)]]),
@@ -55,7 +54,6 @@ impl Lexicon {
     /// let deterministic = false;
     ///
     /// let lexicon = Lexicon::new(operators, deterministic, TypeContext::default());
-    /// # }
     /// ```
     ///
     /// [`polytype::ptp`]: https://docs.rs/polytype/~6.0/polytype/macro.ptp.html
@@ -93,10 +91,10 @@ impl Lexicon {
     /// See [`polytype::ptp`] for details on constructing [`polytype::TypeSchema`]s.
     ///
     /// ```
-    /// # use polytype::{ptp, tp, Context as TypeContext};
-    /// # use programinduction::trs::Lexicon;
-    /// # use term_rewriting::{Signature, parse_rule, parse_rulecontext};
-    /// # fn main() {
+    /// use polytype::{ptp, tp, Context as TypeContext};
+    /// use programinduction::trs::Lexicon;
+    /// use term_rewriting::{Signature, parse_rule, parse_rulecontext};
+    ///
     /// let mut sig = Signature::default();
     ///
     /// let vars = vec![];
@@ -121,7 +119,6 @@ impl Lexicon {
     /// let deterministic = false;
     ///
     /// let lexicon = Lexicon::from_signature(sig, ops, vars, background, templates, deterministic, TypeContext::default());
-    /// # }
     /// ```
     ///
     /// [`polytype::ptp`]: https://docs.rs/polytype/~6.0/polytype/macro.ptp.html
@@ -169,10 +166,10 @@ impl Lexicon {
     /// # Example
     ///
     /// ```
-    /// # use polytype::{ptp, tp, Context as TypeContext};
-    /// # use programinduction::trs::Lexicon;
-    /// # use term_rewriting::{Context, Signature, parse_rule};
-    /// # fn main() {
+    /// use polytype::{ptp, tp, Context as TypeContext};
+    /// use programinduction::trs::Lexicon;
+    /// use term_rewriting::{Context, Signature, parse_rule};
+    ///
     /// let mut sig = Signature::default();
     ///
     /// let vars = vec![];
@@ -201,7 +198,6 @@ impl Lexicon {
     /// let inferred_schema = lexicon.infer_context(&context, &mut ctx).unwrap();
     ///
     /// assert_eq!(inferred_schema, ptp![int]);
-    /// # }
     /// ```
     ///
     /// [`polytype::TypeSchema`]: https://docs.rs/polytype/~6.0/polytype/enum.TypeSchema.html
@@ -246,9 +242,9 @@ impl Lexicon {
     /// # Example
     ///
     /// ```
-    /// # use polytype::{ptp, tp, Context as TypeContext};
-    /// # use programinduction::trs::Lexicon;
-    /// # fn main() {
+    /// use polytype::{ptp, tp, Context as TypeContext};
+    /// use programinduction::trs::Lexicon;
+    ///
     /// let operators = vec![
     ///     (2, Some("PLUS".to_string()), ptp![@arrow[tp!(int), tp!(int), tp!(int)]]),
     ///     (1, Some("SUCC".to_string()), ptp![@arrow[tp!(int), tp!(int)]]),
@@ -266,7 +262,6 @@ impl Lexicon {
     ///
     /// let rng = &mut rand::thread_rng();
     /// let term = lexicon.sample_term(rng, &schema, &mut ctx, atom_weights, invent, variable, max_size).unwrap();
-    /// # }
     /// ```
     ///
     /// [`term_rewriting::Term`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/enum.Term.html
@@ -978,12 +973,12 @@ impl Lex {
                     lp += self.logprior_term(subterm, &arg_schema, ctx, (vw, cw, ow), invent)?;
                     let final_type = self.infer_term(subterm, ctx)?.instantiate_owned(ctx);
                     if ctx.unify(&arg_tp, &final_type).is_err() {
-                        return Ok(NEG_INFINITY);
+                        return Ok(f64::NEG_INFINITY);
                     }
                 }
                 Ok(lp)
             }
-            None => Ok(NEG_INFINITY),
+            None => Ok(f64::NEG_INFINITY),
         }
     }
     fn logprior_rule(

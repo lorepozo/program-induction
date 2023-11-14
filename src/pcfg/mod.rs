@@ -15,7 +15,6 @@
 //!     }
 //! }
 //!
-//! # fn main() {
 //! let g = Grammar::new(
 //!     tp!(EXPR),
 //!     vec![
@@ -31,7 +30,6 @@
 //! // solution:
 //! let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
 //! assert!((task.oracle)(&g, &expr).is_finite())
-//! # }
 //! ```
 
 mod enumerator;
@@ -48,7 +46,6 @@ use rayon::prelude::*;
 use rayon::spawn;
 use std::cmp;
 use std::collections::HashMap;
-use std::f64;
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -93,7 +90,6 @@ impl Grammar {
     /// use polytype::tp;
     /// use programinduction::pcfg::{AppliedRule, Grammar, Rule};
     ///
-    /// # fn main() {
     /// let g = Grammar::new(
     ///     tp!(EXPR),
     ///     vec![
@@ -116,7 +112,6 @@ impl Grammar {
     ///         g.parse("plus(0,plus(0,1))").unwrap(),
     ///     ]
     /// );
-    /// # }
     /// ```
     pub fn enumerate(&self) -> Box<dyn Iterator<Item = (AppliedRule, f64)>> {
         self.enumerate_nonterminal(self.start.clone())
@@ -179,7 +174,6 @@ impl Grammar {
     ///     }
     /// }
     ///
-    /// # fn main() {
     /// let g = Grammar::new(
     ///     tp!(EXPR),
     ///     vec![
@@ -191,7 +185,6 @@ impl Grammar {
     ///
     /// let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
     /// assert_eq!(Ok(4), g.eval(&expr, &evaluator));
-    /// # }
     /// ```
     pub fn eval<V, E, F>(&self, ar: &AppliedRule, evaluator: &F) -> Result<V, E>
     where
@@ -206,7 +199,6 @@ impl Grammar {
     /// Sample a statement of the PCFG.
     ///
     /// ```
-    /// # fn main() {
     /// use polytype::tp;
     /// use programinduction::pcfg::{Grammar, Rule};
     ///
@@ -221,7 +213,6 @@ impl Grammar {
     /// let ar = g.sample(&tp!(EXPR), &mut rand::thread_rng());
     /// assert_eq!(&ar.0, &tp!(EXPR));
     /// println!("{}", g.display(&ar));
-    /// # }
     /// ```
     pub fn sample<R: Rng>(&self, tp: &Type, rng: &mut R) -> AppliedRule {
         enumerator::sample(self, tp, rng)
@@ -231,7 +222,6 @@ impl Grammar {
     /// # Examples
     ///
     /// ```
-    /// # fn main() {
     /// use polytype::tp;
     /// use programinduction::pcfg::{Grammar, Rule};
     ///
@@ -252,7 +242,6 @@ impl Grammar {
     ///
     /// let expr = g.parse("if( zero?(plus(0 , 0)), 1, 0)").unwrap();
     /// assert_eq!(g.likelihood(&expr), -7.6246189861593985);
-    /// # }
     /// ```
     pub fn likelihood(&self, ar: &AppliedRule) -> f64 {
         self.rules[&ar.0][ar.1].logprob + ar.2.iter().map(|ar| self.likelihood(ar)).sum::<f64>()
@@ -555,7 +544,6 @@ fn update_counts(ar: &AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicUsize>>>
 ///     }
 /// }
 ///
-/// # fn main() {
 /// let g = Grammar::new(
 ///     tp!(EXPR),
 ///     vec![
@@ -571,7 +559,6 @@ fn update_counts(ar: &AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicUsize>>>
 ///
 /// let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
 /// assert!((task.oracle)(&g, &expr).is_finite())
-/// # }
 /// ```
 pub fn task_by_evaluation<'a, V, E, F>(
     evaluator: &'a F,

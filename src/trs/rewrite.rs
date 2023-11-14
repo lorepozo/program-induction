@@ -9,7 +9,6 @@ use itertools::Itertools;
 use polytype::Context as TypeContext;
 use rand::seq::SliceRandom;
 use rand::Rng;
-use std::f64::NEG_INFINITY;
 use std::fmt;
 use std::iter::once;
 use term_rewriting::trace::Trace;
@@ -32,11 +31,11 @@ impl TRS {
     /// # Example
     ///
     /// ```
-    /// # use polytype::{ptp, tp};
-    /// # use programinduction::trs::{TRS, Lexicon};
-    /// # use term_rewriting::{Signature, parse_rule};
-    /// # use polytype::Context as TypeContext;
-    /// # fn main() {
+    /// use polytype::{ptp, tp};
+    /// use programinduction::trs::{TRS, Lexicon};
+    /// use term_rewriting::{Signature, parse_rule};
+    /// use polytype::Context as TypeContext;
+    ///
     /// let mut sig = Signature::default();
     ///
     /// let mut ops = vec![];
@@ -65,7 +64,6 @@ impl TRS {
     /// let trs = TRS::new(&lexicon, rules, &ctx).unwrap();
     ///
     /// assert_eq!(trs.size(), 12);
-    /// # }
     /// ```
     /// [`Lexicon`]: struct.Lexicon.html
     pub fn new(
@@ -140,10 +138,10 @@ impl TRS {
             );
             trace.rewrites_to(params.max_steps, rhs)
         } else {
-            NEG_INFINITY
+            f64::NEG_INFINITY
         };
 
-        if ll == NEG_INFINITY {
+        if ll == f64::NEG_INFINITY {
             params.p_partial.ln()
         } else {
             (1.0 - params.p_partial).ln() + ll
@@ -157,8 +155,8 @@ impl TRS {
     /// [`log_likelihood`]: struct.TRS.html#method.log_likelihood
     pub fn posterior(&self, data: &[Rule], params: ModelParams) -> f64 {
         let prior = self.pseudo_log_prior();
-        if prior == NEG_INFINITY {
-            NEG_INFINITY
+        if prior == f64::NEG_INFINITY {
+            f64::NEG_INFINITY
         } else {
             prior + self.log_likelihood(data, params)
         }
@@ -169,12 +167,11 @@ impl TRS {
     /// # Example
     ///
     /// ```
-    /// # use polytype::{ptp, tp};
+    /// # use polytype::{ptp, tp, Context as TypeContext};
     /// # use programinduction::trs::{TRS, Lexicon};
-    /// # use polytype::Context as TypeContext;
     /// # use rand::{thread_rng};
     /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
-    /// # fn main() {
+    ///
     /// let mut sig = Signature::default();
     ///
     /// let mut ops = vec![];
@@ -225,7 +222,6 @@ impl TRS {
     /// } else {
     ///     assert_eq!(trs.len(), 2);
     /// }
-    /// # }
     /// ```
     pub fn add_rule<R: Rng>(
         &self,
@@ -272,12 +268,11 @@ impl TRS {
     /// # Example
     ///
     /// ```
-    /// # use polytype::{ptp, tp};
-    /// # use programinduction::trs::{TRS, Lexicon};
-    /// # use rand::{thread_rng};
-    /// # use polytype::Context as TypeContext;
-    /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
-    /// # fn main() {
+    /// use polytype::{ptp, tp, Context as TypeContext};
+    /// use programinduction::trs::{TRS, Lexicon};
+    /// use rand::{thread_rng};
+    /// use term_rewriting::{Context, RuleContext, Signature, parse_rule};
+    ///
     /// let mut sig = Signature::default();
     ///
     /// let mut ops = vec![];
@@ -322,7 +317,6 @@ impl TRS {
     ///
     /// assert_ne!(pretty_before, new_trs.to_string());
     /// assert_eq!(new_trs.to_string(), "PLUS(x_ SUCC(y_)) = SUCC(PLUS(x_ y_));\nPLUS(x_ ZERO) = x_;");
-    /// # }
     /// ```
     pub fn randomly_move_rule<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
@@ -347,12 +341,11 @@ impl TRS {
     /// # Example
     ///
     /// ```
-    /// # use polytype::{ptp, tp};
-    /// # use programinduction::trs::{TRS, Lexicon};
-    /// # use polytype::Context as TypeContext;
-    /// # use rand::{thread_rng};
-    /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
-    /// # fn main() {
+    /// use polytype::{ptp, tp, Context as TypeContext};
+    /// use programinduction::trs::{TRS, Lexicon};
+    /// use rand::{thread_rng};
+    /// use term_rewriting::{Context, RuleContext, Signature, parse_rule};
+    ///
     /// let mut sig = Signature::default();
     ///
     /// let mut ops = vec![];
@@ -396,7 +389,6 @@ impl TRS {
     /// } else {
     ///     assert_eq!(trs.len(), 1);
     /// }
-    /// # }
     /// ```
     pub fn local_difference<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
         let mut trs = self.clone();
@@ -457,12 +449,11 @@ impl TRS {
     /// # Example
     ///
     /// ```
-    /// # use polytype::{ptp, tp};
+    /// # use polytype::{ptp, tp, Context as TypeContext};
     /// # use programinduction::trs::{TRS, Lexicon};
-    /// # use polytype::Context as TypeContext;
     /// # use rand::{thread_rng};
     /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
-    /// # fn main() {
+    ///
     /// let mut sig = Signature::default();
     ///
     /// let mut ops = vec![];
@@ -534,7 +525,6 @@ impl TRS {
     /// let mut trs = TRS::new(&lexicon, rules, &lexicon.context()).unwrap();
     ///
     /// assert!(trs.swap_lhs_and_rhs(&mut rng).is_err());
-    /// # }
     /// ```
     pub fn swap_lhs_and_rhs<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
         let num_rules = self.len();

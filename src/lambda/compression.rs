@@ -5,7 +5,6 @@ use rayon::join;
 use rayon::prelude::*;
 use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
-use std::f64;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
