@@ -202,6 +202,7 @@ impl Grammar {
     /// ```
     /// use polytype::tp;
     /// use programinduction::pcfg::{Grammar, Rule};
+    /// use rand::{rngs::SmallRng, SeedableRng};
     ///
     /// let g = Grammar::new(
     ///     tp!(EXPR),
@@ -211,7 +212,7 @@ impl Grammar {
     ///         Rule::new("plus", tp!(@arrow[tp!(EXPR), tp!(EXPR), tp!(EXPR)]), 1.0),
     ///     ],
     /// );
-    /// let ar = g.sample(&tp!(EXPR), &mut rand::thread_rng());
+    /// let ar = g.sample(&tp!(EXPR), &mut SmallRng::from_seed([1u8; 32]));
     /// assert_eq!(&ar.0, &tp!(EXPR));
     /// println!("{}", g.display(&ar));
     /// ```

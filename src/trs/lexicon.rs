@@ -244,6 +244,7 @@ impl Lexicon {
     /// ```
     /// use polytype::{ptp, tp, Context as TypeContext};
     /// use programinduction::trs::Lexicon;
+    /// use rand::{rngs::SmallRng, SeedableRng};
     ///
     /// let operators = vec![
     ///     (2, Some("PLUS".to_string()), ptp![@arrow[tp!(int), tp!(int), tp!(int)]]),
@@ -260,7 +261,7 @@ impl Lexicon {
     /// let atom_weights = (0.5, 0.25, 0.25);
     /// let max_size = 50;
     ///
-    /// let rng = &mut rand::thread_rng();
+    /// let rng = &mut SmallRng::from_seed([1u8; 32]);
     /// let term = lexicon.sample_term(rng, &schema, &mut ctx, atom_weights, invent, variable, max_size).unwrap();
     /// ```
     ///

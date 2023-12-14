@@ -44,10 +44,11 @@ pub struct ECParams {
 /// ```no_run
 /// use programinduction::domains::circuits;
 /// use programinduction::{lambda, ECParams, EC};
+/// use rand::{rngs::SmallRng, SeedableRng};
 ///
 /// let mut dsl = circuits::dsl();
 ///
-/// let rng = &mut rand::thread_rng();
+/// let rng = &mut SmallRng::from_seed([1u8; 32]);
 /// let tasks = circuits::make_tasks(rng, 250);
 /// let ec_params = ECParams {
 ///     frontier_limit: 10,
@@ -122,10 +123,11 @@ pub trait EC<Observation: ?Sized>: Sync + Sized {
     /// ```no_run
     /// use programinduction::domains::circuits;
     /// use programinduction::{lambda, ECParams, EC};
+    /// use rand::{rngs::SmallRng, SeedableRng};
     ///
     /// let mut dsl = circuits::dsl();
     ///
-    /// let rng = &mut rand::thread_rng();
+    /// let rng = &mut SmallRng::from_seed([1u8; 32]);
     /// let tasks = circuits::make_tasks(rng, 250);
     /// let ec_params = ECParams {
     ///     frontier_limit: 10,

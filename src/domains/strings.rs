@@ -5,9 +5,10 @@
 //! ```no_run
 //! use programinduction::domains::strings;
 //! use programinduction::{ECParams, EC};
+//! use rand::{rngs::SmallRng, SeedableRng};
 //!
 //! let dsl = strings::dsl();
-//! let rng = &mut rand::thread_rng();
+//! let rng = &mut SmallRng::from_seed([1u8; 32]);
 //! let tasks = strings::make_tasks(rng, 250, 4);
 //! let ec_params = ECParams {
 //!     frontier_limit: 10,
@@ -33,7 +34,7 @@ use crate::Task;
 
 /// The string editing [`lambda::Language`] defines the following operations:
 ///
-/// ```ignore
+/// ```compile_fails
 /// "0":         ptp!(int)
 /// "+1":        ptp!(@arrow[tp!(int), tp!(int)])
 /// "-1":        ptp!(@arrow[tp!(int), tp!(int)])

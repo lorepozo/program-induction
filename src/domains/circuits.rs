@@ -7,9 +7,10 @@
 //! ```
 //! use programinduction::domains::circuits;
 //! use programinduction::{ECParams, EC};
+//! use rand::{rngs::SmallRng, SeedableRng};
 //!
 //! let dsl = circuits::dsl();
-//! let rng = &mut rand::thread_rng();
+//! let rng = &mut SmallRng::from_seed([1u8; 32]);
 //! let tasks = circuits::make_tasks(rng, 250);
 //! let ec_params = ECParams {
 //!     frontier_limit: 100,
@@ -36,7 +37,7 @@ use crate::Task;
 
 /// The circuit representation, a [`lambda::Language`], only defines the binary `nand` operation.
 ///
-/// ```ignore
+/// ```compile_fails
 /// "nand": ptp!(@arrow[tp!(bool), tp!(bool), tp!(bool)])
 /// ```
 ///

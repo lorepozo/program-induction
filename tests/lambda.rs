@@ -248,10 +248,18 @@ fn lambda_eval_somewhat_simple() {
 
     let expr = dsl.parse("(λ (not (eq (+ 1 $0) 1)))").unwrap();
 
-    let out = dsl.eval(&expr, SimpleEvaluator::from(evaluate), &[ArithSpace::Num(1)]);
+    let out = dsl.eval(
+        &expr,
+        SimpleEvaluator::from(evaluate),
+        &[ArithSpace::Num(1)],
+    );
     assert_eq!(out, Ok(ArithSpace::Bool(true)));
 
-    let out = dsl.eval(&expr, SimpleEvaluator::from(evaluate), &[ArithSpace::Num(0)]);
+    let out = dsl.eval(
+        &expr,
+        SimpleEvaluator::from(evaluate),
+        &[ArithSpace::Num(0)],
+    );
     assert_eq!(out, Ok(ArithSpace::Bool(false)));
 }
 

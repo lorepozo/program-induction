@@ -167,10 +167,10 @@ impl TRS {
     /// # Example
     ///
     /// ```
-    /// # use polytype::{ptp, tp, Context as TypeContext};
-    /// # use programinduction::trs::{TRS, Lexicon};
-    /// # use rand::{thread_rng};
-    /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
+    /// use polytype::{ptp, tp, Context as TypeContext};
+    /// use programinduction::trs::{TRS, Lexicon};
+    /// use rand::{rngs::SmallRng, SeedableRng};
+    /// use term_rewriting::{Context, RuleContext, Signature, parse_rule};
     ///
     /// let mut sig = Signature::default();
     ///
@@ -213,11 +213,11 @@ impl TRS {
     ///         rhs: vec![Context::Hole],
     ///     }
     /// ];
-    /// let mut rng = thread_rng();
+    /// let rng = &mut SmallRng::from_seed([1u8; 32]);
     /// let atom_weights = (0.5, 0.25, 0.25);
     /// let max_size = 50;
     ///
-    /// if let Ok(new_trs) = trs.add_rule(&contexts, atom_weights, max_size, &mut rng) {
+    /// if let Ok(new_trs) = trs.add_rule(&contexts, atom_weights, max_size, rng) {
     ///     assert_eq!(new_trs.len(), 3);
     /// } else {
     ///     assert_eq!(trs.len(), 2);
@@ -270,7 +270,7 @@ impl TRS {
     /// ```
     /// use polytype::{ptp, tp, Context as TypeContext};
     /// use programinduction::trs::{TRS, Lexicon};
-    /// use rand::{thread_rng};
+    /// use rand::{rngs::SmallRng, SeedableRng};
     /// use term_rewriting::{Context, RuleContext, Signature, parse_rule};
     ///
     /// let mut sig = Signature::default();
@@ -311,9 +311,9 @@ impl TRS {
     ///
     /// let pretty_before = trs.to_string();
     ///
-    /// let mut rng = thread_rng();
+    /// let rng = &mut SmallRng::from_seed([1u8; 32]);
     ///
-    /// let new_trs = trs.randomly_move_rule(&mut rng).expect("failed when moving rule");
+    /// let new_trs = trs.randomly_move_rule(rng).expect("failed when moving rule");
     ///
     /// assert_ne!(pretty_before, new_trs.to_string());
     /// assert_eq!(new_trs.to_string(), "PLUS(x_ SUCC(y_)) = SUCC(PLUS(x_ y_));\nPLUS(x_ ZERO) = x_;");
@@ -343,7 +343,7 @@ impl TRS {
     /// ```
     /// use polytype::{ptp, tp, Context as TypeContext};
     /// use programinduction::trs::{TRS, Lexicon};
-    /// use rand::{thread_rng};
+    /// use rand::{rngs::SmallRng, SeedableRng};
     /// use term_rewriting::{Context, RuleContext, Signature, parse_rule};
     ///
     /// let mut sig = Signature::default();
@@ -380,9 +380,9 @@ impl TRS {
     ///
     /// assert_eq!(trs.len(), 1);
     ///
-    /// let mut rng = thread_rng();
+    /// let rng = &mut SmallRng::from_seed([1u8; 32]);
     ///
-    /// if let Ok(new_trs) = trs.local_difference(&mut rng) {
+    /// if let Ok(new_trs) = trs.local_difference(rng) {
     ///     assert_eq!(new_trs.len(), 2);
     ///     let display_str = format!("{}", new_trs);
     ///     assert_eq!(display_str, "PLUS(x_ SUCC(y_)) = SUCC(PLUS(x_ y_));\nSUCC(PLUS(x_ SUCC(y_))) = SUCC(SUCC(PLUS(x_ y_)));");
@@ -449,10 +449,10 @@ impl TRS {
     /// # Example
     ///
     /// ```
-    /// # use polytype::{ptp, tp, Context as TypeContext};
-    /// # use programinduction::trs::{TRS, Lexicon};
-    /// # use rand::{thread_rng};
-    /// # use term_rewriting::{Context, RuleContext, Signature, parse_rule};
+    /// use polytype::{ptp, tp, Context as TypeContext};
+    /// use programinduction::trs::{TRS, Lexicon};
+    /// use rand::{rngs::SmallRng, SeedableRng};
+    /// use term_rewriting::{Context, RuleContext, Signature, parse_rule};
     ///
     /// let mut sig = Signature::default();
     ///
@@ -489,9 +489,9 @@ impl TRS {
     ///
     /// assert_eq!(trs.len(), 1);
     ///
-    /// let mut rng = thread_rng();
+    /// let rng = &mut SmallRng::from_seed([1u8; 32]);
     ///
-    /// if let Ok(new_trs) = trs.swap_lhs_and_rhs(&mut rng) {
+    /// if let Ok(new_trs) = trs.swap_lhs_and_rhs(rng) {
     ///     assert_eq!(new_trs.len(), 2);
     ///     let display_str = format!("{}", new_trs);
     ///     assert_eq!(display_str, "SUCC(PLUS(x_ y_)) = PLUS(x_ SUCC(y_));\nPLUS(SUCC(x_) y_) = PLUS(x_ SUCC(y_));");
@@ -524,7 +524,7 @@ impl TRS {
     ///
     /// let mut trs = TRS::new(&lexicon, rules, &lexicon.context()).unwrap();
     ///
-    /// assert!(trs.swap_lhs_and_rhs(&mut rng).is_err());
+    /// assert!(trs.swap_lhs_and_rhs(rng).is_err());
     /// ```
     pub fn swap_lhs_and_rhs<R: Rng>(&self, rng: &mut R) -> Result<TRS, SampleError> {
         let num_rules = self.len();

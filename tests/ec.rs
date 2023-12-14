@@ -1,3 +1,4 @@
+use rand::{rngs::SmallRng, SeedableRng};
 use std::time::Duration;
 
 use polytype::{ptp, tp};
@@ -19,7 +20,7 @@ fn arith_evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
 #[ignore]
 fn ec_circuits_dl() {
     let dsl = circuits::dsl();
-    let rng = &mut rand::thread_rng();
+    let rng = &mut SmallRng::from_seed([1u8; 32]);
     let tasks = circuits::make_tasks(rng, 100);
     let ec_params = ECParams {
         frontier_limit: 10,
@@ -35,7 +36,7 @@ fn ec_circuits_dl() {
 #[test]
 fn explore_circuits_timeout() {
     let dsl = circuits::dsl();
-    let rng = &mut rand::thread_rng();
+    let rng = &mut SmallRng::from_seed([1u8; 32]);
     let tasks = circuits::make_tasks(rng, 100);
     let ec_params = ECParams {
         frontier_limit: 10,
