@@ -52,6 +52,7 @@ pub use self::rewrite::TRS;
 use crate::Task;
 
 use polytype;
+use polytype::TypeSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use term_rewriting::{Rule, TRSError};
@@ -164,17 +165,39 @@ impl Default for ModelParams {
 /// [`term_rewriting::Rule`]: https://docs.rs/term_rewriting/~0.3/term_rewriting/struct.Rule.html
 /// [`Task`]: ../struct.Task.html
 /// [`TRS`]: struct.TRS.html
-pub fn task_by_rewrite<'a, O: Sync>(
+pub fn task_by_rewrite<'a, O: Sync + 'a>(
     data: &'a [Rule],
     params: ModelParams,
     lex: &Lexicon,
     observation: O,
-) -> Result<Task<'a, Lexicon, TRS, O>, TypeError> {
+) -> Result<impl Task<O, Representation = Lexicon, Expression = TRS> + 'a, TypeError> {
     let mut ctx = lex.0.read().expect("poisoned lexicon").ctx.clone();
-    Ok(Task {
-        oracle: Box::new(move |_s: &Lexicon, h: &TRS| -h.posterior(data, params)),
-        // assuming the data have no variables, we can use the Lexicon's ctx.
-        tp: lex.infer_rules(data, &mut ctx)?,
+    let tp = lex.infer_rules(data, &mut ctx)?;
+    Ok(TrsTask {
+        data,
+        params,
+        tp,
         observation,
     })
+}
+
+struct TrsTask<'a, O> {
+    data: &'a [Rule],
+    params: ModelParams,
+    tp: TypeSchema,
+    observation: O,
+}
+impl<'a, O: Sync> Task<O> for TrsTask<'a, O> {
+    type Representation = Lexicon;
+    type Expression = TRS;
+
+    fn oracle(&self, _: &Lexicon, h: &TRS) -> f64 {
+        -h.posterior(self.data, self.params)
+    }
+    fn tp(&self) -> &TypeSchema {
+        &self.tp
+    }
+    fn observation(&self) -> &O {
+        &self.observation
+    }
 }

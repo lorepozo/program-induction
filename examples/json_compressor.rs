@@ -1,8 +1,7 @@
 use polytype::TypeSchema;
-use programinduction::{lambda, ECFrontier, Task};
+use programinduction::{lambda, noop_task, ECFrontier};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::f64;
 
 #[derive(Deserialize)]
 struct ExternalCompressionInput {
@@ -56,15 +55,11 @@ struct Solution {
     loglikelihood: f64,
 }
 
-fn noop_oracle(_: &lambda::Language, _: &lambda::Expression) -> f64 {
-    f64::NEG_INFINITY
-}
-
 struct CompressionInput {
     dsl: lambda::Language,
     params: lambda::CompressionParams,
-    tasks: Vec<Task<'static, lambda::Language, lambda::Expression, ()>>,
-    frontiers: Vec<ECFrontier<lambda::Language>>,
+    task_types: Vec<TypeSchema>,
+    frontiers: Vec<ECFrontier<lambda::Expression>>,
 }
 impl From<ExternalCompressionInput> for CompressionInput {
     fn from(eci: ExternalCompressionInput) -> Self {
@@ -99,16 +94,11 @@ impl From<ExternalCompressionInput> for CompressionInput {
             aic: eci.params.aic,
             arity: eci.params.arity,
         };
-        let (tasks, frontiers) = eci
+        let (task_types, frontiers) = eci
             .frontiers
             .into_par_iter()
             .map(|f| {
                 let tp = TypeSchema::parse(&f.task_tp).expect("invalid task type");
-                let task = Task {
-                    oracle: Box::new(noop_oracle),
-                    observation: (),
-                    tp,
-                };
                 let sols = f
                     .solutions
                     .into_iter()
@@ -119,13 +109,13 @@ impl From<ExternalCompressionInput> for CompressionInput {
                         (expr, s.logprior, s.loglikelihood)
                     })
                     .collect();
-                (task, ECFrontier(sols))
+                (tp, ECFrontier(sols))
             })
             .unzip();
         CompressionInput {
             dsl,
             params,
-            tasks,
+            task_types,
             frontiers,
         }
     }
@@ -153,10 +143,10 @@ impl From<CompressionInput> for ExternalCompressionOutput {
             })
             .collect();
         let frontiers = ci
-            .tasks
+            .task_types
             .par_iter()
             .zip(&ci.frontiers)
-            .map(|(t, f)| {
+            .map(|(tp, f)| {
                 let solutions = f
                     .iter()
                     .map(|&(ref expr, logprior, loglikelihood)| {
@@ -169,7 +159,7 @@ impl From<CompressionInput> for ExternalCompressionOutput {
                     })
                     .collect();
                 Frontier {
-                    task_tp: format!("{}", t.tp),
+                    task_tp: tp.to_string(),
                     solutions,
                 }
             })
@@ -187,9 +177,18 @@ fn main() {
     let eci: ExternalCompressionInput =
         serde_json::from_slice(include_bytes!("realistic_input.json")).expect("invalid json");
 
-    let ci = CompressionInput::from(eci);
-    let (dsl, _) = ci.dsl.compress(&ci.params, &ci.tasks, ci.frontiers);
-    for i in ci.dsl.invented.len()..dsl.invented.len() {
+    let CompressionInput {
+        dsl,
+        params,
+        task_types,
+        frontiers,
+    } = CompressionInput::from(eci);
+    let tasks = task_types
+        .into_iter()
+        .map(|tp| noop_task(f64::NEG_INFINITY, tp))
+        .collect::<Vec<_>>();
+    let (dsl, _) = dsl.compress(&params, &tasks, frontiers);
+    for i in dsl.invented.len()..dsl.invented.len() {
         let (expr, _, _) = &dsl.invented[i];
         eprintln!("invented {}", dsl.display(expr));
     }

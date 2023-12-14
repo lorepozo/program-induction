@@ -1,5 +1,5 @@
 use polytype::{ptp, tp};
-use programinduction::lambda::*;
+use programinduction::{lambda::*, Task};
 
 #[test]
 fn lambda_expression_parse_primitive() {
@@ -206,7 +206,7 @@ fn lambda_eval_simplest() {
         }
     }
     let expr = dsl.parse("(+ (+ 1 1) 1)").unwrap();
-    let out = dsl.eval(&expr, SimpleEvaluator::of(evaluate), &[]);
+    let out = dsl.eval(&expr, SimpleEvaluator::from(evaluate), &[]);
     assert_eq!(out, Ok(3));
 }
 
@@ -248,10 +248,10 @@ fn lambda_eval_somewhat_simple() {
 
     let expr = dsl.parse("(λ (not (eq (+ 1 $0) 1)))").unwrap();
 
-    let out = dsl.eval(&expr, SimpleEvaluator::of(evaluate), &[ArithSpace::Num(1)]);
+    let out = dsl.eval(&expr, SimpleEvaluator::from(evaluate), &[ArithSpace::Num(1)]);
     assert_eq!(out, Ok(ArithSpace::Bool(true)));
 
-    let out = dsl.eval(&expr, SimpleEvaluator::of(evaluate), &[ArithSpace::Num(0)]);
+    let out = dsl.eval(&expr, SimpleEvaluator::from(evaluate), &[ArithSpace::Num(0)]);
     assert_eq!(out, Ok(ArithSpace::Bool(false)));
 }
 
@@ -348,10 +348,10 @@ fn lambda_eval_firstclass() {
 
     // good solution:
     let expr = dsl.parse("(λ (λ (map (λ (+ $0 $2)) $0)))").unwrap();
-    assert!((task.oracle)(&dsl, &expr).is_finite());
+    assert!(task.oracle(&dsl, &expr).is_finite());
     // bad solution:
     let expr = dsl.parse("(λ (λ (map (λ (+ $0 1)) $0)))").unwrap();
-    assert!((task.oracle)(&dsl, &expr).is_infinite());
+    assert!(task.oracle(&dsl, &expr).is_infinite());
 }
 
 #[test]
@@ -420,7 +420,7 @@ fn lambda_lazy_eval() {
     );
 
     let expr = dsl.parse("(λ (if (empty? $0) -1 (car $0)))").unwrap();
-    assert!((task.oracle)(&dsl, &expr).is_finite());
+    assert!(task.oracle(&dsl, &expr).is_finite());
 }
 
 #[test]
@@ -516,8 +516,8 @@ fn lambda_lazy_eval_firstclass() {
 
     // good solution:
     let expr = dsl.parse("(λ (λ (map (λ (+ $0 $2)) $0)))").unwrap();
-    assert!((task.oracle)(&dsl, &expr).is_finite());
+    assert!(task.oracle(&dsl, &expr).is_finite());
     // bad solution:
     let expr = dsl.parse("(λ (λ (map (λ (+ $0 1)) $0)))").unwrap();
-    assert!((task.oracle)(&dsl, &expr).is_infinite());
+    assert!(task.oracle(&dsl, &expr).is_infinite());
 }

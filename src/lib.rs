@@ -103,8 +103,10 @@ pub mod lambda;
 pub mod pcfg;
 pub mod trs;
 mod utils;
+
 pub use crate::ec::*;
 pub use crate::gp::*;
+use std::marker::PhantomData;
 
 use polytype::TypeSchema;
 
@@ -115,39 +117,84 @@ use polytype::TypeSchema;
 ///
 /// [`lambda::task_by_evaluation`]: lambda/fn.task_by_simple_evaluation.html
 /// [`pcfg::task_by_evaluation`]: pcfg/fn.task_by_simple_evaluation.html
-pub struct Task<'a, R: Send + Sync + Sized, X: Clone + Send + Sync, O: Sync> {
+pub trait Task<Observation: ?Sized>: Sync {
+    type Representation;
+    type Expression;
+
     /// Assess an expression. For [`EC`] this should return a log-likelihood. For [`GP`] this
     /// should return non-negative fitness, where smaller values correspond to better expressions.
     #[allow(clippy::type_complexity)]
-    pub oracle: Box<dyn Fn(&R, &X) -> f64 + Send + Sync + 'a>,
+    fn oracle(&self, dsl: &Self::Representation, expr: &Self::Expression) -> f64;
+
     /// An expression that is considered valid for the `oracle` is one of this type.
-    pub tp: TypeSchema,
+    fn tp(&self) -> &TypeSchema;
+
     /// Some program induction methods can take advantage of observations. This may often
     /// practically be the [`unit`] type `()`.
     ///
     /// [`unit`]: https://doc.rust-lang.org/std/primitive.unit.html
-    pub observation: O,
+    fn observation(&self) -> &Observation;
 }
-impl<'a, R, X> Task<'a, R, X, ()>
-where
-    R: 'a + Send + Sync + Sized,
-    X: 'a + Clone + Send + Sync,
-{
-    /// Construct a task which always evaluates to negative infinity and has no observsation.
-    /// I.e., it exists solely for the type.
-    pub fn noop(tp: TypeSchema) -> Self {
-        Task {
-            oracle: Box::new(noop_oracle),
-            tp,
-            observation: (),
-        }
+
+pub fn noop_task<R, E>(
+    value: f64,
+    ptp: TypeSchema,
+) -> impl Task<(), Representation = R, Expression = E> {
+    NoopTask {
+        value,
+        ptp,
+        _marker: PhantomData,
     }
 }
 
-fn noop_oracle<R, X>(_: &R, _: &X) -> f64
+pub fn simple_task<R, E>(
+    oracle_fn: impl Fn(&R, &E) -> f64 + Sync,
+    ptp: TypeSchema,
+) -> impl Task<(), Representation = R, Expression = E> {
+    SimpleTask {
+        oracle_fn,
+        ptp,
+        _marker: PhantomData,
+    }
+}
+
+struct NoopTask<R, E> {
+    value: f64,
+    ptp: TypeSchema,
+    _marker: PhantomData<fn(R, E)>, // using fn to give Send/Sync
+}
+impl<R, E> Task<()> for NoopTask<R, E> {
+    type Representation = R;
+    type Expression = E;
+    fn oracle(&self, _dsl: &Self::Representation, _expr: &Self::Expression) -> f64 {
+        self.value
+    }
+    fn tp(&self) -> &TypeSchema {
+        &self.ptp
+    }
+    fn observation(&self) -> &() {
+        &()
+    }
+}
+
+struct SimpleTask<R, E, F: Sync> {
+    oracle_fn: F,
+    ptp: TypeSchema,
+    _marker: PhantomData<fn(R, E)>, // using fn to give Send/Sync
+}
+impl<R, E, F> Task<()> for SimpleTask<R, E, F>
 where
-    R: Send + Sync + Sized,
-    X: Clone + Send + Sync,
+    F: Fn(&R, &E) -> f64 + Sync,
 {
-    f64::NEG_INFINITY
+    type Representation = R;
+    type Expression = E;
+    fn oracle(&self, dsl: &Self::Representation, expr: &Self::Expression) -> f64 {
+        (self.oracle_fn)(dsl, expr)
+    }
+    fn tp(&self) -> &TypeSchema {
+        &self.ptp
+    }
+    fn observation(&self) -> &() {
+        &()
+    }
 }

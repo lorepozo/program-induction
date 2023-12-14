@@ -4,7 +4,7 @@
 //!
 //! ```
 //! use polytype::tp;
-//! use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
+//! use programinduction::{Task, pcfg::{task_by_evaluation, Grammar, Rule}};
 //!
 //! fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
 //!     match name {
@@ -25,11 +25,12 @@
 //! );
 //!
 //! // task: the number 4
-//! let task = task_by_evaluation(&evaluator, &4, tp!(EXPR));
+//! let target = 4;
+//! let task = task_by_evaluation(&evaluator, &target, tp!(EXPR));
 //!
 //! // solution:
 //! let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
-//! assert!((task.oracle)(&g, &expr).is_finite())
+//! assert!(task.oracle(&g, &expr).is_finite())
 //! ```
 
 mod enumerator;
@@ -311,7 +312,7 @@ impl Default for EstimationParams {
     }
 }
 
-impl EC for Grammar {
+impl<Observation: ?Sized> EC<Observation> for Grammar {
     type Expression = AppliedRule;
     type Params = EstimationParams;
 
@@ -328,12 +329,12 @@ impl EC for Grammar {
     /// frontiers.
     ///
     /// [`Grammar::update_parameters`]: #method.update_parameters
-    fn compress<O: Sync>(
+    fn compress(
         &self,
         params: &Self::Params,
-        _tasks: &[Task<Self, Self::Expression, O>],
-        frontiers: Vec<ECFrontier<Self>>,
-    ) -> (Self, Vec<ECFrontier<Self>>) {
+        _tasks: &[impl Task<Observation, Representation = Self, Expression = Self::Expression>],
+        frontiers: Vec<ECFrontier<Self::Expression>>,
+    ) -> (Self, Vec<ECFrontier<Self::Expression>>) {
         let mut counts: HashMap<Type, Vec<AtomicUsize>> = HashMap::new();
         // initialize counts to pseudocounts
         for (nt, rs) in &self.rules {
@@ -394,10 +395,9 @@ impl Default for GeneticParams {
     }
 }
 
-impl GP for Grammar {
+impl GP<()> for Grammar {
     type Expression = AppliedRule;
     type Params = GeneticParams;
-    type Observation = ();
 
     fn genesis<R: Rng>(
         &self,
@@ -417,7 +417,7 @@ impl GP for Grammar {
         params: &Self::Params,
         rng: &mut R,
         prog: &Self::Expression,
-        _obs: &Self::Observation,
+        _obs: &(),
     ) -> Vec<Self::Expression> {
         let tot = params.mutation_point + params.mutation_subtree + params.mutation_reproduction;
         match Uniform::from(0f64..tot).sample(rng) {
@@ -455,7 +455,7 @@ impl GP for Grammar {
         rng: &mut R,
         parent1: &Self::Expression,
         parent2: &Self::Expression,
-        _obs: &Self::Observation,
+        _obs: &(),
     ) -> Vec<Self::Expression> {
         vec![
             crossover_random_node(params, parent1, parent2, rng),
@@ -533,7 +533,7 @@ fn update_counts(ar: &AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicUsize>>>
 ///
 /// ```
 /// use polytype::tp;
-/// use programinduction::pcfg::{task_by_evaluation, Grammar, Rule};
+/// use programinduction::{Task, pcfg::{task_by_evaluation, Grammar, Rule}};
 ///
 /// fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
 ///     match name {
@@ -558,20 +558,40 @@ fn update_counts(ar: &AppliedRule, counts: &Arc<HashMap<Type, Vec<AtomicUsize>>>
 /// let task = task_by_evaluation(&evaluator, &output, tp);
 ///
 /// let expr = g.parse("plus(1, plus(1, plus(1,1)))").unwrap();
-/// assert!((task.oracle)(&g, &expr).is_finite())
+/// assert!(task.oracle(&g, &expr).is_finite())
 /// ```
 pub fn task_by_evaluation<'a, V, E, F>(
     evaluator: &'a F,
     output: &'a V,
     tp: Type,
-) -> Task<'a, Grammar, AppliedRule, &'a V>
+) -> impl Task<V, Representation = Grammar, Expression = AppliedRule> + 'a
 where
-    V: PartialEq + Clone + Sync + Debug + 'a,
+    E: 'a,
+    V: PartialEq + Sync + 'a,
     F: Fn(&str, &[V]) -> Result<V, E> + Sync + 'a,
 {
-    let oracle = Box::new(move |g: &Grammar, ar: &AppliedRule| {
-        if let Ok(o) = g.eval(ar, evaluator) {
-            if o == *output {
+    PcfgTask {
+        evaluator,
+        output,
+        tp: TypeSchema::Monotype(tp),
+    }
+}
+struct PcfgTask<'a, V, F> {
+    evaluator: F,
+    output: &'a V,
+    tp: TypeSchema,
+}
+impl<V, E, F> Task<V> for PcfgTask<'_, V, F>
+where
+    V: PartialEq + Sync,
+    F: Fn(&str, &[V]) -> Result<V, E> + Sync,
+{
+    type Representation = Grammar;
+    type Expression = AppliedRule;
+
+    fn oracle(&self, g: &Grammar, ar: &AppliedRule) -> f64 {
+        if let Ok(o) = g.eval(ar, &self.evaluator) {
+            if &o == self.output {
                 0f64
             } else {
                 f64::NEG_INFINITY
@@ -579,11 +599,12 @@ where
         } else {
             f64::NEG_INFINITY
         }
-    });
-    Task {
-        oracle,
-        observation: output,
-        tp: TypeSchema::Monotype(tp),
+    }
+    fn tp(&self) -> &TypeSchema {
+        &self.tp
+    }
+    fn observation(&self) -> &V {
+        self.output
     }
 }
 

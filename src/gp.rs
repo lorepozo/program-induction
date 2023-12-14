@@ -54,11 +54,11 @@ pub enum GPSelection {
 }
 
 impl GPSelection {
-    pub(crate) fn update_population<R: Rng, X: Clone + Send + Sync>(
+    pub(crate) fn update_population<R: Rng, X: Clone>(
         &self,
         population: &mut Vec<(X, f64)>,
         children: Vec<X>,
-        oracle: impl Fn(&X) -> f64 + Send + Sync,
+        oracle: impl Fn(&X) -> f64,
         rng: &mut R,
     ) {
         let mut scored_children = children
@@ -150,8 +150,10 @@ pub struct GPParams {
 ///
 /// ```
 /// use polytype::{ptp, tp};
-/// use programinduction::pcfg::{self, Grammar, Rule};
-/// use programinduction::{GPParams, Task, GP, GPSelection};
+/// use programinduction::{
+///     simple_task, GP, GPParams, GPSelection,
+///     pcfg::{self, Grammar, Rule}
+/// };
 /// use rand::{rngs::SmallRng, SeedableRng};
 ///
 /// fn evaluator(name: &str, inps: &[i32]) -> Result<i32, ()> {
@@ -172,17 +174,13 @@ pub struct GPParams {
 ///     ],
 /// );
 /// let target = 6;
-/// let task = Task {
-///     oracle: Box::new(|g: &Grammar, expr| {
-///         if let Ok(n) = g.eval(expr, &evaluator) {
-///             (n - target).abs() as f64 // numbers close to target
-///         } else {
-///             f64::INFINITY
-///         }
-///     }),
-///     tp: ptp!(EXPR),
-///     observation: (),
-/// };
+/// let task = simple_task(|g: &Grammar, expr| {
+///     if let Ok(n) = g.eval(expr, &evaluator) {
+///         (n - target).abs() as f64 // numbers close to target
+///     } else {
+///         f64::INFINITY
+///     }
+/// }, ptp!(EXPR));
 ///
 /// let gpparams = GPParams {
 ///     selection: GPSelection::Deterministic,
@@ -215,13 +213,11 @@ pub struct GPParams {
 /// [`Task`]: struct.Task.html
 /// [`oracle`]: struct.Task.html#structfield.oracle
 /// [`pcfg::Grammar`]: pcfg/struct.Grammar.html
-pub trait GP: Send + Sync + Sized {
+pub trait GP<Observation: ?Sized> {
     /// An Expression is a sentence in the representation. **Tasks are solved by Expressions**.
-    type Expression: Clone + Send + Sync;
+    type Expression: Clone;
     /// Extra parameters for a representation go here.
     type Params;
-    // task-specific information, e.g. an input/output pair, goes here.
-    type Observation: Clone + Send + Sync;
 
     /// Create an initial population for a particular requesting type.
     fn genesis<R: Rng>(
@@ -238,7 +234,7 @@ pub trait GP: Send + Sync + Sized {
         params: &Self::Params,
         rng: &mut R,
         prog: &Self::Expression,
-        obs: &Self::Observation,
+        obs: &Observation,
     ) -> Vec<Self::Expression>;
 
     /// Perform crossover between two programs. There must be at least one child.
@@ -248,7 +244,7 @@ pub trait GP: Send + Sync + Sized {
         rng: &mut R,
         parent1: &Self::Expression,
         parent2: &Self::Expression,
-        obs: &Self::Observation,
+        obs: &Observation,
     ) -> Vec<Self::Expression>;
 
     /// A tournament selects an individual from a population.
@@ -272,18 +268,18 @@ pub trait GP: Send + Sync + Sized {
 
     /// Initializes a population, which is a list of programs and their scores sorted by score.
     /// The most-fit individual is the first element in the population.
-    fn init<R: Rng, O: Sync>(
+    fn init<R: Rng>(
         &self,
         params: &Self::Params,
         rng: &mut R,
         gpparams: &GPParams,
-        task: &Task<Self, Self::Expression, O>,
+        task: &impl Task<Observation, Representation = Self, Expression = Self::Expression>,
     ) -> Vec<(Self::Expression, f64)> {
-        let exprs = self.genesis(params, rng, gpparams.population_size, &task.tp);
+        let exprs = self.genesis(params, rng, gpparams.population_size, task.tp());
         exprs
             .into_iter()
             .map(|expr| {
-                let l = (task.oracle)(self, &expr);
+                let l = task.oracle(self, &expr);
                 (expr, l)
             })
             .sorted_by(|(_, x), (_, y)| x.partial_cmp(y).expect("found NaN"))
@@ -316,18 +312,18 @@ pub trait GP: Send + Sync + Sized {
         params: &Self::Params,
         rng: &mut R,
         gpparams: &GPParams,
-        task: &Task<Self, Self::Expression, Self::Observation>,
+        task: &impl Task<Observation, Representation = Self, Expression = Self::Expression>,
         population: &mut Vec<(Self::Expression, f64)>,
     ) {
         let mut children = Vec::with_capacity(gpparams.n_delta);
         while children.len() < gpparams.n_delta {
             let mut offspring = if rng.gen_bool(gpparams.mutation_prob) {
                 let parent = self.tournament(rng, gpparams.tournament_size, population);
-                self.mutate(params, rng, parent, &task.observation)
+                self.mutate(params, rng, parent, task.observation())
             } else {
                 let parent1 = self.tournament(rng, gpparams.tournament_size, population);
                 let parent2 = self.tournament(rng, gpparams.tournament_size, population);
-                self.crossover(params, rng, parent1, parent2, &task.observation)
+                self.crossover(params, rng, parent1, parent2, task.observation())
             };
             self.validate_offspring(params, population, &children, &mut offspring);
             children.append(&mut offspring);
@@ -336,7 +332,7 @@ pub trait GP: Send + Sync + Sized {
         gpparams.selection.update_population(
             population,
             children,
-            |child| (task.oracle)(self, child),
+            |child| task.oracle(self, child),
             rng,
         );
     }

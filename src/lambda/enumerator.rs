@@ -25,11 +25,11 @@ fn budget_interval(n: u32) -> (f64, f64) {
 
 pub fn run<F>(dsl: &Language, request: TypeSchema, termination_condition: F)
 where
-    F: Fn(Expression, f64) -> bool + Send + Sync,
+    F: Fn(Expression, f64) -> bool + Sync,
 {
     let mut ctx = Context::default();
     let tp = request.instantiate_owned(&mut ctx);
-    if ::rayon::current_num_threads() == 1 {
+    if rayon::current_num_threads() == 1 {
         // dfs
         let env = Rc::new(LinkedList::default());
         let cb = &mut |expr, logprior, _| !termination_condition(expr, logprior);
@@ -52,7 +52,7 @@ where
                     budget, &tp
                 );
             }
-            self::par::enumerate(dsl, &ctx, &tp, budget, &cb)
+            par::enumerate(dsl, &ctx, &tp, budget, &cb)
         });
     }
     if cfg!(feature = "verbose") {
@@ -205,9 +205,9 @@ mod par {
         cb: F,
     ) -> bool
     where
-        F: Fn(Expression, f64, Context) -> bool + Send + Sync,
+        F: Fn(Expression, f64, Context) -> bool + Sync,
     {
-        let shards = ::rayon::current_num_threads() * ENUMERATE_LOAD;
+        let shards = rayon::current_num_threads() * ENUMERATE_LOAD;
         let (items, bfss) = super::bfs::search(dsl, ctx, request, shards);
         if items
             .into_iter()

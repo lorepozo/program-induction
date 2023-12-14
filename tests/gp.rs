@@ -1,6 +1,6 @@
 use polytype::{ptp, tp};
 use programinduction::pcfg::{self, Grammar, Rule};
-use programinduction::{GPParams, GPSelection, Task, GP};
+use programinduction::{simple_task, GPParams, GPSelection, GP};
 use rand::{rngs::SmallRng, SeedableRng};
 
 #[test]
@@ -22,17 +22,16 @@ fn gp_sum_arith() {
         ],
     );
     let target = 6;
-    let task = Task {
-        oracle: Box::new(|g: &Grammar, expr| {
+    let task = simple_task(
+        |g: &Grammar, expr| {
             if let Ok(n) = g.eval(expr, &evaluator) {
                 (n - target).abs() as f64 // numbers close to target
             } else {
-                std::f64::INFINITY
+                f64::INFINITY
             }
-        }),
-        tp: ptp!(EXPR),
-        observation: (),
-    };
+        },
+        ptp!(EXPR),
+    );
 
     let gpparams = GPParams {
         selection: GPSelection::Deterministic,

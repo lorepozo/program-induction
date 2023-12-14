@@ -27,7 +27,7 @@ use rand::Rng;
 use std::collections::HashMap;
 
 use crate::lambda::{
-    task_by_evaluation_owned, Evaluator as EvaluatorT, Expression, Language, LiftedFunction,
+    task_by_evaluation, Evaluator as EvaluatorT, Expression, Language, LiftedFunction,
 };
 use crate::Task;
 
@@ -302,11 +302,11 @@ pub fn make_tasks<R: Rng>(
     rng: &mut R,
     count: usize,
     n_examples: usize,
-) -> Vec<Task<'static, Language, Expression, Vec<(Vec<Space>, Space)>>> {
+) -> Vec<impl Task<[(Vec<Space>, Space)], Representation = Language, Expression = Expression>> {
     (0..=count / 1467) // make_examples yields 1467 tasks
         .flat_map(|_| gen::make_examples(rng, n_examples))
         .take(count)
-        .map(|(_name, tp, examples)| task_by_evaluation_owned(Evaluator, tp, examples))
+        .map(|(_name, tp, examples)| task_by_evaluation(Evaluator, tp, examples))
         .collect()
 }
 

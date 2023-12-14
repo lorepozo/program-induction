@@ -80,7 +80,7 @@ pub struct ECParams {
 /// [`explore`]: #method.explore
 /// [`lambda::Language`]: lambda/struct.Language.html
 /// [`pcfg::Grammar`]: pcfg/struct.Grammar.html
-pub trait EC: Send + Sync + Sized {
+pub trait EC<Observation: ?Sized>: Sync + Sized {
     /// An Expression is a sentence in the representation. Tasks are solved by Expressions.
     type Expression: Clone + Send + Sync;
     /// Many representations have some parameters for compression. They belong here.
@@ -96,7 +96,7 @@ pub trait EC: Send + Sync + Sized {
     /// [`Expression`]: #associatedtype.Expression
     fn enumerate<F>(&self, tp: TypeSchema, termination_condition: F)
     where
-        F: Fn(Self::Expression, f64) -> bool + Send + Sync;
+        F: Fn(Self::Expression, f64) -> bool + Sync;
     /// Update the representation based on findings of expressions that solve [`Task`]s.
     ///
     /// The `frontiers` argument, and similar return value, must always be of the same size as
@@ -104,12 +104,12 @@ pub trait EC: Send + Sync + Sized {
     /// task, and the log-prior and log-likelihood for that expression.
     ///
     /// [`Task`]: struct.Task.html
-    fn compress<O: Sync>(
+    fn compress(
         &self,
         params: &Self::Params,
-        tasks: &[Task<Self, Self::Expression, O>],
-        frontiers: Vec<ECFrontier<Self>>,
-    ) -> (Self, Vec<ECFrontier<Self>>);
+        tasks: &[impl Task<Observation, Representation = Self, Expression = Self::Expression>],
+        frontiers: Vec<ECFrontier<Self::Expression>>,
+    ) -> (Self, Vec<ECFrontier<Self::Expression>>);
 
     // provided methods:
 
@@ -151,12 +151,12 @@ pub trait EC: Send + Sync + Sized {
     /// }
     /// ```
     ///
-    fn ec<O: Sync>(
+    fn ec(
         &self,
         ecparams: &ECParams,
         params: &Self::Params,
-        tasks: &[Task<Self, Self::Expression, O>],
-    ) -> (Self, Vec<ECFrontier<Self>>) {
+        tasks: &[impl Task<Observation, Representation = Self, Expression = Self::Expression>],
+    ) -> (Self, Vec<ECFrontier<Self::Expression>>) {
         let frontiers = self.explore(ecparams, tasks);
         if cfg!(feature = "verbose") {
             eprintln!(
@@ -177,15 +177,16 @@ pub trait EC: Send + Sync + Sized {
     /// Returned solutions include the log-prior and log-likelihood of successful expressions.
     ///
     /// [`ec`]: #method.ec
-    fn ec_with_recognition<O: Sync, R>(
+    fn ec_with_recognition<T, R>(
         &self,
         ecparams: &ECParams,
         params: &Self::Params,
-        tasks: &[Task<Self, Self::Expression, O>],
+        tasks: &[T],
         recognizer: R,
-    ) -> (Self, Vec<ECFrontier<Self>>)
+    ) -> (Self, Vec<ECFrontier<Self::Expression>>)
     where
-        R: FnOnce(&Self, &[Task<Self, Self::Expression, O>]) -> Vec<Self>,
+        T: Task<Observation, Representation = Self, Expression = Self::Expression>,
+        R: FnOnce(&Self, &[T]) -> Vec<Self>,
     {
         let recognized = recognizer(self, tasks);
         let frontiers = self.explore_with_recognition(ecparams, tasks, &recognized);
@@ -235,16 +236,18 @@ pub trait EC: Send + Sync + Sized {
     /// let frontiers = g.explore(&ec_params, &[task]);
     /// assert!(frontiers[0].best_solution().is_some());
     /// ```
-    fn explore<O: Sync>(
+    fn explore(
         &self,
         ec_params: &ECParams,
-        tasks: &[Task<Self, Self::Expression, O>],
-    ) -> Vec<ECFrontier<Self>> {
+        tasks: &[impl Task<Observation, Representation = Self, Expression = Self::Expression>],
+    ) -> Vec<ECFrontier<Self::Expression>> {
         let mut tps = HashMap::new();
         for (i, task) in tasks.iter().enumerate() {
-            tps.entry(&task.tp).or_insert_with(Vec::new).push((i, task))
+            tps.entry(task.tp())
+                .or_insert_with(Vec::new)
+                .push((i, task))
         }
-        let mut results: Vec<ECFrontier<Self>> =
+        let mut results: Vec<ECFrontier<Self::Expression>> =
             (0..tasks.len()).map(|_| ECFrontier::default()).collect();
         {
             let mutex = Arc::new(Mutex::new(&mut results));
@@ -261,18 +264,18 @@ pub trait EC: Send + Sync + Sized {
     /// Like [`explore`], but with specific "recognized" representations for each task.
     ///
     /// [`explore`]: #method.explore
-    fn explore_with_recognition<O: Sync>(
+    fn explore_with_recognition(
         &self,
         ec_params: &ECParams,
-        tasks: &[Task<Self, Self::Expression, O>],
+        tasks: &[impl Task<Observation, Representation = Self, Expression = Self::Expression>],
         representations: &[Self],
-    ) -> Vec<ECFrontier<Self>> {
+    ) -> Vec<ECFrontier<Self::Expression>> {
         tasks
             .par_iter()
             .zip(representations)
             .enumerate()
             .map(|(i, (t, repr))| {
-                enumerate_solutions(repr, ec_params, t.tp.clone(), vec![(i, t)])
+                enumerate_solutions(repr, ec_params, t.tp().clone(), vec![(i, t)])
                     .pop()
                     .unwrap()
                     .1
@@ -288,15 +291,16 @@ pub trait EC: Send + Sync + Sized {
 ///
 /// Each task will be associated with at most `params.frontier_limit` many such expressions,
 /// and enumeration is stopped when `params.search_limit` valid expressions have been checked.
-fn enumerate_solutions<L, X, O: Sync>(
+fn enumerate_solutions<Observation, L, T>(
     repr: &L,
     params: &ECParams,
     tp: TypeSchema,
-    tasks: Vec<(usize, &Task<L, X, O>)>,
-) -> Vec<(usize, ECFrontier<L>)>
+    tasks: Vec<(usize, &T)>,
+) -> Vec<(usize, ECFrontier<L::Expression>)>
 where
-    X: Send + Sync + Clone,
-    L: EC<Expression = X>,
+    Observation: ?Sized,
+    L: EC<Observation>,
+    T: Task<Observation, Representation = L, Expression = L::Expression>,
 {
     // initialization
     let frontiers: Vec<_> = tasks // associate task id with task and frontier
@@ -324,7 +328,7 @@ where
     // update frontiers and check for termination
     let termination_condition = {
         let frontiers = Arc::clone(&frontiers);
-        move |expr: X, logprior: f64| {
+        move |expr: L::Expression, logprior: f64| {
             if *is_terminated.read().unwrap() {
                 return true;
             }
@@ -335,7 +339,7 @@ where
                 .enumerate()
                 .filter_map(|(i, (_, ot, _))| ot.as_ref().map(|t| (i, t))) // only check incomplete tasks
                 .filter_map(|(i, t)| {
-                    let l = (t.oracle)(repr, &expr);
+                    let l = t.oracle(repr, &expr);
                     if l.is_finite() {
                         Some((i, expr.clone(), logprior, l))
                     } else {
@@ -384,29 +388,29 @@ where
 ///
 /// [`Expression`]: trait.EC.html#associatedtype.Expression
 #[derive(Clone, Debug)]
-pub struct ECFrontier<L: EC>(pub Vec<(L::Expression, f64, f64)>);
-impl<L: EC> ECFrontier<L> {
-    pub fn push(&mut self, expr: L::Expression, log_prior: f64, log_likelihood: f64) {
+pub struct ECFrontier<Expression>(pub Vec<(Expression, f64, f64)>);
+impl<Expression> ECFrontier<Expression> {
+    pub fn push(&mut self, expr: Expression, log_prior: f64, log_likelihood: f64) {
         self.0.push((expr, log_prior, log_likelihood))
     }
-    pub fn best_solution(&self) -> Option<&(L::Expression, f64, f64)> {
+    pub fn best_solution(&self) -> Option<&(Expression, f64, f64)> {
         self.0
             .iter()
             .max_by(|&&(_, xp, xl), &&(_, yp, yl)| (xp + xl).partial_cmp(&(yp + yl)).unwrap())
     }
 }
-impl<L: EC> Default for ECFrontier<L> {
+impl<Expression> Default for ECFrontier<Expression> {
     fn default() -> Self {
-        ECFrontier(vec![])
+        ECFrontier(Default::default())
     }
 }
-impl<L: EC> Deref for ECFrontier<L> {
-    type Target = Vec<(L::Expression, f64, f64)>;
+impl<Expression> Deref for ECFrontier<Expression> {
+    type Target = Vec<(Expression, f64, f64)>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
-impl<L: EC> DerefMut for ECFrontier<L> {
+impl<Expression> DerefMut for ECFrontier<Expression> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }

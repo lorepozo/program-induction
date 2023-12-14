@@ -35,7 +35,7 @@ where
 ///
 /// Use [`Language::eval`] to invoke.
 ///
-/// In many simple domains, using [`SimpleEvaluator::of`] where you need an `Evaluator` should
+/// In many simple domains, using [`SimpleEvaluator::from`] where you need an `Evaluator` should
 /// suffice. A custom implementation should be done if the domain has **first-class functions**, so
 /// that an [`Abstraction`] may by "lifted" into the domain's value space.
 ///
@@ -80,7 +80,7 @@ where
 /// }
 ///
 /// // Evaluator<Space = i32>
-/// let eval = SimpleEvaluator::of(evaluate);
+/// let eval = SimpleEvaluator::from(evaluate);
 /// ```
 ///
 /// A slightly more complicated domain, but still without first-class functions:
@@ -125,7 +125,7 @@ where
 /// }
 ///
 /// // Evaluator<Space = ArithSpace>
-/// let eval = SimpleEvaluator::of(evaluate);
+/// let eval = SimpleEvaluator::from(evaluate);
 /// ```
 ///
 /// For a domain with first-class functions, things get more complicated:
@@ -209,7 +209,6 @@ where
 /// let eval = ListsEvaluator;
 /// ```
 ///
-/// [`SimpleEvaluator::of`]: struct.SimpleEvaluator.html#method.of
 /// [`Abstraction`]: enum.Expression.html#variant.Abstraction
 /// [`Language`]: struct.Language.html
 /// [`Language::eval`]: struct.Language.html#method.eval
@@ -345,8 +344,8 @@ pub trait LazyEvaluator: Sized + Sync {
 ///
 /// [`Evaluator`]: trait.Evaluator.html
 /// [`of`]: #method.of
-pub struct SimpleEvaluator<V, R, F>(F, ::std::marker::PhantomData<(R, V)>);
-impl<V, R, F> SimpleEvaluator<V, R, F>
+pub struct SimpleEvaluator<V, R, F>(F, std::marker::PhantomData<fn(R, V)>);
+impl<V, R, F> From<F> for SimpleEvaluator<V, R, F>
 where
     V: Clone + PartialEq + Send + Sync,
     R: Clone + Sync,
@@ -367,10 +366,10 @@ where
     ///     }
     /// }
     ///
-    /// let eval = SimpleEvaluator::of(evaluate);
+    /// let eval = SimpleEvaluator::from(evaluate);
     /// ```
-    pub fn of(f: F) -> Self {
-        SimpleEvaluator(f, ::std::marker::PhantomData)
+    fn from(f: F) -> Self {
+        SimpleEvaluator(f, std::marker::PhantomData)
     }
 }
 impl<V, R, F> Evaluator for SimpleEvaluator<V, R, F>
@@ -392,7 +391,7 @@ where
 ///
 /// [`eval`]: #method.eval
 /// [`Evaluator`]: trait.Evaluator.html
-pub struct LiftedFunction<V: Clone + PartialEq + Send + Sync, E: Evaluator<Space = V>>(
+pub struct LiftedFunction<V, E>(
     Arc<ReducedExpression<V>>,
     Arc<E>,
     Arc<VecDeque<ReducedExpression<V>>>,
@@ -487,7 +486,7 @@ where
 
 use self::ReducedExpression::*;
 #[derive(Clone, PartialEq)]
-pub enum ReducedExpression<V: Clone + PartialEq + Send + Sync> {
+pub enum ReducedExpression<V> {
     Value(V),
     Primitive(String, TypeSchema),
     Application(Vec<ReducedExpression<V>>),

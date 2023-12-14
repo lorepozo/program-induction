@@ -29,6 +29,7 @@ use rand::{
     Rng,
 };
 use std::iter;
+use std::sync::Arc;
 
 use crate::lambda::{Evaluator as EvaluatorT, Expression, Language};
 use crate::Task;
@@ -121,7 +122,7 @@ impl EvaluatorT for Evaluator {
 pub fn make_tasks<R: Rng>(
     rng: &mut R,
     count: u32,
-) -> Vec<Task<'static, Language, Expression, Vec<bool>>> {
+) -> Vec<impl Task<[bool], Representation = Language, Expression = Expression>> {
     make_tasks_advanced(
         rng,
         count,
@@ -159,7 +160,7 @@ pub fn make_tasks_advanced<R: Rng>(
     gate_or: u32,
     gate_mux2: u32,
     gate_mux4: u32,
-) -> Vec<Task<'static, Language, Expression, Vec<bool>>> {
+) -> Vec<impl Task<[bool], Representation = Language, Expression = Expression>> {
     let n_input_distribution =
         WeightedIndex::new(n_input_weights).expect("invalid weights for number of circuit inputs");
     let n_gate_distribution =
@@ -175,40 +176,61 @@ pub fn make_tasks_advanced<R: Rng>(
                 n_inputs = 1 + n_input_distribution.sample(rng);
                 n_gates = 1 + n_gate_distribution.sample(rng);
             }
-            let tp = TypeSchema::Monotype(Type::from(vec![tp!(bool); n_inputs + 1]));
             let circuit = gates::Circuit::new(rng, &gate_weights, n_inputs as u32, n_gates);
             let outputs: Vec<_> = iter::repeat(vec![false, true])
                 .take(n_inputs)
                 .multi_cartesian_product()
                 .map(|ins| circuit.eval(&ins))
                 .collect();
-            let oracle_outputs = outputs.clone();
-            let evaluator = std::sync::Arc::new(Evaluator);
-            let oracle = Box::new(move |dsl: &Language, expr: &Expression| -> f64 {
-                let success = iter::repeat(vec![false, true])
-                    .take(n_inputs)
-                    .multi_cartesian_product()
-                    .zip(&oracle_outputs)
-                    .all(|(inps, out)| {
-                        if let Ok(o) = dsl.eval_arc(expr, &evaluator, &inps) {
-                            o == *out
-                        } else {
-                            false
-                        }
-                    });
-                if success {
-                    0f64
-                } else {
-                    f64::NEG_INFINITY
-                }
-            });
-            Task {
-                oracle,
-                observation: outputs,
-                tp,
-            }
+            CircuitTask::new(n_inputs, outputs)
         })
         .collect()
+}
+
+struct CircuitTask {
+    n_inputs: usize,
+    expected_outputs: Vec<bool>,
+    tp: TypeSchema,
+}
+impl CircuitTask {
+    fn new(n_inputs: usize, expected_outputs: Vec<bool>) -> Self {
+        let tp = TypeSchema::Monotype(Type::from(vec![tp!(bool); n_inputs + 1]));
+        CircuitTask {
+            n_inputs,
+            expected_outputs,
+            tp,
+        }
+    }
+}
+impl Task<[bool]> for CircuitTask {
+    type Representation = Language;
+    type Expression = Expression;
+
+    fn oracle(&self, dsl: &Self::Representation, expr: &Self::Expression) -> f64 {
+        let evaluator = Arc::new(Evaluator);
+        let success = iter::repeat(vec![false, true])
+            .take(self.n_inputs)
+            .multi_cartesian_product()
+            .zip(&self.expected_outputs)
+            .all(|(inps, out)| {
+                if let Ok(o) = dsl.eval_arc(expr, &evaluator, &inps) {
+                    o == *out
+                } else {
+                    false
+                }
+            });
+        if success {
+            0f64
+        } else {
+            f64::NEG_INFINITY
+        }
+    }
+    fn tp(&self) -> &TypeSchema {
+        &self.tp
+    }
+    fn observation(&self) -> &[bool] {
+        &self.expected_outputs
+    }
 }
 
 mod gates {

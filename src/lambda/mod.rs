@@ -4,7 +4,7 @@
 //!
 //! ```
 //! use polytype::{ptp, tp};
-//! use programinduction::lambda::{task_by_evaluation, Language, SimpleEvaluator};
+//! use programinduction::{Task, lambda::{task_by_evaluation, Language, SimpleEvaluator}};
 //!
 //! fn evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
 //!     match name {
@@ -24,11 +24,11 @@
 //! // task: sum 1 with two numbers
 //! let tp = ptp!(@arrow[tp!(int), tp!(int), tp!(int)]);
 //! let examples = vec![(vec![2, 5], 8), (vec![1, 2], 4)];
-//! let task = task_by_evaluation(SimpleEvaluator::of(evaluate), tp, &examples);
+//! let task = task_by_evaluation(SimpleEvaluator::from(evaluate), tp, &examples);
 //!
 //! // solution:
 //! let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
-//! assert!((task.oracle)(&dsl, &expr).is_finite())
+//! assert!(task.oracle(&dsl, &expr).is_finite())
 //! ```
 
 mod compression;
@@ -209,12 +209,12 @@ impl Language {
     ///
     /// [Inducing Tree-Substitution Grammars]: http://jmlr.csail.mit.edu/papers/volume11/cohn10b/cohn10b.pdf
     /// [Fragment Grammars]: https://dspace.mit.edu/bitstream/handle/1721.1/44963/MIT-CSAIL-TR-2009-013.pdf
-    pub fn compress<O: Sync>(
+    pub fn compress<Observation: ?Sized>(
         &self,
         params: &CompressionParams,
-        tasks: &[Task<Language, Expression, O>],
-        frontiers: Vec<ECFrontier<Self>>,
-    ) -> (Self, Vec<ECFrontier<Self>>) {
+        tasks: &[impl Task<Observation, Representation = Language, Expression = Expression>],
+        frontiers: Vec<ECFrontier<Expression>>,
+    ) -> (Self, Vec<ECFrontier<Expression>>) {
         compression::induce_fragment_grammar(self, params, tasks, frontiers)
     }
 
@@ -242,7 +242,7 @@ impl Language {
     ///     ("1", ptp!(int)),
     ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
     /// ]);
-    /// let eval = SimpleEvaluator::of(evaluate);
+    /// let eval = SimpleEvaluator::from(evaluate);
     /// let expr = dsl.parse("(λ (λ (+ (+ 1 $0) $1)))").unwrap();
     /// let inps = vec![2, 5];
     /// let evaluated = dsl.eval(&expr, eval, &inps).unwrap();
@@ -579,21 +579,21 @@ impl Language {
         cands
     }
 }
-impl EC for Language {
+impl<Observation: ?Sized> EC<Observation> for Language {
     type Expression = Expression;
     type Params = CompressionParams;
     fn enumerate<F>(&self, tp: TypeSchema, termination_condition: F)
     where
-        F: Fn(Expression, f64) -> bool + Send + Sync,
+        F: Fn(Expression, f64) -> bool + Sync,
     {
         enumerator::run(self, tp, termination_condition)
     }
-    fn compress<O: Sync>(
+    fn compress(
         &self,
         params: &Self::Params,
-        tasks: &[Task<Self, Self::Expression, O>],
-        frontiers: Vec<ECFrontier<Self>>,
-    ) -> (Self, Vec<ECFrontier<Self>>) {
+        tasks: &[impl Task<Observation, Representation = Self, Expression = Self::Expression>],
+        frontiers: Vec<ECFrontier<Expression>>,
+    ) -> (Self, Vec<ECFrontier<Expression>>) {
         self.compress(params, tasks, frontiers)
     }
 }
@@ -900,7 +900,7 @@ impl Expression {
 ///
 /// ```
 /// use polytype::{ptp, tp};
-/// use programinduction::lambda::{task_by_evaluation, Language, SimpleEvaluator};
+/// use programinduction::{Task, lambda::{task_by_evaluation, Language, SimpleEvaluator}};
 ///
 /// fn evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
 ///     match name {
@@ -913,7 +913,7 @@ impl Expression {
 ///
 /// let examples = vec![(vec![2, 5], 8), (vec![1, 2], 4)];
 /// let tp = ptp!(@arrow[tp!(int), tp!(int), tp!(int)]);
-/// let task = task_by_evaluation(SimpleEvaluator::of(evaluate), tp, &examples);
+/// let task = task_by_evaluation(SimpleEvaluator::from(evaluate), tp, &examples);
 ///
 /// let dsl = Language::uniform(vec![
 ///     ("0", ptp!(int)),
@@ -921,68 +921,21 @@ impl Expression {
 ///     ("+", ptp!(@arrow[tp!(int), tp!(int), tp!(int)])),
 /// ]);
 /// let expr = dsl.parse("(λ (+ (+ 1 $0)))").unwrap();
-/// assert!((task.oracle)(&dsl, &expr).is_finite())
+/// assert!(task.oracle(&dsl, &expr).is_finite())
 /// ```
-pub fn task_by_evaluation<'a, E, V>(
+pub fn task_by_evaluation<E, V>(
     evaluator: E,
     tp: TypeSchema,
-    examples: &'a [(Vec<V>, V)],
-) -> Task<'a, Language, Expression, &'a [(Vec<V>, V)]>
+    examples: impl AsRef<[(Vec<V>, V)]> + Sync,
+) -> impl Task<[(Vec<V>, V)], Representation = Language, Expression = Expression>
 where
-    E: Evaluator<Space = V> + Send + 'a,
-    V: PartialEq + Clone + Send + Sync + 'a,
+    E: Evaluator<Space = V> + Send,
+    V: PartialEq + Clone + Send + Sync,
 {
-    let evaluator = Arc::new(evaluator);
-    let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
-        let success = examples.iter().all(|(inps, out)| {
-            if let Ok(o) = dsl.eval_arc(expr, &evaluator, inps) {
-                o == *out
-            } else {
-                false
-            }
-        });
-        if success {
-            0f64
-        } else {
-            f64::NEG_INFINITY
-        }
-    });
-    Task {
-        oracle,
-        observation: examples,
+    LambdaTask::<false, _, _> {
+        evaluator: Arc::new(evaluator),
         tp,
-    }
-}
-
-pub fn task_by_evaluation_owned<E, V>(
-    evaluator: E,
-    tp: TypeSchema,
-    examples: Vec<(Vec<V>, V)>,
-) -> Task<'static, Language, Expression, Vec<(Vec<V>, V)>>
-where
-    E: Evaluator<Space = V> + Send + 'static,
-    V: PartialEq + Clone + Send + Sync + 'static,
-{
-    let evaluator = Arc::new(evaluator);
-    let oracle_examples = examples.clone();
-    let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
-        let success = oracle_examples.iter().all(|(inps, out)| {
-            if let Ok(o) = dsl.eval_arc(expr, &evaluator, inps) {
-                o == *out
-            } else {
-                false
-            }
-        });
-        if success {
-            0f64
-        } else {
-            f64::NEG_INFINITY
-        }
-    });
-    Task {
-        oracle,
-        observation: examples,
-        tp,
+        examples,
     }
 }
 
@@ -990,19 +943,40 @@ where
 ///
 /// [`LazyEvaluator`]: trait.LazyEvaluator.html
 /// [`task_by_evaluation`]: fn.task_by_evaluation.html
-pub fn task_by_lazy_evaluation<'a, E, V>(
+pub fn task_by_lazy_evaluation<E, V>(
     evaluator: E,
     tp: TypeSchema,
-    examples: &'a [(Vec<V>, V)],
-) -> Task<'a, Language, Expression, &'a [(Vec<V>, V)]>
+    examples: impl AsRef<[(Vec<V>, V)]> + Sync,
+) -> impl Task<[(Vec<V>, V)], Representation = Language, Expression = Expression>
 where
-    E: LazyEvaluator<Space = V> + Send + 'a,
-    V: PartialEq + Clone + Send + Sync + 'a,
+    E: LazyEvaluator<Space = V> + Send,
+    V: PartialEq + Clone + Send + Sync,
 {
-    let evaluator = Arc::new(evaluator);
-    let oracle = Box::new(move |dsl: &Language, expr: &Expression| {
-        let success = examples.iter().all(|(inps, out)| {
-            if let Ok(o) = dsl.lazy_eval_arc(expr, &evaluator, inps) {
+    LambdaTask::<true, _, _> {
+        evaluator: Arc::new(evaluator),
+        tp,
+        examples,
+    }
+}
+
+struct LambdaTask<const LAZY: bool, E, O: Sync> {
+    evaluator: Arc<E>,
+    tp: TypeSchema,
+    examples: O,
+}
+impl<
+        V: PartialEq + Clone + Send + Sync,
+        E: Evaluator<Space = V> + Send,
+        O: AsRef<[(Vec<V>, V)]> + Sync,
+    > Task<[(Vec<V>, V)]> for LambdaTask<false, E, O>
+{
+    type Representation = Language;
+    type Expression = Expression;
+
+    fn oracle(&self, dsl: &Language, expr: &Expression) -> f64 {
+        let success = self.examples.as_ref().iter().all(|(inps, out)| {
+            let result = dsl.eval_arc(expr, &self.evaluator, inps);
+            if let Ok(o) = result {
                 o == *out
             } else {
                 false
@@ -1013,11 +987,43 @@ where
         } else {
             f64::NEG_INFINITY
         }
-    });
-    Task {
-        oracle,
-        observation: examples,
-        tp,
+    }
+    fn tp(&self) -> &TypeSchema {
+        &self.tp
+    }
+    fn observation(&self) -> &[(Vec<V>, V)] {
+        self.examples.as_ref()
+    }
+}
+impl<
+        V: PartialEq + Clone + Send + Sync,
+        E: LazyEvaluator<Space = V> + Send,
+        O: AsRef<[(Vec<V>, V)]> + Sync,
+    > Task<[(Vec<V>, V)]> for LambdaTask<true, E, O>
+{
+    type Representation = Language;
+    type Expression = Expression;
+
+    fn oracle(&self, dsl: &Language, expr: &Expression) -> f64 {
+        let success = self.examples.as_ref().iter().all(|(inps, out)| {
+            let result = dsl.lazy_eval_arc(expr, &self.evaluator, inps);
+            if let Ok(o) = result {
+                o == *out
+            } else {
+                false
+            }
+        });
+        if success {
+            0f64
+        } else {
+            f64::NEG_INFINITY
+        }
+    }
+    fn tp(&self) -> &TypeSchema {
+        &self.tp
+    }
+    fn observation(&self) -> &[(Vec<V>, V)] {
+        self.examples.as_ref()
     }
 }
 

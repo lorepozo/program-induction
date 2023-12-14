@@ -75,7 +75,7 @@ impl Default for CompressionParams {
 /// - `state: I` can be mutated by making it `Arc<RwLock<_>>`, though it will often just be `()`
 ///   unless you really need it.
 /// - type `X` is for a _candidate_, something which can be used to update a dsl.
-/// - `proposer` pushes a bunch of candidates to the given vector.
+/// - `proposer` pushes candidates to the given vector.
 /// - `proposal_to_dsl` adds the candidate to the dsl and returns a new joint minimum description
 ///   length for the dsl. For example, this may be set to:
 ///
@@ -109,30 +109,31 @@ impl Default for CompressionParams {
 /// [`lambda::Expression`]: enum.Expression.html
 /// [`lambda::Language`]: struct.Language.html
 #[allow(clippy::too_many_arguments)]
-pub fn induce<O: Sync, I, X, P, D, F, R>(
+pub fn induce<O, T, I, P, D, F, R>(
     dsl: &Language,
     params: &CompressionParams,
-    tasks: &[Task<Language, Expression, O>],
-    mut original_frontiers: Vec<ECFrontier<Language>>,
+    tasks: &[T],
+    mut original_frontiers: Vec<ECFrontier<Expression>>,
     state: I,
     proposer: P,
     proposal_to_dsl: D,
     defragment: F,
     rewrite_frontiers: R,
-) -> (Language, Vec<ECFrontier<Language>>)
+) -> (Language, Vec<ECFrontier<Expression>>)
 where
-    X: Send,
-    I: Send + Sync,
+    O: ?Sized,
+    T: Task<O, Representation = Language, Expression = Expression>,
+    I: Sync,
     P: Fn(
             &I,
             &Language,
             &[(TypeSchema, Vec<(Expression, f64, f64)>)],
             &CompressionParams,
-            &mut Vec<X>,
+            &mut Vec<T::Expression>,
         ) + Sync,
     D: Fn(
             &I,
-            &X,
+            &T::Expression,
             &mut Language,
             &[(TypeSchema, Vec<(Expression, f64, f64)>)],
             &CompressionParams,
@@ -141,7 +142,7 @@ where
     F: Fn(Expression) -> Expression,
     R: Fn(
         &I,
-        X,
+        T::Expression,
         Expression,
         &Language,
         &mut Vec<(TypeSchema, Vec<(Expression, f64, f64)>)>,
@@ -151,7 +152,7 @@ where
     let mut dsl = dsl.clone();
     let mut frontiers: Vec<RescoredFrontier> = tasks
         .par_iter()
-        .map(|t| t.tp.clone())
+        .map(|t| t.tp().clone())
         .zip(&original_frontiers)
         .filter(|&(_, f)| !f.is_empty())
         .map(|(tp, f)| (tp, f.0.clone()))
@@ -275,12 +276,12 @@ pub fn inside_outside(
     dsl.inside_outside_internal(frontiers, pseudocounts)
 }
 
-pub fn induce_fragment_grammar<O: Sync>(
+pub fn induce_fragment_grammar<Observation: ?Sized>(
     dsl: &Language,
     params: &CompressionParams,
-    tasks: &[Task<Language, Expression, O>],
-    original_frontiers: Vec<ECFrontier<Language>>,
-) -> (Language, Vec<ECFrontier<Language>>) {
+    tasks: &[impl Task<Observation, Representation = Language, Expression = Expression>],
+    original_frontiers: Vec<ECFrontier<Expression>>,
+) -> (Language, Vec<ECFrontier<Expression>>) {
     induce(
         dsl,
         params,
