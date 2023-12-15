@@ -554,13 +554,15 @@ mod bfs {
     }
     impl Eq for BestFirstState {}
     impl PartialOrd for BestFirstState {
-        fn partial_cmp(&self, other: &BestFirstState) -> Option<::std::cmp::Ordering> {
-            self.cost.partial_cmp(&other.cost)
+        fn partial_cmp(&self, other: &BestFirstState) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
         }
     }
     impl Ord for BestFirstState {
-        fn cmp(&self, other: &BestFirstState) -> ::std::cmp::Ordering {
-            self.partial_cmp(other).unwrap()
+        fn cmp(&self, other: &BestFirstState) -> std::cmp::Ordering {
+            self.cost
+                .partial_cmp(&other.cost)
+                .expect("cost for BestFirstState is not finite")
         }
     }
 

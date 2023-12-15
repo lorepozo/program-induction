@@ -497,13 +497,14 @@ impl Rule {
 }
 impl Ord for Rule {
     fn cmp(&self, other: &Rule) -> cmp::Ordering {
-        self.partial_cmp(other)
+        self.logprob
+            .partial_cmp(&other.logprob)
             .expect("logprob for rule is not finite")
     }
 }
 impl PartialOrd for Rule {
     fn partial_cmp(&self, other: &Rule) -> Option<cmp::Ordering> {
-        self.logprob.partial_cmp(&other.logprob)
+        Some(self.cmp(other))
     }
 }
 impl PartialEq for Rule {

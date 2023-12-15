@@ -559,7 +559,7 @@ impl Language {
         }
         // update probabilities for indices
         let log_n_indexed = ((cands.len() - indexed_start) as f64).ln();
-        for mut c in &mut cands[indexed_start..] {
+        for c in &mut cands[indexed_start..] {
             c.0 -= log_n_indexed
         }
         // normalize
@@ -574,7 +574,7 @@ impl Language {
                 .map(|&(p, _, _, _)| (p - p_largest).exp())
                 .sum::<f64>()
                 .ln();
-        for mut c in &mut cands {
+        for c in &mut cands {
             c.0 -= z;
         }
         cands
