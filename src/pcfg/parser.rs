@@ -1,26 +1,29 @@
-use nom::types::CompleteStr;
-use nom::{alt, delimited, do_parse, named, separated_list, tag, take_while, ws};
 use polytype::Type;
-use std::{error, fmt};
+use winnow::{
+    ascii::multispace0,
+    combinator::{alt, delimited, separated},
+    prelude::*,
+    token::take_while,
+};
 
 use super::{AppliedRule, Grammar, Rule};
 
 #[derive(Clone, Debug)]
 pub enum ParseError {
     InapplicableRule(Type, String),
-    NomError(String),
+    Other(String),
 }
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         match *self {
             ParseError::InapplicableRule(ref nt, ref s) => {
-                write!(f, "invalide rule {} for nonterminal {}", s, nt)
+                write!(f, "invalid rule {} for nonterminal {}", s, nt)
             }
-            ParseError::NomError(ref err) => write!(f, "could not parse: {}", err),
+            ParseError::Other(ref err) => write!(f, "could not parse: {}", err),
         }
     }
 }
-impl error::Error for ParseError {
+impl std::error::Error for ParseError {
     fn description(&self) -> &str {
         "could not parse expression"
     }
@@ -61,27 +64,35 @@ impl Item {
     }
 }
 
-/// doesn't match parentheses or comma, but matches most ascii printable characters.
 fn alphanumeric_ext(c: char) -> bool {
     (c >= 0x21 as char && c <= 0x7E as char) && !(c == '(' || c == ')' || c == ',')
 }
 
-named!(var<CompleteStr, Item>,
-do_parse!(
-    name: ws!( take_while!(alphanumeric_ext) ) >>
-    (Item(name.to_string(), vec![]))
-));
-named!(func<CompleteStr, Item>,
-do_parse!(
-    name: ws!( take_while!(alphanumeric_ext) ) >>
-    args: delimited!(tag!("("), separated_list!(tag!(","), expr), tag!(")")) >>
-    (Item(name.to_string(), args))
-));
-named!(expr<CompleteStr, Item>, alt!(func | var));
+fn parse_item_name(input: &mut &str) -> PResult<String> {
+    multispace0(input)?;
+    let name = take_while(0.., alphanumeric_ext).parse_next(input)?;
+    multispace0(input)?;
+    Ok(name.to_owned())
+}
+
+fn parse_var(input: &mut &str) -> PResult<Item> {
+    let name = parse_item_name.parse_next(input)?;
+    Ok(Item(name, vec![]))
+}
+
+fn parse_func(input: &mut &str) -> PResult<Item> {
+    let name = parse_item_name.parse_next(input)?;
+    let args = delimited("(", separated(0.., parse_expr, ","), ")").parse_next(input)?;
+    Ok(Item(name, args))
+}
+
+fn parse_expr(input: &mut &str) -> PResult<Item> {
+    alt((parse_func, parse_var)).parse_next(input)
+}
 
 pub fn parse(grammar: &Grammar, input: &str, nt: Type) -> Result<AppliedRule, ParseError> {
-    match expr(CompleteStr(input)) {
-        Ok((_, item)) => item.into_applied(grammar, nt),
-        Err(err) => Err(ParseError::NomError(format!("{:?}", err))),
+    match parse_expr.parse(input) {
+        Ok(item) => item.into_applied(grammar, nt),
+        Err(err) => Err(ParseError::Other(err.to_string())),
     }
 }
