@@ -39,7 +39,7 @@ pub use self::parser::ParseError;
 
 use crossbeam_channel::bounded;
 use itertools::Itertools;
-use polytype::{Type, TypeSchema};
+use polytype::{Type, TypeScheme};
 use rand::distributions::{Distribution, Uniform};
 use rand::seq::SliceRandom;
 use rand::Rng;
@@ -317,12 +317,12 @@ impl<Observation: ?Sized> EC<Observation> for Grammar {
     type Expression = AppliedRule;
     type Params = EstimationParams;
 
-    fn enumerate<F>(&self, tp: TypeSchema, termination_condition: F)
+    fn enumerate<F>(&self, tp: TypeScheme, termination_condition: F)
     where
         F: FnMut(Self::Expression, f64) -> bool,
     {
         match tp {
-            TypeSchema::Monotype(tp) => enumerator::new(self, tp, termination_condition),
+            TypeScheme::Monotype(tp) => enumerator::new(self, tp, termination_condition),
             _ => panic!("PCFGs can't handle polytypes"),
         }
     }
@@ -405,10 +405,10 @@ impl GP<()> for Grammar {
         _params: &Self::Params,
         rng: &mut R,
         pop_size: usize,
-        tp: &TypeSchema,
+        tp: &TypeScheme,
     ) -> Vec<Self::Expression> {
         let tp = match *tp {
-            TypeSchema::Monotype(ref tp) => tp,
+            TypeScheme::Monotype(ref tp) => tp,
             _ => panic!("PCFGs can't handle polytypes"),
         };
         (0..pop_size).map(|_| self.sample(tp, rng)).collect()
@@ -575,13 +575,13 @@ where
     PcfgTask {
         evaluator,
         output,
-        tp: TypeSchema::Monotype(tp),
+        tp: TypeScheme::Monotype(tp),
     }
 }
 struct PcfgTask<'a, V, F> {
     evaluator: F,
     output: &'a V,
-    tp: TypeSchema,
+    tp: TypeScheme,
 }
 impl<V, E, F> Task<V> for PcfgTask<'_, V, F>
 where
@@ -602,7 +602,7 @@ where
             f64::NEG_INFINITY
         }
     }
-    fn tp(&self) -> &TypeSchema {
+    fn tp(&self) -> &TypeScheme {
         &self.tp
     }
     fn observation(&self) -> &V {

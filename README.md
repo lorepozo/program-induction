@@ -123,7 +123,7 @@ _strings_.
 - [x] `impl GP for pcfg::Grammar` is not yet complete.
 - [ ] Eta-long sidestepping (so `f` gets enumerated instead of `(λ (f $0))`)
 - [ ] Consolidate lazy/non-lazy evaluation (for ergonomics).
-- [ ] Permit non-`&'static str`-named `Type`/`TypeSchema`.
+- [ ] Permit non-`&'static str`-named `Type`/`TypeScheme`.
 - [ ] Ability to include recursive primitives in `lambda` representation.
 - [ ] Faster lambda calculus evaluation (less cloning; bubble up whether
       beta reduction happened rather than ultimate equality comparison).

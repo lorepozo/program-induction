@@ -52,7 +52,7 @@ pub use self::rewrite::TRS;
 use crate::Task;
 
 use polytype;
-use polytype::TypeSchema;
+use polytype::TypeScheme;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use term_rewriting::{Rule, TRSError};
@@ -184,7 +184,7 @@ pub fn task_by_rewrite<'a, O: Sync + 'a>(
 struct TrsTask<'a, O> {
     data: &'a [Rule],
     params: ModelParams,
-    tp: TypeSchema,
+    tp: TypeScheme,
     observation: O,
 }
 impl<'a, O: Sync> Task<O> for TrsTask<'a, O> {
@@ -194,7 +194,7 @@ impl<'a, O: Sync> Task<O> for TrsTask<'a, O> {
     fn oracle(&self, _: &Lexicon, h: &TRS) -> f64 {
         -h.posterior(self.data, self.params)
     }
-    fn tp(&self) -> &TypeSchema {
+    fn tp(&self) -> &TypeScheme {
         &self.tp
     }
     fn observation(&self) -> &O {

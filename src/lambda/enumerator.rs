@@ -1,4 +1,4 @@
-use polytype::{Context, Type, TypeSchema};
+use polytype::{Context, Type, TypeScheme};
 use std::collections::VecDeque;
 use std::rc::Rc;
 
@@ -23,7 +23,7 @@ fn budget_interval(n: u32) -> (f64, f64) {
     }
 }
 
-pub fn run<F>(dsl: &Language, request: TypeSchema, termination_condition: F)
+pub fn run<F>(dsl: &Language, request: TypeScheme, termination_condition: F)
 where
     F: Fn(Expression, f64) -> bool + Sync,
 {
@@ -60,7 +60,7 @@ where
     }
 }
 
-pub fn likelihood(dsl: &Language, request: &TypeSchema, expr: &Expression) -> f64 {
+pub fn likelihood(dsl: &Language, request: &TypeScheme, expr: &Expression) -> f64 {
     let mut ctx = Context::default();
     let env = Rc::new(LinkedList::default());
     let t = request.clone().instantiate_owned(&mut ctx);

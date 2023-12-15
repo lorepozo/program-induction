@@ -1,6 +1,6 @@
 use crossbeam_channel::bounded;
 use itertools::Itertools;
-use polytype::{Context, Type, TypeSchema};
+use polytype::{Context, Type, TypeScheme};
 use rayon::join;
 use rayon::prelude::*;
 use std::borrow::Cow;
@@ -127,7 +127,7 @@ where
     P: Fn(
             &I,
             &Language,
-            &[(TypeSchema, Vec<(Expression, f64, f64)>)],
+            &[(TypeScheme, Vec<(Expression, f64, f64)>)],
             &CompressionParams,
             &mut Vec<T::Expression>,
         ) + Sync,
@@ -135,7 +135,7 @@ where
             &I,
             &T::Expression,
             &mut Language,
-            &[(TypeSchema, Vec<(Expression, f64, f64)>)],
+            &[(TypeScheme, Vec<(Expression, f64, f64)>)],
             &CompressionParams,
         ) -> Option<f64>
         + Sync,
@@ -145,7 +145,7 @@ where
         T::Expression,
         Expression,
         &Language,
-        &mut Vec<(TypeSchema, Vec<(Expression, f64, f64)>)>,
+        &mut Vec<(TypeScheme, Vec<(Expression, f64, f64)>)>,
         &CompressionParams,
     ),
 {
@@ -253,7 +253,7 @@ where
 }
 
 /// A convenient frontier representation.
-pub type RescoredFrontier = (TypeSchema, Vec<(Expression, f64, f64)>);
+pub type RescoredFrontier = (TypeScheme, Vec<(Expression, f64, f64)>);
 
 pub fn joint_mdl(dsl: &Language, frontiers: &[RescoredFrontier]) -> f64 {
     frontiers
@@ -408,7 +408,7 @@ impl Language {
 
     /// This is similar to `enumerator::likelihood` but it does a lot more work to determine
     /// _outside_ counts.
-    fn uses(&self, request: &TypeSchema, expr: &Expression) -> (f64, Uses) {
+    fn uses(&self, request: &TypeScheme, expr: &Expression) -> (f64, Uses) {
         let mut ctx = Context::default();
         let tp = request.clone().instantiate_owned(&mut ctx);
         let env = Rc::new(LinkedList::default());

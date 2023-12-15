@@ -1,7 +1,7 @@
 //! Representations capable of Genetic Programming.
 
 use itertools::Itertools;
-use polytype::TypeSchema;
+use polytype::TypeScheme;
 use rand::{distributions::Distribution, distributions::WeightedIndex, seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -225,7 +225,7 @@ pub trait GP<Observation: ?Sized> {
         params: &Self::Params,
         rng: &mut R,
         pop_size: usize,
-        tp: &TypeSchema,
+        tp: &TypeScheme,
     ) -> Vec<Self::Expression>;
 
     /// Mutate a single program, potentially producing multiple offspring

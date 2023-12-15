@@ -108,7 +108,7 @@ pub use crate::ec::*;
 pub use crate::gp::*;
 use std::marker::PhantomData;
 
-use polytype::TypeSchema;
+use polytype::TypeScheme;
 
 /// A task which is solved by an expression under some representation.
 ///
@@ -127,7 +127,7 @@ pub trait Task<Observation: ?Sized>: Sync {
     fn oracle(&self, dsl: &Self::Representation, expr: &Self::Expression) -> f64;
 
     /// An expression that is considered valid for the `oracle` is one of this type.
-    fn tp(&self) -> &TypeSchema;
+    fn tp(&self) -> &TypeScheme;
 
     /// Some program induction methods can take advantage of observations. This may often
     /// practically be the [`unit`] type `()`.
@@ -138,7 +138,7 @@ pub trait Task<Observation: ?Sized>: Sync {
 
 pub fn noop_task<R, E>(
     value: f64,
-    ptp: TypeSchema,
+    ptp: TypeScheme,
 ) -> impl Task<(), Representation = R, Expression = E> {
     NoopTask {
         value,
@@ -149,7 +149,7 @@ pub fn noop_task<R, E>(
 
 pub fn simple_task<R, E>(
     oracle_fn: impl Fn(&R, &E) -> f64 + Sync,
-    ptp: TypeSchema,
+    ptp: TypeScheme,
 ) -> impl Task<(), Representation = R, Expression = E> {
     SimpleTask {
         oracle_fn,
@@ -160,7 +160,7 @@ pub fn simple_task<R, E>(
 
 struct NoopTask<R, E> {
     value: f64,
-    ptp: TypeSchema,
+    ptp: TypeScheme,
     _marker: PhantomData<fn(R, E)>, // using fn to give Send/Sync
 }
 impl<R, E> Task<()> for NoopTask<R, E> {
@@ -169,7 +169,7 @@ impl<R, E> Task<()> for NoopTask<R, E> {
     fn oracle(&self, _dsl: &Self::Representation, _expr: &Self::Expression) -> f64 {
         self.value
     }
-    fn tp(&self) -> &TypeSchema {
+    fn tp(&self) -> &TypeScheme {
         &self.ptp
     }
     fn observation(&self) -> &() {
@@ -179,7 +179,7 @@ impl<R, E> Task<()> for NoopTask<R, E> {
 
 struct SimpleTask<R, E, F: Sync> {
     oracle_fn: F,
-    ptp: TypeSchema,
+    ptp: TypeScheme,
     _marker: PhantomData<fn(R, E)>, // using fn to give Send/Sync
 }
 impl<R, E, F> Task<()> for SimpleTask<R, E, F>
@@ -191,7 +191,7 @@ where
     fn oracle(&self, dsl: &Self::Representation, expr: &Self::Expression) -> f64 {
         (self.oracle_fn)(dsl, expr)
     }
-    fn tp(&self) -> &TypeSchema {
+    fn tp(&self) -> &TypeScheme {
         &self.ptp
     }
     fn observation(&self) -> &() {

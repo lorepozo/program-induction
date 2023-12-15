@@ -24,7 +24,7 @@
 //! ```
 
 use itertools::Itertools;
-use polytype::{ptp, tp, Type, TypeSchema};
+use polytype::{ptp, tp, Type, TypeScheme};
 use rand::{
     distributions::{Distribution, WeightedIndex},
     Rng,
@@ -191,11 +191,11 @@ pub fn make_tasks_advanced<R: Rng>(
 struct CircuitTask {
     n_inputs: usize,
     expected_outputs: Vec<bool>,
-    tp: TypeSchema,
+    tp: TypeScheme,
 }
 impl CircuitTask {
     fn new(n_inputs: usize, expected_outputs: Vec<bool>) -> Self {
-        let tp = TypeSchema::Monotype(Type::from(vec![tp!(bool); n_inputs + 1]));
+        let tp = TypeScheme::Monotype(Type::from(vec![tp!(bool); n_inputs + 1]));
         CircuitTask {
             n_inputs,
             expected_outputs,
@@ -226,7 +226,7 @@ impl Task<[bool]> for CircuitTask {
             f64::NEG_INFINITY
         }
     }
-    fn tp(&self) -> &TypeSchema {
+    fn tp(&self) -> &TypeScheme {
         &self.tp
     }
     fn observation(&self) -> &[bool] {

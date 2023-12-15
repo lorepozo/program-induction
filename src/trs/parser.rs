@@ -1,6 +1,6 @@
 use super::lexicon::Lexicon;
 use super::rewrite::TRS;
-use polytype::{Context as TypeContext, TypeSchema};
+use polytype::{Context as TypeContext, TypeScheme};
 use std::fmt;
 use std::io;
 use term_rewriting::{
@@ -52,13 +52,13 @@ impl ::std::error::Error for ParseError {
 /// # Lexicon syntax
 ///
 /// `input` is parsed as a `lexicon`, defined below in [augmented Backus-Naur
-/// form]. The definition of `schema` is as given in [`polytype`], while other
+/// form]. The definition of `scheme` is as given in [`polytype`], while other
 /// terms are as given in [`term_rewriting`]:
 ///
 /// ```text
 /// lexicon = *wsp *( *comment declaration ";" *comment ) *wsp
 ///
-/// declaration = *wsp identifier *wsp ":" *wsp schema *wsp
+/// declaration = *wsp identifier *wsp ":" *wsp scheme *wsp
 /// ```
 ///
 /// # Background syntax
@@ -169,23 +169,23 @@ enum AtomName {
 fn make_atom(
     name: AtomName,
     sig: &mut Signature,
-    schema: TypeSchema,
-    vars: &mut Vec<TypeSchema>,
-    ops: &mut Vec<TypeSchema>,
+    scheme: TypeScheme,
+    vars: &mut Vec<TypeScheme>,
+    ops: &mut Vec<TypeScheme>,
 ) -> Atom {
     match name {
         AtomName::Variable(s) => {
             let v = sig.new_var(Some(s));
-            vars.push(schema);
+            vars.push(scheme);
             Atom::Variable(v)
         }
         AtomName::Operator(s) => {
-            let arity = schema
+            let arity = scheme
                 .instantiate(&mut TypeContext::default())
                 .args()
                 .map_or(0, |args| args.len());
             let o = sig.new_op(arity as u32, Some(s));
-            ops.push(schema);
+            ops.push(scheme);
             Atom::Operator(o)
         }
     }
@@ -216,37 +216,34 @@ fn parse_irrelevant(input: &mut &str) -> PResult<()> {
     repeat(0.., (parse_comment, multispace0)).parse_next(input)?;
     Ok(())
 }
-fn parse_declaration(input: &mut &str) -> PResult<(AtomName, TypeSchema)> {
-    let (atom_name, schema_txt) = delimited(
+fn parse_declaration(input: &mut &str) -> PResult<(AtomName, TypeScheme)> {
+    delimited(
         multispace0,
         separated_pair(
             parse_atom_name,
             (multispace0, ':', multispace0),
-            terminated(take_till(0.., ';'), ';'),
+            terminated(take_till(0.., ';'), ';').parse_to(),
         ),
         multispace0,
     )
-    .parse_next(input)?;
-    let schema =
-        TypeSchema::parse(schema_txt).map_err(|_| ErrMode::Backtrack(Default::default()))?;
-    Ok((atom_name, schema))
+    .parse_next(input)
 }
 fn parse_simple_lexicon(
     input: &mut &str,
     deterministic: bool,
     ctx: TypeContext,
 ) -> PResult<Lexicon> {
-    let atom_infos: Vec<(AtomName, TypeSchema)> = repeat(
+    let atom_infos: Vec<(AtomName, TypeScheme)> = repeat(
         0..,
         delimited(parse_irrelevant, parse_declaration, parse_irrelevant),
     )
     .parse_next(input)?;
 
     let mut sig = Signature::default();
-    let mut vars: Vec<TypeSchema> = vec![];
-    let mut ops: Vec<TypeSchema> = vec![];
-    for (atom_name, schema) in atom_infos {
-        make_atom(atom_name, &mut sig, schema, &mut vars, &mut ops);
+    let mut vars: Vec<TypeScheme> = vec![];
+    let mut ops: Vec<TypeScheme> = vec![];
+    for (atom_name, scheme) in atom_infos {
+        make_atom(atom_name, &mut sig, scheme, &mut vars, &mut ops);
     }
     Ok(Lexicon::from_signature(
         sig,
@@ -342,11 +339,11 @@ fn _parse_templates(
 
 fn add_parsed_variables_to_lexicon(lex: &Lexicon, ctx: &mut TypeContext) {
     let n_vars = lex.0.read().unwrap().signature.variables().len();
-    let n_schemas = lex.0.read().unwrap().vars.len();
-    let diff = n_vars - n_schemas;
+    let n_schemes = lex.0.read().unwrap().vars.len();
+    let diff = n_vars - n_schemes;
     for _ in 0..diff {
-        let schema = TypeSchema::Monotype(ctx.new_variable());
-        lex.0.write().unwrap().vars.push(schema);
+        let scheme = TypeScheme::Monotype(ctx.new_variable());
+        lex.0.write().unwrap().vars.push(scheme);
     }
 }
 

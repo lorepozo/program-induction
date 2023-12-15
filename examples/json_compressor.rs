@@ -1,4 +1,4 @@
-use polytype::TypeSchema;
+use polytype::TypeScheme;
 use programinduction::{lambda, noop_task, ECFrontier};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -58,7 +58,7 @@ struct Solution {
 struct CompressionInput {
     dsl: lambda::Language,
     params: lambda::CompressionParams,
-    task_types: Vec<TypeSchema>,
+    task_types: Vec<TypeScheme>,
     frontiers: Vec<ECFrontier<lambda::Expression>>,
 }
 impl From<ExternalCompressionInput> for CompressionInput {
@@ -69,7 +69,7 @@ impl From<ExternalCompressionInput> for CompressionInput {
             .map(|p| {
                 (
                     p.name,
-                    TypeSchema::parse(&p.tp).expect("invalid primitive type"),
+                    p.tp.parse::<TypeScheme>().expect("invalid primitive type"),
                     p.logp,
                 )
             })
@@ -98,7 +98,7 @@ impl From<ExternalCompressionInput> for CompressionInput {
             .frontiers
             .into_par_iter()
             .map(|f| {
-                let tp = TypeSchema::parse(&f.task_tp).expect("invalid task type");
+                let tp = f.task_tp.parse::<TypeScheme>().expect("invalid task type");
                 let sols = f
                     .solutions
                     .into_iter()

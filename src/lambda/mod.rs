@@ -42,7 +42,7 @@ pub use self::eval::{
 pub use self::parser::ParseError;
 
 use crossbeam_channel::bounded;
-use polytype::{Context, Type, TypeSchema, UnificationError};
+use polytype::{Context, Type, TypeScheme, UnificationError};
 use rayon::spawn;
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
@@ -59,8 +59,8 @@ const FREE_VAR_COST: f64 = 0.01;
 /// polymorphically-typed lambda calculus with corresponding production log-probabilities.
 #[derive(Debug, Clone)]
 pub struct Language {
-    pub primitives: Vec<(String, TypeSchema, f64)>,
-    pub invented: Vec<(Expression, TypeSchema, f64)>,
+    pub primitives: Vec<(String, TypeScheme, f64)>,
+    pub invented: Vec<(Expression, TypeScheme, f64)>,
     pub variable_logprob: f64,
     /// Symmetry breaking prevents certain productions from being made. Specifically, an item
     /// `(f, i, a)` means that enumeration will not yield an application of `f` where the `i`th
@@ -74,7 +74,7 @@ pub struct Language {
 impl Language {
     /// A uniform distribution over primitives and invented expressions, as well as the abstraction
     /// operation.
-    pub fn uniform(primitives: Vec<(&str, TypeSchema)>) -> Self {
+    pub fn uniform(primitives: Vec<(&str, TypeScheme)>) -> Self {
         let primitives = primitives
             .into_iter()
             .map(|(s, t)| (String::from(s), t, 0f64))
@@ -115,7 +115,7 @@ impl Language {
     /// ```
     ///
     /// [`Expression`]: enum.Expression.html
-    pub fn infer(&self, expr: &Expression) -> Result<TypeSchema, InferenceError> {
+    pub fn infer(&self, expr: &Expression) -> Result<TypeScheme, InferenceError> {
         let mut ctx = Context::default();
         let env = VecDeque::new();
         let mut indices = HashMap::new();
@@ -161,7 +161,7 @@ impl Language {
     /// ```
     ///
     /// [`add_symmetry_violation`]: #method.add_symmetry_violation
-    pub fn enumerate(&self, tp: TypeSchema) -> Box<dyn Iterator<Item = (Expression, f64)>> {
+    pub fn enumerate(&self, tp: TypeScheme) -> Box<dyn Iterator<Item = (Expression, f64)>> {
         let (tx, rx) = bounded(1);
         let dsl = self.clone();
         spawn(move || {
@@ -328,7 +328,7 @@ impl Language {
     /// let expr = dsl.parse("(λ (λ (+ (+ $0 1) $1)))").unwrap();
     /// assert_eq!(dsl.likelihood(&req, &expr), -8.317766166719343);
     /// ```
-    pub fn likelihood(&self, request: &TypeSchema, expr: &Expression) -> f64 {
+    pub fn likelihood(&self, request: &TypeScheme, expr: &Expression) -> f64 {
         enumerator::likelihood(self, request, expr)
     }
 
@@ -583,7 +583,7 @@ impl Language {
 impl<Observation: ?Sized> EC<Observation> for Language {
     type Expression = Expression;
     type Params = CompressionParams;
-    fn enumerate<F>(&self, tp: TypeSchema, termination_condition: F)
+    fn enumerate<F>(&self, tp: TypeScheme, termination_condition: F)
     where
         F: Fn(Expression, f64) -> bool + Sync,
     {
@@ -784,7 +784,7 @@ impl Expression {
         *self = new_self;
         true
     }
-    fn strip_invented(&self, invented: &[(Expression, TypeSchema, f64)]) -> Expression {
+    fn strip_invented(&self, invented: &[(Expression, TypeScheme, f64)]) -> Expression {
         match *self {
             Expression::Application(ref f, ref x) => Expression::Application(
                 Box::new(f.strip_invented(invented)),
@@ -926,7 +926,7 @@ impl Expression {
 /// ```
 pub fn task_by_evaluation<E, V>(
     evaluator: E,
-    tp: TypeSchema,
+    tp: TypeScheme,
     examples: impl AsRef<[(Vec<V>, V)]> + Sync,
 ) -> impl Task<[(Vec<V>, V)], Representation = Language, Expression = Expression>
 where
@@ -946,7 +946,7 @@ where
 /// [`task_by_evaluation`]: fn.task_by_evaluation.html
 pub fn task_by_lazy_evaluation<E, V>(
     evaluator: E,
-    tp: TypeSchema,
+    tp: TypeScheme,
     examples: impl AsRef<[(Vec<V>, V)]> + Sync,
 ) -> impl Task<[(Vec<V>, V)], Representation = Language, Expression = Expression>
 where
@@ -962,7 +962,7 @@ where
 
 struct LambdaTask<const LAZY: bool, E, O: Sync> {
     evaluator: Arc<E>,
-    tp: TypeSchema,
+    tp: TypeScheme,
     examples: O,
 }
 impl<
@@ -989,7 +989,7 @@ impl<
             f64::NEG_INFINITY
         }
     }
-    fn tp(&self) -> &TypeSchema {
+    fn tp(&self) -> &TypeScheme {
         &self.tp
     }
     fn observation(&self) -> &[(Vec<V>, V)] {
@@ -1020,7 +1020,7 @@ impl<
             f64::NEG_INFINITY
         }
     }
-    fn tp(&self) -> &TypeSchema {
+    fn tp(&self) -> &TypeScheme {
         &self.tp
     }
     fn observation(&self) -> &[(Vec<V>, V)] {

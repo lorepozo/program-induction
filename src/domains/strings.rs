@@ -370,7 +370,7 @@ static OPERATIONS: Lazy<HashMap<&'static str, Op>> = Lazy::new(|| {
 
 mod gen {
     use itertools::Itertools;
-    use polytype::{ptp, tp, TypeSchema};
+    use polytype::{ptp, tp, TypeScheme};
     use rand::distributions::{Distribution, Uniform};
     use rand::{self, Rng};
 
@@ -424,7 +424,7 @@ mod gen {
     pub fn make_examples<R: Rng>(
         rng: &mut R,
         n_examples: usize,
-    ) -> Vec<(&'static str, TypeSchema, Vec<(Vec<Space>, Space)>)> {
+    ) -> Vec<(&'static str, TypeScheme, Vec<(Vec<Space>, Space)>)> {
         let mut tasks = Vec::new();
 
         macro_rules! t {

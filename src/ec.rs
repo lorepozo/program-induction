@@ -1,7 +1,7 @@
 //! Representations capable of Exploration-Compression.
 
 use crossbeam_channel::bounded;
-use polytype::TypeSchema;
+use polytype::TypeScheme;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
@@ -19,7 +19,7 @@ pub struct ECParams {
     /// The maximum frontier size; the number of task solutions to be hit before enumeration is
     /// stopped for a particular task.
     pub frontier_limit: usize,
-    /// A timeout before enumeration is stopped, run independently per distinct `TypeSchema` being
+    /// A timeout before enumeration is stopped, run independently per distinct `TypeScheme` being
     /// enumerated. If this is reached, there may be fewer than `frontier_limit` many solutions.
     pub search_limit_timeout: Option<Duration>,
     /// An approximate limit on enumerated description length. If this is reached, there may be
@@ -95,7 +95,7 @@ pub trait EC<Observation: ?Sized>: Sync + Sized {
     /// If it responds with true, enumeration must stop (i.e. this method call should terminate).
     ///
     /// [`Expression`]: #associatedtype.Expression
-    fn enumerate<F>(&self, tp: TypeSchema, termination_condition: F)
+    fn enumerate<F>(&self, tp: TypeScheme, termination_condition: F)
     where
         F: Fn(Self::Expression, f64) -> bool + Sync;
     /// Update the representation based on findings of expressions that solve [`Task`]s.
@@ -296,7 +296,7 @@ pub trait EC<Observation: ?Sized>: Sync + Sized {
 fn enumerate_solutions<Observation, L, T>(
     repr: &L,
     params: &ECParams,
-    tp: TypeSchema,
+    tp: TypeScheme,
     tasks: Vec<(usize, &T)>,
 ) -> Vec<(usize, ECFrontier<L::Expression>)>
 where

@@ -1,5 +1,5 @@
 //! Evaluation happens by calling primitives provided by an evaluator.
-use polytype::TypeSchema;
+use polytype::TypeScheme;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -488,7 +488,7 @@ use self::ReducedExpression::*;
 #[derive(Clone, PartialEq)]
 pub enum ReducedExpression<V> {
     Value(V),
-    Primitive(String, TypeSchema),
+    Primitive(String, TypeScheme),
     Application(Vec<ReducedExpression<V>>),
     /// store depth (never zero) for nested abstractions.
     Abstraction(usize, Box<ReducedExpression<V>>),
@@ -856,11 +856,11 @@ where
     }
 }
 
-fn arity(mut tp: &TypeSchema) -> usize {
+fn arity(mut tp: &TypeScheme) -> usize {
     let mut tp = loop {
         match *tp {
-            TypeSchema::Monotype(ref t) => break t,
-            TypeSchema::Polytype { ref body, .. } => tp = body,
+            TypeScheme::Monotype(ref t) => break t,
+            TypeScheme::Polytype { ref body, .. } => tp = body,
         }
     };
     let mut count = 0;
@@ -871,11 +871,11 @@ fn arity(mut tp: &TypeSchema) -> usize {
     count
 }
 
-fn is_arrow(mut tp: &TypeSchema) -> bool {
+fn is_arrow(mut tp: &TypeScheme) -> bool {
     loop {
         match *tp {
-            TypeSchema::Monotype(ref t) => break t.as_arrow().is_some(),
-            TypeSchema::Polytype { ref body, .. } => tp = body,
+            TypeScheme::Monotype(ref t) => break t.as_arrow().is_some(),
+            TypeScheme::Polytype { ref body, .. } => tp = body,
         }
     }
 }
