@@ -1,5 +1,6 @@
 # program-induction
 
+[![CI](https://github.com/lorepozo/program-induction/actions/workflows/ci.yaml/badge.svg)](https://github.com/lorepozo/program-induction/actions/workflows/ci.yaml)
 [![crates.io](https://img.shields.io/crates/v/programinduction.svg)](https://crates.io/crates/programinduction)
 [![docs.rs](https://docs.rs/programinduction/badge.svg)](https://docs.rs/programinduction)
 
