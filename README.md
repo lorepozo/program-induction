@@ -16,9 +16,9 @@ In a new or existing project, add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-programinduction = "0.8"
+programinduction = "0.9"
 # many examples also depend on polytype for the tp! and ptp! macros:
-polytype = "6.1"
+polytype = "7.0"
 ```
 
 The documentation requires a custom HTML header to include KaTeX for math
