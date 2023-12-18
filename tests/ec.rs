@@ -20,7 +20,7 @@ fn arith_evaluate(name: &str, inps: &[i32]) -> Result<i32, ()> {
 #[ignore]
 fn ec_circuits_dl() {
     let dsl = circuits::dsl();
-    let rng = &mut SmallRng::from_seed([1u8; 32]);
+    let rng = &mut SmallRng::from_seed([37u8; 32]);
     let tasks = circuits::make_tasks(rng, 100);
     let ec_params = ECParams {
         frontier_limit: 10,
